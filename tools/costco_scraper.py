@@ -176,7 +176,19 @@ def make_browser():
 
     pw = sync_playwright().start()
     try:
-        browser = pw.chromium.connect_over_cdp(CHROME_DEBUG_URL)
+        # If Chrome is in a stuck/frozen state the CDP handshake will time out even
+        # though the port is open. Retry once by killing Chrome and relaunching it.
+        try:
+            browser = pw.chromium.connect_over_cdp(CHROME_DEBUG_URL, timeout=30000)
+        except Exception as cdp_err:
+            logger.warning(f"  CDP connect failed ({cdp_err.__class__.__name__}) — restarting Chrome and retrying...")
+            pw.stop()
+            _kill_agent_chrome()
+            time.sleep(2)
+            _ensure_chrome()
+            pw = sync_playwright().start()
+            browser = pw.chromium.connect_over_cdp(CHROME_DEBUG_URL, timeout=60000)
+
         context = browser.contexts[0] if browser.contexts else browser.new_context()
 
         if cookies:
