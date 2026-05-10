@@ -43,7 +43,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: playwright install chromium --with-deps
       - run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
-      - run: python agents/scheduler.py --mode discovery
+      - run: python agents/scheduler.py --mode discovery --category "Precious Metals"
         env: &common_env
           ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_SHEET_ID:         ${{ secrets.GOOGLE_SHEET_ID }}
@@ -122,7 +122,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: playwright install chromium --with-deps
       - run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
-      - run: python agents/scheduler.py --mode research
+      - run: python agents/scheduler.py --mode research --category "Precious Metals"
         env:
           ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_SHEET_ID:         ${{ secrets.GOOGLE_SHEET_ID }}
