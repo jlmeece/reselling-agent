@@ -16,6 +16,7 @@ Returns: list of {title, url, price, category}
 """
 
 import os
+import re
 import json
 import time
 import random
@@ -36,25 +37,35 @@ def _load_performance():
 
 COSTCO_SEARCH_API = "gdx-api.costco.com/catalog/search/api/v1/search"
 
-# Title-based allowlist for categories where keyword searches return noisy results.
-# If a category has title_keywords configured, discovered products must match at least one.
-CATEGORY_TITLE_FILTERS = {
-    "Precious Metals": [
-        "gold bar", "silver bar", "gold coin", "silver coin",
-        "pamp", "argor", "rand refinery", "royal canadian mint",
-        "platinum bar", "palladium", "maple leaf", "american gold eagle",
-        "krugerrand", "oz gold", "oz silver", "gram gold", "gram pure gold",
-        "gold bullion", "silver bullion",
-    ],
-}
+# Precious Metals: accept only genuine bullion — gold/silver bars and coins.
+# Uses regex to avoid substring false positives (e.g. "gold bar" in "gold barrel").
+# Exclusions run first so diamond jewelry on precious-metals.html is dropped.
+_PM_EXCLUDE = re.compile(
+    r"\b(diamond|ctw|carat|bracelet|necklace|earring|pendant|ring|bangle|chain|charm|"
+    r"stud|hoop|solitaire|brilliant|ruby|emerald|sapphire|topaz|opal)\b",
+    re.IGNORECASE,
+)
+_PM_INCLUDE = re.compile(
+    r"(\d[\d/.]*\s*(oz|gram|g)\s*(gold|silver|platinum|palladium)\s*(bar|coin|bullion)?)"
+    r"|(pamp\s+suisse)"
+    r"|(argor\s+heraeus)"
+    r"|(rand\s+refinery)"
+    r"|(royal\s+canadian\s+mint)"
+    r"|(american\s+(gold|silver)\s+eagle)"
+    r"|(canadian\s+maple\s+leaf)"
+    r"|(krugerrand)"
+    r"|(gold\s+bullion|silver\s+bullion)"
+    r"|(\bgold\s+bar\b|\bsilver\s+bar\b|\bgold\s+coin\b|\bsilver\s+coin\b)",
+    re.IGNORECASE,
+)
 
 
 def _passes_title_filter(title: str, category_name: str) -> bool:
-    keywords = CATEGORY_TITLE_FILTERS.get(category_name)
-    if not keywords:
-        return True  # no filter defined — accept everything
-    t = title.lower()
-    return any(kw in t for kw in keywords)
+    if category_name != "Precious Metals":
+        return True  # no filter for other categories
+    if _PM_EXCLUDE.search(title):
+        return False
+    return bool(_PM_INCLUDE.search(title))
 
 
 def _extract_products_from_api(api_data, category_name):
