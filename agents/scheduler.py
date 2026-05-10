@@ -448,17 +448,18 @@ def run_research(config, COL, service, sheet_name, start_row, end_row, category=
 
 # ── Mode: DISCOVERY (1x/day) ──────────────────────────────────────────────────
 
-def run_discovery(config, COL, service, sheet_name, start_row, end_row):
+def run_discovery(config, COL, service, sheet_name, start_row, end_row, category=None):
     """
     Finds new Costco products and adds them as PENDING.
     Delegates to researcher.py --discover-only.
+    Pass category to limit discovery to a single category.
     """
     logger.info("Discovery mode — running discover-only pass")
     import subprocess, sys
-    result = subprocess.run(
-        [sys.executable, os.path.join(os.path.dirname(__file__), "researcher.py"), "--discover-only"],
-        capture_output=False,
-    )
+    cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "researcher.py"), "--discover-only"]
+    if category:
+        cmd += ["--category", category]
+    result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
         logger.error(f"researcher.py --discover-only exited with code {result.returncode}")
 
@@ -531,7 +532,8 @@ def main():
         run_research(config, COL, service, sheet_name, start_row, end_row,
                      category=args.category)
     elif args.mode == "discovery":
-        run_discovery(config, COL, service, sheet_name, start_row, end_row)
+        run_discovery(config, COL, service, sheet_name, start_row, end_row,
+                      category=args.category)
     elif args.mode == "rotation":
         run_rotation(config, COL, service, sheet_name, start_row, end_row)
 
