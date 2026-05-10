@@ -378,14 +378,10 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
         existing_urls = _get_existing_urls(all_data)
         logger.info("Step 1: Discovering products on Costco...")
         with make_browser() as costco_page:
-            discovered = discover_all(costco_page, categories)
+            discovered = discover_all(costco_page, categories, category_filter=category_filter)
 
         new_products = [p for p in discovered if p["url"] not in existing_urls]
         logger.info(f"  {len(discovered)} found, {len(new_products)} are new.")
-
-        # Filter discovered products by category if requested
-        if category_filter:
-            new_products = [p for p in new_products if p["category"] == category_filter]
 
         # Add new products to sheet as PENDING (single batch API call)
         if new_products:

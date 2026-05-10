@@ -122,9 +122,10 @@ def discover_category(page, discovery_url, category_name):
     return products
 
 
-def discover_all(page, categories_config):
+def discover_all(page, categories_config, category_filter=None):
     """
-    Runs discovery across all active category discovery URLs.
+    Runs discovery across active category discovery URLs.
+    Pass category_filter (e.g. 'Precious Metals') to scrape only that category.
     Categories are sorted by historical performance score (high performers first)
     so the most promising categories are always discovered before lower ones.
     Returns deduplicated list of all discovered products.
@@ -146,16 +147,29 @@ def discover_all(page, categories_config):
         logger.info(f"Discovery order (by performance): {' → '.join(order)}")
 
     for category_name, cat in sorted_categories:
+        # Respect category filter — skip other categories entirely (no wasted scraping)
+        if category_filter and category_name != category_filter:
+            continue
+
         discovery_urls = cat.get("discovery_urls", [])
         if not discovery_urls:
             continue
 
+        # Per-category cap: never flood the sheet with hundreds of products.
+        # Precious Metals has ~15 real products; most categories top out at ~50.
+        max_per_category = cat.get("max_discovery", 60)
+        cat_count = 0
+
         for discovery_url in discovery_urls:
+            if cat_count >= max_per_category:
+                logger.info(f"  {category_name}: reached {max_per_category}-product cap — stopping discovery for this category")
+                break
             products = discover_category(page, discovery_url, category_name)
             for p in products:
-                if p["url"] not in seen_urls:
+                if p["url"] not in seen_urls and cat_count < max_per_category:
                     seen_urls.add(p["url"])
                     all_products.append(p)
+                    cat_count += 1
             time.sleep(2 + random.uniform(0.5, 1.5))
 
     logger.info(f"Discovery complete — {len(all_products)} unique products across all categories.")
