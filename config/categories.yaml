@@ -1,0 +1,160 @@
+# Business configuration — not secrets.
+# Secrets (API keys, passwords) live in .env only.
+
+business:
+  discount_code: "SAVE10"
+  batch_size: 5                    # products per Claude API call
+  price_change_threshold: 0.50     # USD — flag if price moves more than this
+  min_margin_threshold: 0.10       # 10% — below this triggers PAUSED_MARGIN
+  min_demand_score: 5              # below this adds a warning note
+  sheet_name: "Product Tracker"
+  data_start_row: 4
+  data_end_row: 500
+
+  # Run schedule — times are local (Central). GitHub Actions workflow uses UTC offsets.
+  # active:    Check ACTIVE listings — 3x/day, every run
+  # daily:     APPROVED→READY, PAUSED_OOS stock check — once/day
+  # research:  Score PENDING products — once/day (after discovery)
+  # discovery: Find new Costco products — once/day (earliest, before research)
+  run_schedule:
+    discovery: "07:00"    # Central — UTC 12:00 (CDT) / 13:00 (CST)
+    active_1:  "08:00"    # Central — UTC 13:00 (CDT) / 14:00 (CST)
+    daily:     "09:00"    # Central — UTC 14:00 (CDT) / 15:00 (CST)
+    research:  "10:00"    # Central — UTC 15:00 (CDT) / 16:00 (CST)
+    active_2:  "13:00"    # Central — UTC 18:00 (CDT) / 19:00 (CST)
+    active_3:  "18:00"    # Central — UTC 23:00 (CDT) / 00:00 (CST)
+
+categories:
+  Jewelry:
+    fee_rate: 0.15
+    site_url: "coming-soon.com/jewelry"
+    # Rotation config — fluid, adjust as the list grows
+    max_active: 30          # rotation triggers at 30 - 3 = 27 active products
+    capacity_headroom: 3    # always keep 3 test slots open
+    rotation_threshold: 4.0 # perf_score below this = rotation candidate
+    velocity_target: 2      # units/period for full velocity score
+    research_skill: "skills/research_gold.py"
+    seasonal_peak_months: [11, 12, 1, 2]   # Nov-Feb (gifts, valentines)
+    notes: "Includes gold bars, gold coins, jewelry sets"
+    ebay_category_id: "3229"               # Precious Metals
+    ebay_item_specifics:
+      "C:Type": ""                         # e.g. Gold Bar, Gold Coin — Claude fills per product
+      "C:Metal": "Gold"
+      "C:Purity": ""                       # e.g. .9999 Fine — Claude fills per product
+      "C:Brand": ""
+    discovery_urls:
+      - "https://www.costco.com/precious-metals.html"
+      - "https://www.costco.com/CatalogSearch?keyword=gold+bar"
+      - "https://www.costco.com/gold-bracelets.html"
+      - "https://www.costco.com/gold-earrings.html"
+      - "https://www.costco.com/gold-necklaces.html"
+      - "https://www.costco.com/rings.html"
+    community_sources:
+      reddit:
+        - r/Silverbugs
+        - r/Gold
+        - r/Pmsforsale
+        - r/Costco
+        - r/WallStreetSilver
+        - r/flipping
+      forums:
+        - {url: "https://forums.kitco.com",        search_path: "/search?q={query}"}
+        - {url: "https://www.bullionstacker.com",  search_path: "/search?q={query}"}
+      youtube_query_templates:
+        - "{brand} {model} review"
+        - "is {brand} legit"
+        - "where to buy {brand}"
+      web_terms:
+        - "{brand} {model} review"
+        - "{brand} resale value"
+        - "{title} reddit"
+    stale_days: 30    # legacy — orchestrator now uses freshness scoring
+
+  Outdoor Furniture:
+    fee_rate: 0.115
+    site_url: "coming-soon.com/outdoor"
+    max_active: 15
+    capacity_headroom: 2
+    rotation_threshold: 4.0
+    velocity_target: 1
+    research_skill: "skills/research_outdoor.py"
+    seasonal_peak_months: [3, 4, 5, 6]     # Mar-Jun (patio season)
+    notes: "Watch shipping weight — heavy items cut margin fast"
+    ebay_category_id: "139849"             # Metal Patio & Garden Furniture Sets
+    ebay_item_specifics:
+      "C:Brand": ""
+      "C:Material": ""                     # e.g. Aluminum, HDPE, Wicker
+      "C:Color": ""
+      "C:Type": ""                         # e.g. Patio Set, Bench, Shade Sail
+    discovery_urls:
+      - "https://www.costco.com/patio-furniture.html"
+    community_sources:
+      reddit:
+        - r/Costco
+        - r/HomeImprovement
+        - r/PatioFurniture
+        - r/malelivingspace
+        - r/frugal
+      forums: []
+      youtube_query_templates:
+        - "{title} assembly"
+        - "{title} review"
+      web_terms:
+        - "{title} review"
+        - "{title} wirecutter"
+    stale_days: 21    # legacy
+
+  Watches:
+    fee_rate: 0.13
+    site_url: "coming-soon.com/watches"
+    max_active: 20
+    capacity_headroom: 3
+    rotation_threshold: 4.0
+    velocity_target: 2
+    research_skill: "skills/research_watches.py"
+    seasonal_peak_months: [2, 6, 11, 12]    # Valentine's, Father's Day, holiday
+    notes: "Citizen, Seiko, Luminox, Bering — box+papers are standard from Costco. Brand + model number search gives cleanest eBay comps."
+    ebay_category_id: "31387"              # Wristwatches
+    ebay_item_specifics:
+      "C:Brand": ""
+      "C:Movement": ""                     # e.g. Solar, Quartz, Automatic, Eco-Drive
+      "C:Water Resistance": ""             # e.g. 100m, 200m, 3 ATM
+      "C:Case Color": ""
+      "C:Band Color": ""
+    discovery_urls:
+      - "https://www.costco.com/watches.html"
+    community_sources:
+      reddit:
+        - r/Watches
+        - r/WatchHorology
+        - r/frugalmalefashion
+        - r/Costco
+      forums:
+        - {url: "https://www.watchuseek.com", search_path: "/search/?q={query}"}
+      youtube_query_templates:
+        - "{brand} {model} review"
+        - "{brand} watch worth it"
+      web_terms:
+        - "{title} hodinkee"
+        - "{title} review"
+    stale_days: 30    # legacy
+
+  Pharmacy:
+    fee_rate: 0.1325
+    site_url: "coming-soon.com/pharmacy"
+    research_skill: "skills/research_pharmacy.py"
+    seasonal_peak_months: [8, 9, 10, 11]
+    notes: "Future category — not yet active"
+    discovery_urls: []
+    community_sources: []
+    stale_days: 30
+
+  Toys:
+    fee_rate: 0.1325
+    site_url: "coming-soon.com/toys"
+    research_skill: "skills/research_toys.py"
+    seasonal_peak_months: [10, 11, 12]
+    notes: "Future category — not yet active"
+    discovery_urls: []
+    community_sources: []
+    stale_days: 30

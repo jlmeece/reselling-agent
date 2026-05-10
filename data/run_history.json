@@ -1,0 +1,4 @@
+{
+  "description": "Append-only log of each agent run. Never delete entries.",
+  "runs": []
+}

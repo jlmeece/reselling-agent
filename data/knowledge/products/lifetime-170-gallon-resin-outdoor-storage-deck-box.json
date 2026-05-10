@@ -1,0 +1,78 @@
+{
+  "slug": "lifetime-170-gallon-resin-outdoor-storage-deck-box",
+  "title": "Lifetime 170-Gallon Resin Outdoor Storage Deck Box",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/lifetime-170-gallon-resin-outdoor-storage-deck-box/4000409800",
+  "brand": "Lifetime",
+  "model": "1947401",
+  "first_researched": "2026-05-09",
+  "research_runs": [
+    {
+      "brand": "Lifetime",
+      "model": "1947401",
+      "date": "2026-05-09",
+      "signal_strength": 0.33,
+      "by_source": {
+        "reddit:r/Costco": 0,
+        "reddit:r/HomeImprovement": 3,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 8
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://www.youtube.com/watch?v=ie2Avywm6aI",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y",
+        "https://www.youtube.com/watch?v=ie2Avywm6aI",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y"
+      ]
+    },
+    {
+      "brand": "Lifetime",
+      "model": "1947401",
+      "date": "2026-05-09",
+      "signal_strength": 0.31,
+      "by_source": {
+        "reddit:r/Costco": 0,
+        "reddit:r/HomeImprovement": 3,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 8,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://www.youtube.com/watch?v=ie2Avywm6aI",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y",
+        "https://www.youtube.com/watch?v=ie2Avywm6aI",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y"
+      ]
+    },
+    {
+      "brand": "Lifetime",
+      "model": "1947401",
+      "date": "2026-05-09",
+      "signal_strength": 0.24,
+      "by_source": {
+        "reddit:r/Costco": 0,
+        "reddit:r/HomeImprovement": 3,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 8,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://www.youtube.com/watch?v=ie2Avywm6aI",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y",
+        "https://www.youtube.com/watch?v=ie2Avywm6aI",
+        "https://www.youtube.com/watch?v=GK1XCDeel5Y"
+      ]
+    }
+  ]
+}

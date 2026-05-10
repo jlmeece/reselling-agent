@@ -1,0 +1,64 @@
+# Google Sheet column letter mappings.
+# Matches the "Product Tracker" tab exactly.
+# Update here if columns are ever added or reordered.
+#
+# Layout philosophy: action-critical columns first (A–D always frozen),
+# monitoring data next (E–U visible), everything else hidden (V–AR).
+#
+# Formula columns — never overwrite these with agent writes:
+#   I  (net_profit):       =H-G-X-Y   (ebay_price - cost - fees - ship)
+#   J  (net_margin):       =IF(H>0,I/H,0)
+#   N  (comp_saturation):  =IFERROR(M/MAX(K,1),"")
+#   X  (ebay_fees):        =H*W       (ebay_price * fee_rate)
+#   AA (tax_est):          =G*0.0825
+#   AB (site_profit):      =H*0.90-G
+#   AC (ad_budget):        =I*0.15
+
+columns:
+  # ── Visible (A–U) ────────────────────────────────────────────────
+  status:           "A"   # PENDING/APPROVED/READY/ACTIVE/WATCH/PAUSED_*/
+  demand_score:     "B"   # Tier score 0–10 (Tier 1≥7, Tier 2≥4, Tier 3<4)
+  title:            "C"   # Product name
+  category:         "D"   # Jewelry / Watches / Outdoor Furniture
+  platform:         "E"   # eBay / Site / Both (set when listed)
+  stock_status:     "F"   # In Stock / Limited / OUT OF STOCK
+  costco_cost:      "G"   # What you pay at Costco
+  ebay_price:       "H"   # Your eBay listing price (editable — agent sets once)
+  net_profit:       "I"   # formula — do not overwrite
+  net_margin:       "J"   # formula — do not overwrite
+  sold_90d:         "K"   # eBay sold listings (90 days)
+  avg_price:        "L"   # Avg eBay sold price
+  comp_count:       "M"   # Active competing eBay listings
+  comp_saturation:  "N"   # formula — active÷sold ratio (Low/Med/High color-coded)
+  last_checked:     "O"   # Agent last run timestamp
+  price_change:     "P"   # Flag: price moved since last check
+  ebay_listing_url: "Q"   # Paste live eBay listing URL here
+  costco_url:       "R"   # Source product link
+  re_eval_date:     "S"   # PAUSED items: date to re-research
+  notes:            "T"   # Research notes + agent reasoning
+  units_sold:       "U"   # Units sold (manually entered or future eBay API)
+
+  # ── Hidden (V–AR) ────────────────────────────────────────────────
+  sku:              "V"
+  fee_rate:         "W"
+  ebay_fees:        "X"   # formula — do not overwrite
+  ship_cost:        "Y"
+  fulfillment:      "Z"
+  tax_est:          "AA"  # formula — do not overwrite
+  site_profit:      "AB"  # formula — do not overwrite
+  ad_budget:        "AC"  # formula — do not overwrite
+  seo_title:        "AD"
+  bullets:          "AE"
+  description:      "AF"
+  redirect_msg:     "AG"
+  meta_desc:        "AH"
+  keywords:         "AI"
+  alt_text:         "AJ"
+  google_hl:        "AK"
+  google_desc:      "AL"
+  meta_text:        "AM"
+  meta_hl:          "AN"
+  image_urls:       "AO"
+  purchase_limit:   "AP"
+  suggested_price:  "AQ"  # Agent's original price recommendation — written once, never overwritten
+  perf_score:       "AR"  # Composite performance score (0–10) — written by rotation engine

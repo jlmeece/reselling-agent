@@ -1,0 +1,45 @@
+{
+  "slug": "10-gram-gold-bar-argor-heraeus-small-crab",
+  "title": "10 Gram Gold Bar Argor Heraeus Small Crab",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/10-gram-gold-bar-argor-heraeus-small-craft-new-in-assay/4000412466",
+  "brand": "Argor-Heraeus",
+  "model": "1999611",
+  "first_researched": "2026-05-08",
+  "research_runs": [
+    {
+      "brand": "Argor-Heraeus",
+      "model": "1999611",
+      "date": "2026-05-08",
+      "signal_strength": 3.14,
+      "by_source": {
+        "reddit:r/Silverbugs": 15,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 4,
+        "reddit:r/flipping": 0,
+        "forum:forums.kitco.com": 0,
+        "forum:bullionstacker.com": 0,
+        "web:search": 21
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Good buy?",
+        "Silver Shot",
+        "Never buy from MoneyMetals. Shorting you silver Stackers",
+        "6 months in and the addiction is real.",
+        "Popular counterfeit?",
+        "Is it real gold?",
+        "1 Gram Perth Mint $165.47 at Bullion Exchanges"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Silverbugs/comments/1t794b4/good_buy/",
+        "https://reddit.com/r/Gold/comments/1t6cuqq/is_it_real_gold/",
+        "https://reddit.com/r/Silverbugs/comments/1t41p2r/silver_shot/",
+        "https://reddit.com/r/Silverbugs/comments/1t3n9sp/never_buy_from_moneymetals_shorting_you_silver/"
+      ]
+    }
+  ]
+}

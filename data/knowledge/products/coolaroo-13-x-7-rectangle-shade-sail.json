@@ -1,0 +1,57 @@
+{
+  "slug": "coolaroo-13-x-7-rectangle-shade-sail",
+  "title": "Coolaroo 13' x 7' Rectangle Shade Sail",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/coolaroo-13-x-7-rectangle-shade-sail/100478937",
+  "brand": "Coolaroo",
+  "model": "1731368",
+  "first_researched": "2026-05-09",
+  "research_runs": [
+    {
+      "brand": "Coolaroo",
+      "model": "1731368",
+      "date": "2026-05-09",
+      "signal_strength": 0.12,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 1,
+        "reddit:r/frugal": 0,
+        "youtube:search": 0,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "Side mount bracket for angled shade sail pole?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1t1t08e/side_mount_bracket_for_angled_shade_sail_pole/",
+        "https://reddit.com/r/malelivingspace/comments/1t6uy3x/is_having_a_corkboard_in_my_room_too_childish/",
+        "https://reddit.com/r/Costco/comments/1suylio/baked_conger_jerky_has_anyone_tried/"
+      ]
+    },
+    {
+      "brand": "Coolaroo",
+      "model": "1731368",
+      "date": "2026-05-09",
+      "signal_strength": 0.16,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 2,
+        "reddit:r/frugal": 0,
+        "youtube:search": 0,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "Side mount bracket for angled shade sail pole?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1t1t08e/side_mount_bracket_for_angled_shade_sail_pole/",
+        "https://reddit.com/r/malelivingspace/comments/1t8t5wm/how_would_you_do_the_layout_for_the_living_room/",
+        "https://reddit.com/r/malelivingspace/comments/1t6uy3x/is_having_a_corkboard_in_my_room_too_childish/",
+        "https://reddit.com/r/Costco/comments/1suylio/baked_conger_jerky_has_anyone_tried/"
+      ]
+    }
+  ]
+}

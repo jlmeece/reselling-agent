@@ -1,0 +1,42 @@
+{
+  "Jewelry": {
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier3_count": 1,
+    "total_researched": 1,
+    "last_updated": "2026-05-09",
+    "performance_score": 0.0
+  },
+  "Watches": {
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier3_count": 0,
+    "total_researched": 0,
+    "last_updated": "2026-05-08",
+    "performance_score": 0.5
+  },
+  "Outdoor Furniture": {
+    "tier1_count": 0,
+    "tier2_count": 2,
+    "tier3_count": 9,
+    "total_researched": 11,
+    "last_updated": "2026-05-09",
+    "performance_score": 0.055
+  },
+  "Pharmacy": {
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier3_count": 0,
+    "total_researched": 0,
+    "last_updated": "2026-05-08",
+    "performance_score": 0.5
+  },
+  "Toys": {
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier3_count": 0,
+    "total_researched": 0,
+    "last_updated": "2026-05-08",
+    "performance_score": 0.5
+  }
+}

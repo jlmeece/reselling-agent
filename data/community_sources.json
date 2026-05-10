@@ -1,0 +1,34 @@
+{
+  "Jewelry": {
+    "Gold": {
+      "last_checked": "2026-05-08",
+      "stale": false,
+      "post_count": 20
+    },
+    "WallStreetSilver": {
+      "last_checked": "2026-05-08",
+      "stale": false,
+      "post_count": 5
+    },
+    "Costco": {
+      "last_checked": "2026-05-08",
+      "stale": true,
+      "post_count": 0
+    },
+    "personalfinance": {
+      "last_checked": "2026-05-08",
+      "stale": false,
+      "post_count": 13
+    },
+    "flipping": {
+      "last_checked": "2026-05-08",
+      "stale": false,
+      "post_count": 4
+    },
+    "investing": {
+      "last_checked": "2026-05-08",
+      "stale": false,
+      "post_count": 2
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "slug": "agio-nicolet-4-piece-outdoor-patio-seating-set",
+  "title": "Agio Nicolet 4-piece Outdoor Patio Seating Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/agio-nicolet-4-piece-outdoor-patio-seating-set/4000403873",
+  "brand": "Agio",
+  "model": "1934265",
+  "first_researched": "2026-05-09",
+  "research_runs": [
+    {
+      "brand": "Agio",
+      "model": "1934265",
+      "date": "2026-05-09",
+      "signal_strength": 0.07,
+      "by_source": {
+        "reddit:r/Costco": 0,
+        "reddit:r/HomeImprovement": 2,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 0,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "Outdoor Dining Set"
+      ],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1sjucx1/outdoor_dining_set/",
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/"
+      ]
+    },
+    {
+      "brand": "Agio",
+      "model": "1934265",
+      "date": "2026-05-09",
+      "signal_strength": 0.1,
+      "by_source": {
+        "reddit:r/Costco": 0,
+        "reddit:r/HomeImprovement": 2,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 0,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "Outdoor Dining Set"
+      ],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1sjucx1/outdoor_dining_set/",
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/"
+      ]
+    }
+  ]
+}

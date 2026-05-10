@@ -1,0 +1,3781 @@
+{
+  "Jewelry": {
+    "about": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 3
+    },
+    "above": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "acrylic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "actual": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "actually": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "addicted": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "addiction": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "additions": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "address": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "adjusted": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "advertised": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "advice": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "afraid": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "after": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "again": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "album": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "alhamdulillah": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "also": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "always": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "amazing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "amount": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "another": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "antique": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "anyone": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "anything": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "apmex": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "argor": {
+      "intent_hits": 14,
+      "last_seen": "2026-05-09",
+      "mentions": 64
+    },
+    "argos": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "artistic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "assay": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "asset": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "assets": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "authentic": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "available": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "average": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "away": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "back": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "bank": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "barber": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "bars": {
+      "intent_hits": 4,
+      "last_seen": "2026-05-09",
+      "mentions": 35
+    },
+    "barton": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "basically": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "beautiful": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "because": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "become": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "been": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "before": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "beginners": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "being": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "below": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "best": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "better": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "between": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "bezel": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "bless": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "bold": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "bookmarked": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "bought": {
+      "intent_hits": 10,
+      "last_seen": "2026-05-09",
+      "mentions": 17
+    },
+    "brands": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "bring": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "buat": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "budget": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "bullion": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 20
+    },
+    "bullions": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "bury": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "buyer": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "buying": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 19
+    },
+    "bypass": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "calc": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "canadian": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "canadians": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "cannot": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "capsules": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "card": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "care": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "carter": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "cast": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "certainly": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "certified": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "chairs": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "change": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "channel": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "cheap": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "check": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "cheers": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "china": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "chinese": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "christmas": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "clean": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "clear": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "clip": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "closes": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "coin": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 13
+    },
+    "coins": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "collectible": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "collections": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "colour": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "coming": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "comm": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "compare": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "congratulations": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "constitutional": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "content": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "cool": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "copper": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "costco": {
+      "intent_hits": 4,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "could": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "countries": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "couple": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "crab": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "craft": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "crash": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "crazy": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "credit": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "cubans": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "currency": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "custom": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "date": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "dealers": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "demand": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "density": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "design": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "details": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "difference": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "dime": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "doing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "dollar": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "dollars": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "dont": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "dope": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "dots": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "doubled": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "down": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "dragon": {
+      "intent_hits": 6,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "draw": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "dropped": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "during": {
+      "intent_hits": 6,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "eagle": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "eagles": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "easier": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "ebay": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "economical": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "edition": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "either": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "elephants": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "engelhard": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "enjoyed": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "especially": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "estate": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "every": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "everything": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "exchanges": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "executive": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "experiencing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "explain": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "extra": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "eyes": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "failures": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "fair": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "father": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "favorite": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 3
+    },
+    "favourite": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "feature": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "features": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "federal": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "feel": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "feeling": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "femi": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "festival": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "find": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 3
+    },
+    "fine": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "first": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 15
+    },
+    "fits": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "foreign": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "forget": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "forum": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "found": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 8
+    },
+    "fqirst": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "fractional": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 3
+    },
+    "freakin": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "free": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "frequent": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "friday": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "from": {
+      "intent_hits": 6,
+      "last_seen": "2026-05-09",
+      "mentions": 35
+    },
+    "full": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "functional": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "future": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "gambling": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "game": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "gemstone": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "generic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "gentle": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "getting": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 11
+    },
+    "gift": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "gifts": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "girlfriend": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "glad": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "global": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "gloves": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "going": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "gold": {
+      "intent_hits": 29,
+      "last_seen": "2026-05-09",
+      "mentions": 208
+    },
+    "goldback": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "golden": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "goldseed": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "good": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "gorham": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "graded": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 4
+    },
+    "gram": {
+      "intent_hits": 6,
+      "last_seen": "2026-05-09",
+      "mentions": 23
+    },
+    "grams": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "grandpas": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "great": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 11
+    },
+    "group": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "grow": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "half": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "hand": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "handle": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "happening": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "happy": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "haul": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "have": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 34
+    },
+    "having": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "hear": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "heavens": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "hello": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "help": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 15
+    },
+    "helped": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "heraeus": {
+      "intent_hits": 8,
+      "last_seen": "2026-05-09",
+      "mentions": 52
+    },
+    "hercules": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "here": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "hereus": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "hero": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "hidden": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "historic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "hold": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "holiday": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "holidays": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "hologram": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "holographic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "hope": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "horror": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "horse": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "hyperinflation": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "imagined": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "imports": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "including": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "indep": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "index": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "individual": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "indonesia": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "inflation": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "information": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "informative": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "instead": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "instructions": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "intend": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "interesting": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "introduction": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "inventory": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "invest": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "items": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "jeweler": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "jewellers": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "jewellery": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "jewelry": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "junk": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "just": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 20
+    },
+    "kami": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "kaseh": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "keep": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "kilogram": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "kind": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "kinda": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "kinebar": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 8
+    },
+    "knew": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "knives": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "know": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 15
+    },
+    "knowledge": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "korea": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "last": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "laurel": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "lbma": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "least": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "leave": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "left": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "legacy": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "legendary": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "legends": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "lets": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "libertad": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "libertads": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "liberty": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "like": {
+      "intent_hits": 9,
+      "last_seen": "2026-05-09",
+      "mentions": 18
+    },
+    "limited": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "little": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "live": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "living": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "look": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "looking": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 8
+    },
+    "looks": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "loose": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "losing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "lots": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "love": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 13
+    },
+    "lovely": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "lower": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "luck": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "lunar": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "machine": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "made": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "make": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "making": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "manufacturing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "maple": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "maples": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "mate": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "means": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "medium": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "mega": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "melt": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 3
+    },
+    "member": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "merry": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "metal": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "metals": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "metalytics": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "might": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "mile": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "mine": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "mint": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "mintbuilder": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "minted": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "misers": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "mister": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "money": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "months": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "moon": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "more": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "mothers": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "much": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "music": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "musical": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "must": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "myself": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "near": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "neat": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "necklace": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "need": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "needed": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "needs": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "ness": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "never": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "newbie": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "next": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "nice": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 12
+    },
+    "night": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "normal": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "noticed": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "office": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "olympic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "once": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "online": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "only": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 8
+    },
+    "open": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "opened": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "opening": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "opne": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "opps": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "ordered": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "other": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "ounces": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "over": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "package": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "packaging": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "paid": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "pall": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "pamp": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "panda": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "passive": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "paying": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "pcgs": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "peace": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "pendant": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "people": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "personally": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "perth": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "philly": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "picked": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "picking": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "piece": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "pieces": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "places": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "plan": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "planning": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "plastic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "plated": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "plates": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "platinum": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "please": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "poor": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "popular": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "possible": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "post": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "posting": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "power": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "precious": {
+      "intent_hits": 6,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "precision": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "prefer": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "premium": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "price": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "priced": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "problem": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "proof": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "proper": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "quality": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "queens": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "question": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "questions": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "quite": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "raiffeisen": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "rainbow": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "rare": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "real": {
+      "intent_hits": 7,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "really": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "reason": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "received": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "recent": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "recently": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "recession": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "recommend": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "recommended": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "record": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "reddit": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "reed": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "refined": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "resale": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "reserve": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "review": {
+      "intent_hits": 7,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "revolut": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "rezeki": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "riches": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "right": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "ring": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "rosa": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "rose": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "round": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "rounds": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "royal": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "safely": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "safest": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "salary": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "sale": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "scottsdale": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "scrap": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "scroll": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "seal": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "sealed": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "sean": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "seasonal": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "second": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "security": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "seeing": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "selection": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "sell": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "seller": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "selling": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "semoga": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "send": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "serve": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "sets": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "shark": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "shed": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "shine": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "shinys": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "ship": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "shipped": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "shocks": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "shorting": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "shot": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "should": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "show": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "sigma": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "silver": {
+      "intent_hits": 4,
+      "last_seen": "2026-05-09",
+      "mentions": 49
+    },
+    "silvertowne": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "similar": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "since": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "single": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "size": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 13
+    },
+    "slabs": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "small": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 15
+    },
+    "smaller": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "smartly": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "smooth": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "sold": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "somalia": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "some": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "someday": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "something": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "sonic": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "soul": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "sovereign": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "special": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "speculation": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "spot": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "spotter": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "spotting": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "squad": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "stack": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "stackers": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "star": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "start": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "starting": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "startup": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "steps": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "sterling": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 6
+    },
+    "stock": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "stopped": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "storage": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "store": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "street": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "stuck": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "such": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "sucks": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "suffering": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "suisse": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "sukur": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "support": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "swiss": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 16
+    },
+    "take": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "taking": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "tamper": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "tell": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "test": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 8
+    },
+    "testing": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "than": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "thank": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 21
+    },
+    "thanks": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 31
+    },
+    "that": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 49
+    },
+    "their": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "them": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "then": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "theory": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "there": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 15
+    },
+    "these": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 8
+    },
+    "they": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 10
+    },
+    "thicker": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "things": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "thinner": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "this": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 52
+    },
+    "those": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "thought": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "time": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "tips": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "today": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 3
+    },
+    "tonnes": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "touch": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "touching": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "towle": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "trade": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "trading": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "trek": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "trends": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "troy": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "true": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "type": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "types": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "unboxing": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "under": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 14
+    },
+    "understand": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "univess": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "upvoted": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "used": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "using": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "usually": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "valcambi": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "valuable": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "value": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "variety": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "various": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "venezuelans": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "verifier": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "verify": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "version": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "very": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 19
+    },
+    "video": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 14
+    },
+    "vigilant": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "vintage": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 3
+    },
+    "waiting": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "walking": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "want": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 12
+    },
+    "watching": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "wealth": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "websites": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "wedding": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "week": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "weekend": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "weigh": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "weight": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "well": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "what": {
+      "intent_hits": 4,
+      "last_seen": "2026-05-09",
+      "mentions": 22
+    },
+    "whatnot": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "when": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "where": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 2
+    },
+    "which": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "white": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "wide": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "will": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "willing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "wish": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "wishing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "with": {
+      "intent_hits": 9,
+      "last_seen": "2026-05-09",
+      "mentions": 38
+    },
+    "without": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "work": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "world": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-08",
+      "mentions": 1
+    },
+    "worry": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "worth": {
+      "intent_hits": 4,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "would": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "wrapped": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "years": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "yesterday": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "your": {
+      "intent_hits": 3,
+      "last_seen": "2026-05-09",
+      "mentions": 19
+    },
+    "yours": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "\u0433\u043e\u0441\u043f\u043e\u0434\u0438": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "\u043c\u0430\u043b\u0447\u0438\u043a\u0438": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    }
+  },
+  "Outdoor Furniture": {
+    "actually": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "angled": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "annalise": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "anyone": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "around": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "assembly": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "bahama": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "baked": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "beach": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "before": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "bench": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "benches": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "between": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "bins": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "bracket": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "brand": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "buying": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "canopy": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "case": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "changer": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "chaser": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "chewing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "club": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "conger": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "cons": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "corkboard": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "costco": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "decide": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "deck": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 12
+    },
+    "depot": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "dining": {
+      "intent_hits": 6,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "dream": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "driveway": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "email": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "equipment": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "extension": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "fieldstone": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "figure": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "finally": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "flashing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "from": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "front": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "furniture": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "gallon": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 12
+    },
+    "gallons": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "game": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "garbage": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "garden": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "handle": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "hang": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "having": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "head": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "henderson": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "holds": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "holes": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "home": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "honest": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "inferior": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "insulated": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "keep": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "keter": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "layout": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "life": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "lifetime": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 9
+    },
+    "living": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "long": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "look": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "lounge": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "made": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "making": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "mess": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "mine": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "modular": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "morning": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "mount": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "must": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "name": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "options": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "outdoor": {
+      "intent_hits": 7,
+      "last_seen": "2026-05-09",
+      "mentions": 15
+    },
+    "patio": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "piece": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "polyethylene": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "polywood": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 12
+    },
+    "pool": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "problem": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "pros": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "pulling": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "purchases": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "questions": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "raccoons": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "read": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "recommend": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "reddit": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "review": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "reviews": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "room": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "safe": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "sail": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "sale": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "sand": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "sectional": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "shade": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "should": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "side": {
+      "intent_hits": 2,
+      "last_seen": "2026-05-09",
+      "mentions": 2
+    },
+    "small": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "sofa": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "sold": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "squirrels": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "still": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "storage": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "sustainable": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "tell": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "thanks": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "them": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "these": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "they": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 7
+    },
+    "things": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "this": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "tommy": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "tomorrow": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "trying": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 5
+    },
+    "turn": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "umbrella": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "unique": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "video": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "watch": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "waterproofing": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "what": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 6
+    },
+    "where": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "which": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 3
+    },
+    "worth": {
+      "intent_hits": 1,
+      "last_seen": "2026-05-09",
+      "mentions": 1
+    },
+    "would": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    },
+    "your": {
+      "intent_hits": 0,
+      "last_seen": "2026-05-09",
+      "mentions": 4
+    }
+  }
+}

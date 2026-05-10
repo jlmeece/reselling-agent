@@ -1,0 +1,39 @@
+{
+  "slug": "pandora-style-sterling-silver-bracelet-set",
+  "title": "Pandora-Style Sterling Silver Bracelet Set",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/test-pandora.html",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-08",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-08",
+      "signal_strength": 3.9,
+      "by_source": {
+        "reddit:r/Silverbugs": 15,
+        "reddit:r/Gold": 11,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 4,
+        "reddit:r/flipping": 1
+      },
+      "intent_phrases_seen": [
+        "Best kind of silver medium",
+        "Don't buy from Bullion Shark",
+        "Found this on the street today",
+        "Is it worth it?",
+        "[WTB] Special Edition 1oz Maples and 40% silver quarters/bicentennial sets"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t7sc0y/wtb_special_edition_1oz_maples_and_40_silver/",
+        "https://reddit.com/r/Silverbugs/comments/1t6kice/best_kind_of_silver_medium/",
+        "https://reddit.com/r/Gold/comments/1t68efq/found_this_on_the_street_today/",
+        "https://reddit.com/r/Silverbugs/comments/1t41l3y/dont_buy_from_bullion_shark/",
+        "https://reddit.com/r/Gold/comments/1t08f10/is_it_worth_it/"
+      ]
+    }
+  ]
+}

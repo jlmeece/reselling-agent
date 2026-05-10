@@ -1,0 +1,105 @@
+{
+  "slug": "polywood-long-beach-garden-bench",
+  "title": "POLYWOOD Long Beach Garden Bench",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/polywood-long-beach-garden-bench/4000140460",
+  "brand": "Polywood",
+  "model": "1726296",
+  "first_researched": "2026-05-09",
+  "research_runs": [
+    {
+      "brand": "Polywood",
+      "model": "1726296",
+      "date": "2026-05-09",
+      "signal_strength": 0.21,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 3,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 2
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Costco/comments/1t5tjah/in_case_youre_trying_to_decide_between_the_tommy/",
+        "https://reddit.com/r/HomeImprovement/comments/1sxwvqx/waterproofing_a_fieldstone_foundation/",
+        "https://reddit.com/r/HomeImprovement/comments/1st1iev/how_can_i_tell_if_its_safe_to_hang_a_bench_from/",
+        "https://reddit.com/r/HomeImprovement/comments/1sq9xqm/game_changer_purchases_for_your_home/",
+        "https://www.youtube.com/watch?v=zdkyY9dfqfA"
+      ]
+    },
+    {
+      "brand": "Polywood",
+      "model": "1726296",
+      "date": "2026-05-09",
+      "signal_strength": 0.13,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 3,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 2,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Costco/comments/1t5tjah/in_case_youre_trying_to_decide_between_the_tommy/",
+        "https://reddit.com/r/HomeImprovement/comments/1sxwvqx/waterproofing_a_fieldstone_foundation/",
+        "https://reddit.com/r/HomeImprovement/comments/1st1iev/how_can_i_tell_if_its_safe_to_hang_a_bench_from/",
+        "https://reddit.com/r/HomeImprovement/comments/1sq9xqm/game_changer_purchases_for_your_home/",
+        "https://www.youtube.com/watch?v=zdkyY9dfqfA"
+      ]
+    },
+    {
+      "brand": "Polywood",
+      "model": "1726296",
+      "date": "2026-05-09",
+      "signal_strength": 0.13,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 3,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 2,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Costco/comments/1t5tjah/in_case_youre_trying_to_decide_between_the_tommy/",
+        "https://reddit.com/r/HomeImprovement/comments/1sxwvqx/waterproofing_a_fieldstone_foundation/",
+        "https://reddit.com/r/HomeImprovement/comments/1st1iev/how_can_i_tell_if_its_safe_to_hang_a_bench_from/",
+        "https://reddit.com/r/HomeImprovement/comments/1sq9xqm/game_changer_purchases_for_your_home/",
+        "https://www.youtube.com/watch?v=zdkyY9dfqfA"
+      ]
+    },
+    {
+      "brand": "Polywood",
+      "model": "1726296",
+      "date": "2026-05-09",
+      "signal_strength": 0.17,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 3,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 1,
+        "youtube:search": 2,
+        "web:search": 8
+      },
+      "intent_phrases_seen": [
+        "Polywood Review - Must Read This Before Buying - Honest Brand Reviews",
+        "Is Polywood Worth It? Pros and Cons - Dream Outdoor Living"
+      ],
+      "top_links": [
+        "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.honestbrandreviews.com%2Freviews%2Fpolywood%2Dreview%2F&amp;rut=c3a3a833a792aec285a78753cd83bf30dc1f213f311e2118da61d50f5adb1f20",
+        "//duckduckgo.com/l/?uddg=https%3A%2F%2Fdreamoutdoorliving.com%2Fis%2Dpolywood%2Dworth%2Dit%2F&amp;rut=8127250449e0d151009b738fc207b6c95ecb985d83b8b523159ae6e6adbbc75e",
+        "https://reddit.com/r/Frugal/comments/1t8uhfy/finally_pulling_my_head_out_of_the_sand_at_38_and/",
+        "https://reddit.com/r/Costco/comments/1t5tjah/in_case_youre_trying_to_decide_between_the_tommy/",
+        "https://reddit.com/r/HomeImprovement/comments/1sxwvqx/waterproofing_a_fieldstone_foundation/"
+      ]
+    }
+  ]
+}

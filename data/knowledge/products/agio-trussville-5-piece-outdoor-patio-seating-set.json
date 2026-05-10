@@ -1,0 +1,56 @@
+{
+  "slug": "agio-trussville-5-piece-outdoor-patio-seating-set",
+  "title": "Agio Trussville 5-piece Outdoor Patio Seating Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/agio-trussville-5-piece-outdoor-patio-seating-set/4000405663",
+  "brand": "Agio",
+  "model": "1934187",
+  "first_researched": "2026-05-09",
+  "research_runs": [
+    {
+      "brand": "Agio",
+      "model": "1934187",
+      "date": "2026-05-09",
+      "signal_strength": 0.12,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 2,
+        "reddit:r/PatioFurniture": 0,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 0,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "Outdoor Dining Set"
+      ],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1sjucx1/outdoor_dining_set/",
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/",
+        "https://reddit.com/r/Costco/comments/1sr5hcc/henderson_annalise_6_piece_outdoor_modular/"
+      ]
+    },
+    {
+      "brand": "Agio",
+      "model": "1934187",
+      "date": "2026-05-09",
+      "signal_strength": 0.12,
+      "by_source": {
+        "reddit:r/Costco": 1,
+        "reddit:r/HomeImprovement": 2,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0,
+        "youtube:search": 0,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "Outdoor Dining Set"
+      ],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1sjucx1/outdoor_dining_set/",
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/",
+        "https://reddit.com/r/Costco/comments/1sr5hcc/henderson_annalise_6_piece_outdoor_modular/"
+      ]
+    }
+  ]
+}

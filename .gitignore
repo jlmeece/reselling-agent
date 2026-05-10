@@ -1,0 +1,30 @@
+# Secrets — never commit
+.env
+google_credentials.json
+credentials.json
+token.json
+data/costco_session.json
+data/costco_cookies.json
+
+# Temporary processing files
+.tmp/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
