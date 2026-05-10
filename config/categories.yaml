@@ -67,6 +67,7 @@ categories:
 
     discovery_urls:
       - "https://www.costco.com/precious-metals.html"
+      - "https://www.costco.com/CatalogSearch?keyword=pamp+suisse+gold"
       - "https://www.costco.com/CatalogSearch?keyword=gold+bar"
       - "https://www.costco.com/CatalogSearch?keyword=silver+bar"
       - "https://www.costco.com/CatalogSearch?keyword=gold+coin"

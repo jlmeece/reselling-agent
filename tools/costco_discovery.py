@@ -36,6 +36,26 @@ def _load_performance():
 
 COSTCO_SEARCH_API = "gdx-api.costco.com/catalog/search/api/v1/search"
 
+# Title-based allowlist for categories where keyword searches return noisy results.
+# If a category has title_keywords configured, discovered products must match at least one.
+CATEGORY_TITLE_FILTERS = {
+    "Precious Metals": [
+        "gold bar", "silver bar", "gold coin", "silver coin",
+        "pamp", "argor", "rand refinery", "royal canadian mint",
+        "platinum bar", "palladium", "maple leaf", "american gold eagle",
+        "krugerrand", "oz gold", "oz silver", "gram gold", "gram pure gold",
+        "gold bullion", "silver bullion",
+    ],
+}
+
+
+def _passes_title_filter(title: str, category_name: str) -> bool:
+    keywords = CATEGORY_TITLE_FILTERS.get(category_name)
+    if not keywords:
+        return True  # no filter defined — accept everything
+    t = title.lower()
+    return any(kw in t for kw in keywords)
+
 
 def _extract_products_from_api(api_data, category_name):
     """Parse the Costco search API JSON response into product dicts."""
@@ -47,6 +67,8 @@ def _extract_products_from_api(api_data, category_name):
             title = p.get("title", "").strip()
             uri   = p.get("uri", "").strip()
             if not title or not uri:
+                continue
+            if not _passes_title_filter(title, category_name):
                 continue
             if not uri.startswith("http"):
                 uri = "https://www.costco.com" + uri
