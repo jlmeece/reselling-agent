@@ -31,7 +31,7 @@ categories:
     fee_rate: 0.15
     site_url: "coming-soon.com/precious-metals"
     max_active: 10          # small — purchase limits mean low unit volume
-    max_discovery: 20       # hard cap: there are only ~12-15 real PM products at Costco
+    max_discovery: 30       # hard cap: covers gold bars + silver bars + gold coins (~25 real products)
     capacity_headroom: 2
     rotation_threshold: 4.0
     velocity_target: 2
