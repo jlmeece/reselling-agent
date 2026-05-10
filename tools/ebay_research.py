@@ -29,21 +29,28 @@ _NOISE = {
 _MAX_QUERY_TOKENS = 8
 
 
-_EBAY_SOLD_URL = (
-    "https://www.ebay.com/sch/i.html"
-    "?_nkw={query}"
-    "&LH_Complete=1"
-    "&LH_Sold=1"
-    "&_ipg=60"
-    "&_sacat=0"
-)
+def _build_search_urls(query, sacat=0):
+    """Build eBay sold + active search URLs for the given query and category."""
+    q = query.replace(" ", "+")
+    sold = (
+        f"https://www.ebay.com/sch/i.html?_nkw={q}"
+        f"&LH_Complete=1&LH_Sold=1&_ipg=60&_sacat={sacat}"
+    )
+    active = (
+        f"https://www.ebay.com/sch/i.html?_nkw={q}"
+        f"&_ipg=60&_sacat={sacat}"
+    )
+    return sold, active
 
-_EBAY_ACTIVE_URL = (
-    "https://www.ebay.com/sch/i.html"
-    "?_nkw={query}"
-    "&_ipg=60"
-    "&_sacat=0"
-)
+
+def _build_model_query(brand, model):
+    """
+    Build a precise eBay query from brand + manufacturer model number.
+    e.g. brand="Citizen", model="AT2510-80L" → "Citizen AT2510-80L"
+    Keeps hyphens/dots intact — they're meaningful in model numbers.
+    """
+    parts = [p.strip() for p in (brand or "", model or "") if p and p.strip()]
+    return re.sub(r"\s+", " ", " ".join(parts)).strip()[:80]
 
 
 def _build_query(title):
@@ -164,14 +171,20 @@ def _scrape_ebay_page(page, url, label):
     return count, prices
 
 
-def get_ebay_comps(product_title, category=None, page=None):
+def get_ebay_comps(product_title, category=None, page=None,
+                   brand=None, model=None, ebay_category_id=None):
     """
     Searches eBay sold and active listings.
+
+    Query strategy (most to least precise):
+      1. brand + model number, scoped to ebay_category_id  (if model available)
+      2. title-based query (fallback if model search returns < 5 sold results)
 
     page: an active Playwright page (CDP Chrome). Pass this from make_browser()
           so eBay sees real Chrome. If None, falls back to headless (less reliable).
 
-    Returns: {sold_90d, avg_sold_price, active_count, price_range, fee_rate, note}
+    Returns: {sold_90d, avg_sold_price, active_count, price_range, fee_rate,
+              query_used, query_strategy, note}
     """
     import os, yaml
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "categories.yaml")
@@ -182,24 +195,31 @@ def get_ebay_comps(product_title, category=None, page=None):
     if category and category in categories:
         fee_rate = categories[category].get("fee_rate", 0.1325)
 
-    query     = _build_query(product_title)
-    sold_url  = _EBAY_SOLD_URL.format(query=query.replace(" ", "+"))
-    active_url = _EBAY_ACTIVE_URL.format(query=query.replace(" ", "+"))
+    sacat = int(ebay_category_id) if ebay_category_id else 0
+
+    # Determine query strategy
+    model_query = _build_model_query(brand, model) if model else None
+    title_query = _build_query(product_title)
+    primary_query = model_query if model_query else title_query
+    query_strategy = "model" if model_query else "title"
 
     result = {
-        "sold_90d":         None,   # int — count of sold listings (last ~90 days)
-        "median_sold":      None,   # float — median sold price (outliers trimmed)
-        "avg_sold_price":   None,   # float — mean sold price (outliers trimmed)
-        "sold_range":       None,   # str — "$X–$Y" of trimmed sold range
-        "active_count":     None,   # int — competing active listings
-        "median_active":    None,   # float — median active asking price
-        "price_basis":      None,   # str — "sold" | "active" | "none"
+        "sold_90d":         None,
+        "median_sold":      None,
+        "avg_sold_price":   None,
+        "sold_range":       None,
+        "active_count":     None,
+        "median_active":    None,
+        "price_basis":      None,
         "fee_rate":         fee_rate,
-        "query_used":       query,
+        "query_used":       primary_query,
+        "query_strategy":   query_strategy,
         "note":             "",
     }
 
-    def _run(pg):
+    def _run_query(pg, query):
+        """Execute one full sold+active pass for the given query string. Returns True if sold data found."""
+        sold_url, active_url = _build_search_urls(query, sacat)
         sold_count, sold_prices_raw = _scrape_ebay_page(pg, sold_url, "sold")
         result["sold_90d"] = sold_count
 
@@ -221,8 +241,6 @@ def get_ebay_comps(product_title, category=None, page=None):
         if active_prices:
             result["median_active"] = round(statistics.median(active_prices), 2)
 
-        # If no sold data, surface active median as the best-available basis
-        # but DON'T overwrite avg_sold_price silently.
         if result["price_basis"] is None and active_prices:
             result["price_basis"] = "active"
             result["note"] += "Sold prices unavailable — using active asking prices as price reference. "
@@ -230,6 +248,29 @@ def get_ebay_comps(product_title, category=None, page=None):
         if result["price_basis"] is None:
             result["price_basis"] = "none"
             result["note"] += "No sold or active price data found. "
+
+        return bool(sold_prices)
+
+    def _run(pg):
+        sold_found = _run_query(pg, primary_query)
+
+        # If model query returned < 5 sold results, fall back to title query for better coverage
+        if query_strategy == "model" and (result["sold_90d"] or 0) < 5:
+            logger.debug(f"  Model query returned {result['sold_90d']} sold — retrying with title query")
+            # Reset sold/active fields before fallback run
+            for k in ("sold_90d", "median_sold", "avg_sold_price", "sold_range",
+                       "active_count", "median_active", "price_basis"):
+                result[k] = None
+            result["note"] = ""
+            pg.wait_for_timeout(800)
+            _run_query(pg, title_query)
+            result["query_used"]     = title_query
+            result["query_strategy"] = "fallback"
+
+        # Low-confidence flag
+        if (result["sold_90d"] or 0) < 10:
+            n = result["sold_90d"] or 0
+            result["note"] += f"Low comp confidence — only {n} sold listings. Verify price manually. "
 
         try:
             pg.goto("https://www.ebay.com", timeout=10000, wait_until="domcontentloaded")
@@ -239,10 +280,9 @@ def get_ebay_comps(product_title, category=None, page=None):
     if page is not None:
         _run(page)
     else:
-        # Fallback: own headless browser (less reliable but works for testing)
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
-                headless=False,   # visible reduces bot detection
+                headless=False,
                 args=["--disable-blink-features=AutomationControlled"],
             )
             ctx = browser.new_context(
@@ -258,10 +298,10 @@ def get_ebay_comps(product_title, category=None, page=None):
             finally:
                 browser.close()
 
-    result["note"] = "OK" if not result["note"] else result["note"].strip()
+    result["note"] = "OK" if not result["note"].strip() else result["note"].strip()
 
     logger.info(
-        f"  eBay comps [{query}]: "
+        f"  eBay comps [{result['query_used']}] ({result['query_strategy']}): "
         f"sold≈{result['sold_90d']} ({result['price_basis']}) | "
         f"median=${result['median_sold'] or result['median_active']} | "
         f"active≈{result['active_count']}"

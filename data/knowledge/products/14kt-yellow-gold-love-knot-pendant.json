@@ -1,0 +1,32 @@
+{
+  "slug": "14kt-yellow-gold-love-knot-pendant",
+  "title": "14kt Yellow Gold Love Knot Pendant",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-love-knot-pendant/4000376533",
+  "brand": null,
+  "model": "1957171",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1957171",
+      "date": "2026-05-10",
+      "signal_strength": 0.31,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 6,
+        "reddit:r/Pmsforsale": 1
+      },
+      "intent_phrases_seen": [
+        "Is this worth the price?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1sz309g/is_this_worth_the_price/",
+        "https://reddit.com/r/Silverbugs/comments/1t6rvys/new_10oz_coin_at_costco_today/",
+        "https://reddit.com/r/Gold/comments/1t6l8kj/question_about_selling_jewelry/",
+        "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/",
+        "https://reddit.com/r/Gold/comments/1sxbybj/what_do_you_think_about_this_value_wise/"
+      ]
+    }
+  ]
+}

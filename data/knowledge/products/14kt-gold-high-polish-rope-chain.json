@@ -1,0 +1,30 @@
+{
+  "slug": "14kt-gold-high-polish-rope-chain",
+  "title": "14kt Gold High Polish Rope Chain",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-gold-high-polish-rope-chain/4000221583",
+  "brand": null,
+  "model": "1777506",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1777506",
+      "date": "2026-05-10",
+      "signal_strength": 0.18,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 5,
+        "reddit:r/Pmsforsale": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t32xg7/wts_may_the_4th_be_with_youtomorrow_handpoured/",
+        "https://reddit.com/r/Gold/comments/1ss1xbf/is_it_a_bad_idea_to_layer_10k_gold_chains_with/",
+        "https://reddit.com/r/Gold/comments/1sqndh7/got_this_bracelet_from_costco_with_only_a_65/",
+        "https://reddit.com/r/Gold/comments/1snkk2l/am_i_seeing_this_right/",
+        "https://reddit.com/r/Gold/comments/1slsrwr/trying_to_decide/"
+      ]
+    }
+  ]
+}

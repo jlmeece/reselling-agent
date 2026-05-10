@@ -412,14 +412,18 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
         "properties": {"pixelSize": 28}, "fields": "pixelSize",
     }})
 
-    # 6. Freeze rows 1–3 + columns A–D
+    # 6. Freeze rows 1–3 + columns A–D, and expand grid to TOTAL_COLS columns
     requests.append({
         "updateSheetProperties": {
             "properties": {
                 "sheetId": tab_id,
-                "gridProperties": {"frozenRowCount": data_row_idx, "frozenColumnCount": FROZEN_COLS},
+                "gridProperties": {
+                    "frozenRowCount": data_row_idx,
+                    "frozenColumnCount": FROZEN_COLS,
+                    "columnCount": TOTAL_COLS,
+                },
             },
-            "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+            "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount,gridProperties.columnCount",
         }
     })
 

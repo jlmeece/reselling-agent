@@ -1,0 +1,37 @@
+{
+  "slug": "frederique-constant-classics-heartbeat-stainless-steel-men-s-automatic-watch-40m",
+  "title": "Frederique Constant Classics Heartbeat Stainless Steel Men's Automatic Watch, 40mm",
+  "category": "Watches",
+  "costco_url": "https://www.costco.com/p/-/frederique-constant-classics-heartbeat-stainless-steel-mens-automatic-watch-40mm/4000277597",
+  "brand": "Frederique Constant",
+  "model": "1839787",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": "Frederique Constant",
+      "model": "1839787",
+      "date": "2026-05-10",
+      "signal_strength": 1.08,
+      "by_source": {
+        "reddit:r/Watches": 15,
+        "reddit:r/Costco": 0,
+        "youtube:search": 22,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "[Raymond Weil Toccata] or [Frederique Constant Moonphase]",
+        "[recommandation request] looking for a chronograph blue dial yellow hands (or an",
+        "Frederique Constant Gents Vitality fc-287",
+        "[Recommendation] Help Buying A Watch For 40th Birthday",
+        "[Frederique Constant] First piece in starting my collection"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Watches/comments/1t2szvu/raymond_weil_toccata_or_frederique_constant/",
+        "https://reddit.com/r/Watches/comments/1sye5dt/recommandation_request_looking_for_a_chronograph/",
+        "https://reddit.com/r/Watches/comments/1sxfc0f/frederique_constant_gents_vitality_fc287/",
+        "https://reddit.com/r/Watches/comments/1svxf1h/recommendation_help_buying_a_watch_for_40th/",
+        "https://reddit.com/r/Watches/comments/1sv7ukp/frederique_constant_first_piece_in_starting_my/"
+      ]
+    }
+  ]
+}

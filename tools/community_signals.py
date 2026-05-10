@@ -130,9 +130,17 @@ def get_community_signals(product_title, category, category_config, *,
     sources_state = ks.load_sources()
     scout_results: list[ScoutResult] = []
 
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+    _SCOUT_TIMEOUT = 90  # seconds per scout before giving up
+
     for scout_name, scout_module in REGISTERED_SCOUTS.items():
         try:
-            results = scout_module.run(query_ctx, category_config) or []
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(scout_module.run, query_ctx, category_config)
+                results = fut.result(timeout=_SCOUT_TIMEOUT) or []
+        except FuturesTimeout:
+            logger.warning(f"  scout '{scout_name}' timed out after {_SCOUT_TIMEOUT}s — skipping")
+            continue
         except Exception as e:
             logger.warning(f"  scout '{scout_name}' crashed: {e}")
             continue

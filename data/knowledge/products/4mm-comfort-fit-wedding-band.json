@@ -1,0 +1,26 @@
+{
+  "slug": "4mm-comfort-fit-wedding-band",
+  "title": "4mm Comfort Fit Wedding Band",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/4mm-comfort-fit-wedding-band/4000322722",
+  "brand": null,
+  "model": "2222600",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "2222600",
+      "date": "2026-05-10",
+      "signal_strength": 0.02,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 1,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1siugno/slow_accumulation_over_three_years/"
+      ]
+    }
+  ]
+}

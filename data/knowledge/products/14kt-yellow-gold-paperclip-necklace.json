@@ -1,0 +1,71 @@
+{
+  "slug": "14kt-yellow-gold-paperclip-necklace",
+  "title": "14kt Yellow Gold Paperclip Necklace",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-paperclip-necklace/100704811",
+  "brand": null,
+  "model": "RWN1718-24",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "RWN1718-24",
+      "date": "2026-05-10",
+      "signal_strength": 10.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 4,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/WallStreetSilver": 0,
+        "youtube:search": 183,
+        "forum:forums.kitco.com": 0,
+        "forum:bullionstacker.com": 0
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Is it worth it?",
+        "Did I overpay like crazy?",
+        "Costco Buy",
+        "Is it real gold?",
+        "Is it worth it?",
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18",
+        "Is this worth the price?"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=9sBQ5Gglfl4",
+        "https://reddit.com/r/Gold/comments/1t83sh4/did_i_overpay_like_crazy/",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://www.youtube.com/watch?v=74N5NvKHZfk",
+        "https://www.youtube.com/watch?v=74N5NvKHZfk"
+      ]
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 1.34,
+      "by_source": {
+        "reddit:r/Silverbugs": 4,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Is it worth it?",
+        "Did I overpay like crazy?",
+        "Costco Buy",
+        "Is it real gold?",
+        "Is it worth it?",
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18",
+        "Is this worth the price?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1t83sh4/did_i_overpay_like_crazy/",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Gold/comments/1t6cuqq/is_it_real_gold/",
+        "https://reddit.com/r/Silverbugs/comments/1t08ijl/is_it_worth_it/"
+      ]
+    }
+  ]
+}

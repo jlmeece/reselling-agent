@@ -42,8 +42,8 @@ load_dotenv(encoding="utf-8", override=True)
 
 import anthropic
 
-from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial, append_row
-from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser
+from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial, append_row, append_rows_batch
+from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
 from tools.ebay_research import get_ebay_comps
 from tools.community_signals import get_community_signals
@@ -131,23 +131,27 @@ def _get_existing_urls(all_data):
     return urls
 
 
-def _add_new_product_to_sheet(service, sheet_name, product, COL):
+def _add_new_products_batch(service, sheet_name, products, COL):
     """
-    Appends a newly discovered product as a PENDING row.
-    Writes: title, category, costco_url, costco_cost (if known), status=PENDING
+    Appends all newly discovered products as PENDING rows in a single API call.
     """
-    row_data = {
-        COL["title"]:       product["title"],
-        COL["category"]:    product["category"],
-        COL["costco_url"]:  product["url"],
-        COL["costco_cost"]: product.get("price") or "",
-        COL["status"]:      "PENDING",
-        COL["last_checked"]: datetime.now().strftime("%Y-%m-%d %H:%M"),
-        COL["notes"]:       "Discovered by agent — awaiting research",
-        COL["comp_saturation"]: "=IFERROR(M{ROW}/MAX(K{ROW},1),\"\")",
-    }
-    append_row(service, sheet_name, row_data, COL)
-    logger.info(f"  Added PENDING: {product['title'][:50]}")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    col_value_dicts = []
+    for product in products:
+        col_value_dicts.append({
+            COL["title"]:        product["title"],
+            COL["category"]:     product["category"],
+            COL["costco_url"]:   product["url"],
+            COL["costco_cost"]:  product.get("price") or "",
+            COL["status"]:       "PENDING",
+            COL["last_checked"]: now,
+            COL["notes"]:        "Discovered by agent — awaiting research",
+            COL["comp_saturation"]: "=IFERROR(M{ROW}/MAX(K{ROW},1),\"\")",
+        })
+    append_rows_batch(service, sheet_name, col_value_dicts)
+    for product in products:
+        logger.info(f"  Added PENDING: {product['title'][:50]}")
+    logger.info(f"  {len(products)} products written in single batch call.")
 
 
 # ── Claude research (Pass 1+2) ────────────────────────────────────
@@ -190,7 +194,7 @@ Return ONLY raw JSON starting with { and ending with }. No markdown."""
 
 def _run_claude_research(title, category, costco_cost, ebay_price,
                           stock_status, fee_rate, category_notes,
-                          ebay_data, community_data):
+                          ebay_data, community_data, spot_data=None):
     """Pass 1+2: Claude scores the product using real eBay + community data."""
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -223,7 +227,17 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
         f"  Active competing listings: {ebay_data.get('active_count', 'unknown')}\n"
         f"  Sold price range: {ebay_data.get('sold_range', 'unknown')}\n"
         f"  Search query used: \"{ebay_data.get('query_used', '')}\"\n\n"
-        f"COMMUNITY SIGNAL: {community_data.get('signal_strength', 0):.1f}/10\n"
+        + (
+            f"PRECIOUS METALS DATA:\n"
+            f"  Gold spot price: ${spot_data['spot_price']:.2f}/oz\n"
+            f"  Product weight: {spot_data['weight_oz']:.4f} troy oz\n"
+            f"  Karat/purity: {spot_data['karat']}kt\n"
+            f"  Melt value: ${spot_data['melt_value']:.2f}\n"
+            f"  eBay premium above melt: {spot_data['premium_pct']:+.1f}%\n"
+            f"  Note: buyers pay premium for Costco trust, mint brand, and convenience — not just melt value.\n\n"
+            if spot_data else ""
+        )
+        + f"COMMUNITY SIGNAL: {community_data.get('signal_strength', 0):.1f}/10\n"
         f"  {community_data.get('summary', '')}\n"
         f"  Recent posts: {len(community_data.get('recent_posts', []))}\n"
         f"  Source breakdown: {_format_source_breakdown(community_data.get('source_breakdown', {}))}\n"
@@ -335,11 +349,12 @@ def _pass3_for_category(category):
 
 # ── Main research loop ────────────────────────────────────────────
 
-def run_researcher(limit=None, category_filter=None, discover_only=False):
+def run_researcher(limit=None, category_filter=None, discover_only=False, skip_discovery=False):
     """
-    limit:           max products to score this run (None = all PENDING)
-    category_filter: only research this category (e.g. 'Jewelry')
-    discover_only:   add new products to sheet but skip scoring
+    limit:            max products to score this run (None = all PENDING)
+    category_filter:  only research this category (e.g. 'Jewelry')
+    discover_only:    add new products to sheet but skip scoring
+    skip_discovery:   skip Costco scraping, go straight to researching PENDING rows
     """
     config   = _load_config()
     COL      = _load_col_map()
@@ -354,30 +369,34 @@ def run_researcher(limit=None, category_filter=None, discover_only=False):
     end_row    = business["data_end_row"]
 
     all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
-    existing_urls = _get_existing_urls(all_data)
 
     # ── Step 1: Discover new products ────────────────────────────
-    logger.info("Step 1: Discovering products on Costco...")
-    with make_browser() as costco_page:
-        discovered = discover_all(costco_page, categories)
+    if skip_discovery:
+        logger.info("Step 1: Skipping discovery (--skip-discovery flag set).")
+        new_products = []
+    else:
+        existing_urls = _get_existing_urls(all_data)
+        logger.info("Step 1: Discovering products on Costco...")
+        with make_browser() as costco_page:
+            discovered = discover_all(costco_page, categories)
 
-    new_products = [p for p in discovered if p["url"] not in existing_urls]
-    logger.info(f"  {len(discovered)} found, {len(new_products)} are new.")
+        new_products = [p for p in discovered if p["url"] not in existing_urls]
+        logger.info(f"  {len(discovered)} found, {len(new_products)} are new.")
 
-    # Filter discovered products by category if requested
-    if category_filter:
-        new_products = [p for p in new_products if p["category"] == category_filter]
+        # Filter discovered products by category if requested
+        if category_filter:
+            new_products = [p for p in new_products if p["category"] == category_filter]
 
-    # Add new products to sheet as PENDING
-    for product in new_products:
-        _add_new_product_to_sheet(service, sheet_name, product, COL)
+        # Add new products to sheet as PENDING (single batch API call)
+        if new_products:
+            _add_new_products_batch(service, sheet_name, new_products, COL)
 
-    if discover_only:
-        logger.info(f"Discover-only mode — {len(new_products)} products added. Skipping research.")
-        return
+        if discover_only:
+            logger.info(f"Discover-only mode — {len(new_products)} products added. Skipping research.")
+            return
 
-    # Reload sheet data now that new rows are added
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+        # Reload sheet data now that new rows are added
+        all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
 
     # ── Step 2: Identify rows needing research ────────────────────
     tier2_watchlist = _load_tier2_watchlist()
@@ -429,12 +448,24 @@ def run_researcher(limit=None, category_filter=None, discover_only=False):
 
     logger.info(f"Step 2: {len(to_research)} product(s) queued for research.")
 
+    # ── Fetch spot prices once per run (Jewelry only) ─────────────
+    from tools.spot_price import get_spot_price, melt_value, spot_premium_pct, parse_gold_weight
+    _spot_prices = {}
+    if any(safe_get(r, 3) == "Jewelry" for _, r in to_research):
+        for metal in ("gold", "silver", "platinum"):
+            _spot_prices[metal] = get_spot_price(metal)
+        logger.info(f"  Spot prices: gold=${_spot_prices.get('gold')}/oz  silver=${_spot_prices.get('silver')}/oz")
+
     # ── Step 3: Research each product ────────────────────────────
     tier1_results = []
     new_tier2 = []
 
     with make_browser() as costco_page:
-        for sheet_row, row in to_research:
+        for _product_idx, (sheet_row, row) in enumerate(to_research):
+            # Refresh Costco session every 20 products to prevent cookie expiry
+            if _product_idx > 0 and _product_idx % 20 == 0:
+                refresh_session(costco_page)
+
             title        = safe_get(row, 2)   # col C
             category     = safe_get(row, 3)   # col D
             costco_url   = safe_get(row, 17)  # col R
@@ -460,6 +491,25 @@ def run_researcher(limit=None, category_filter=None, discover_only=False):
             if live_price and not costco_cost:
                 costco_cost = live_price
 
+            # Spot price context for precious metals
+            spot_data = None
+            if category == "Jewelry" and _spot_prices.get("gold"):
+                w_oz, karat = costco_data.get("weight_oz"), costco_data.get("karat")
+                if w_oz is None:
+                    w_oz, karat = parse_gold_weight(title)
+                if w_oz:
+                    metal = "gold"
+                    k = karat or 24
+                    mv = melt_value(w_oz, metal, k)
+                    ebay_median = None  # filled after eBay comps
+                    spot_data = {
+                        "spot_price": _spot_prices["gold"],
+                        "weight_oz":  w_oz,
+                        "karat":      k,
+                        "melt_value": mv or 0,
+                        "premium_pct": None,  # computed after eBay comps
+                    }
+
             # WAREHOUSE ONLY — skip research entirely, not fulfillable by dropship
             if stock_status == "WAREHOUSE ONLY":
                 logger.info(f"  Skipping {title[:40]!r} — warehouse only, can't dropship")
@@ -482,12 +532,25 @@ def run_researcher(limit=None, category_filter=None, discover_only=False):
 
             # 3b. eBay comp research (reuse CDP Chrome — same session, avoids bot detection)
             try:
-                ebay_data = get_ebay_comps(title, category, page=costco_page)
+                ebay_data = get_ebay_comps(
+                    title, category, page=costco_page,
+                    brand=brand, model=model,
+                    ebay_category_id=cat_config.get("ebay_category_id"),
+                )
             except Exception as e:
                 logger.warning(f"  eBay research failed: {e}")
                 ebay_data = {"sold_90d": None, "avg_sold_price": None,
                              "active_count": None, "fee_rate": fee_rate,
-                             "query_used": "", "note": str(e)}
+                             "query_used": "", "query_strategy": "error", "note": str(e)}
+
+            # Fill eBay premium into spot_data now that we have comps
+            if spot_data and spot_data.get("melt_value"):
+                ebay_ref = ebay_data.get("median_sold") or ebay_data.get("median_active")
+                if ebay_ref:
+                    spot_data["premium_pct"] = spot_premium_pct(
+                        ebay_ref, spot_data["weight_oz"],
+                        karat=spot_data["karat"]
+                    )
 
             # Suggested listing price — fill col H when not already set
             suggested_price = _suggest_ebay_price(costco_cost, ebay_data, fee_rate)
@@ -516,6 +579,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False):
                     stock_status, fee_rate,
                     cat_config.get("notes", ""),
                     ebay_data, community_data,
+                    spot_data=spot_data,
                 )
             except Exception as e:
                 logger.error(f"  Claude research failed: {e}")
@@ -559,8 +623,9 @@ def run_researcher(limit=None, category_filter=None, discover_only=False):
             intent_seen = community_data.get("intent_phrases", []) or []
             price_note = ""
             if suggested_price:
-                basis = ebay_data.get("price_basis", "?")
-                price_note = f" | Suggested eBay: ${suggested_price:.2f} (basis: {basis})"
+                basis     = ebay_data.get("price_basis", "?")
+                strategy  = ebay_data.get("query_strategy", "title")
+                price_note = f" | Suggested eBay: ${suggested_price:.2f} (basis: {basis}, search: {strategy})"
 
             notes = (
                 f"Tier {tier} (score {weighted_score}) | {result['recommendation']} | "
@@ -571,6 +636,14 @@ def run_researcher(limit=None, category_filter=None, discover_only=False):
             )
             if intent_seen:
                 notes += f"\nIntent phrases: " + " | ".join(intent_seen[:3])
+            if spot_data and spot_data.get("melt_value"):
+                prem = f"{spot_data['premium_pct']:+.1f}%" if spot_data.get("premium_pct") is not None else "unknown"
+                notes += (
+                    f"\nGold spot: ${spot_data['spot_price']:.2f}/oz | "
+                    f"Weight: {spot_data['weight_oz']:.4f} oz | "
+                    f"Melt: ${spot_data['melt_value']:.2f} | "
+                    f"eBay premium above melt: {prem}"
+                )
             if purchase_limit:
                 notes += f"\nMember limit: {purchase_limit}/order — list max {purchase_limit} on eBay"
             if cart_est:
@@ -737,6 +810,9 @@ if __name__ == "__main__":
                         help="Only research this category (e.g. 'Jewelry')")
     parser.add_argument("--discover-only", action="store_true",
                         help="Only discover new products, skip research scoring")
+    parser.add_argument("--skip-discovery", action="store_true",
+                        help="Skip Costco discovery, go straight to researching PENDING rows")
     args = parser.parse_args()
     run_researcher(limit=args.limit, category_filter=args.category,
-                   discover_only=args.discover_only)
+                   discover_only=args.discover_only,
+                   skip_discovery=args.skip_discovery)

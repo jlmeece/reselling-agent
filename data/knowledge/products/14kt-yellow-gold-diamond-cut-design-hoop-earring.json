@@ -1,0 +1,32 @@
+{
+  "slug": "14kt-yellow-gold-diamond-cut-design-hoop-earring",
+  "title": "14kt Yellow Gold Diamond Cut Design Hoop Earring",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-diamond-cut-design-hoop-earring/4000344016",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 0.48,
+      "by_source": {
+        "reddit:r/Silverbugs": 2,
+        "reddit:r/Gold": 9,
+        "reddit:r/Pmsforsale": 9
+      },
+      "intent_phrases_seen": [
+        "Is this worth the price?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1sz309g/is_this_worth_the_price/",
+        "https://reddit.com/r/Silverbugs/comments/1t6rvys/new_10oz_coin_at_costco_today/",
+        "https://reddit.com/r/Pmsforsale/comments/1t7kx2k/wts_graded_gold_libertads_graded_raw_silver/",
+        "https://reddit.com/r/Gold/comments/1t6l8kj/question_about_selling_jewelry/",
+        "https://reddit.com/r/Gold/comments/1t359mh/experience_with_png_jewellers_plaza_lakshmi_road/"
+      ]
+    }
+  ]
+}

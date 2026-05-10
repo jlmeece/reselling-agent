@@ -69,6 +69,47 @@ def append_row(service, sheet_name, col_value_dict, COL, data_start_row=4):
     return next_row
 
 
+def append_rows_batch(service, sheet_name, col_value_dicts, data_start_row=4):
+    """
+    Appends multiple rows to the sheet in a single batchUpdate API call.
+    col_value_dicts: list of {col_letter: value, ...} dicts (same format as append_row)
+    Returns list of row numbers written.
+    """
+    if not col_value_dicts:
+        return []
+
+    sheet_id = os.getenv("GOOGLE_SHEET_ID")
+
+    # Read current row count once
+    result = service.spreadsheets().values().get(
+        spreadsheetId=sheet_id,
+        range=f"'{sheet_name}'!A:A",
+    ).execute()
+    start_row = max(len(result.get("values", [])) + 1, data_start_row)
+
+    # Build all ranges for all rows in one pass
+    data = []
+    row_numbers = []
+    for i, col_value_dict in enumerate(col_value_dicts):
+        row_num = start_row + i
+        row_numbers.append(row_num)
+        for col, value in col_value_dict.items():
+            if isinstance(value, str) and "{ROW}" in value:
+                value = value.replace("{ROW}", str(row_num))
+            data.append({
+                "range": f"'{sheet_name}'!{col}{row_num}",
+                "values": [[value]],
+            })
+
+    if data:
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"valueInputOption": "USER_ENTERED", "data": data},
+        ).execute()
+
+    return row_numbers
+
+
 def write_row_partial(service, sheet_name, row_num, col_value_pairs):
     """Write multiple non-contiguous cells in one row in a single API call."""
     sheet_id = os.getenv("GOOGLE_SHEET_ID")

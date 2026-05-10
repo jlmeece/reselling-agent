@@ -35,7 +35,20 @@ categories:
     velocity_target: 2      # units/period for full velocity score
     research_skill: "skills/research_gold.py"
     seasonal_peak_months: [11, 12, 1, 2]   # Nov-Feb (gifts, valentines)
-    notes: "Includes gold bars, gold coins, jewelry sets"
+    # Costco precious metals purchase limits (verified May 2026):
+    # "Limited Quantity" on listing = operational policy label, NOT low stock
+    # Limits reset every 24 hours (rolling window, not calendar day)
+    # Aggregate cap: 8 units per delivery address per day across ALL precious metals
+    # Online only — no warehouse sales for precious metals
+    # Non-refundable, no price adjustments
+    purchase_limits:
+      gold_bar_1oz:   2   # max 2 per 24 hrs (1 transaction per membership)
+      gold_bar_100g:  1   # max 1 per 24 hrs
+      gold_coin_1oz:  2   # max 2 per 24 hrs
+      silver_bar_10oz: 10 # max 10 per day
+      jewelry: null       # no explicit limit (standard retail restrictions only)
+      address_aggregate: 8  # hard cap: 8 total units/day to same address
+    notes: "Gold bars + coins price-track gold spot daily. 'Limited Quantity' = purchase policy, not low stock. List max 2 units for 1oz bars. Premium drivers: Costco trust, mint brand (PAMP > generic), viral social proof, prepper demand."
     ebay_category_id: "3229"               # Precious Metals
     ebay_item_specifics:
       "C:Type": ""                         # e.g. Gold Bar, Gold Coin — Claude fills per product

@@ -1,0 +1,43 @@
+{
+  "slug": "22kt-yellow-gold-spiral-pendant",
+  "title": "22kt Yellow Gold Spiral Pendant",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/22kt-yellow-gold-spiral-pendant/4201002326",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 10.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 4,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 0,
+        "reddit:r/flipping": 0,
+        "youtube:search": 336
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Did I overpay like crazy?",
+        "Costco Buy",
+        "Is this coin pendant real gold?",
+        "Gifting a Pendant",
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18",
+        "Is this worth the price?",
+        "9ct gold jewellery value in Australia"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=9sBQ5Gglfl4",
+        "https://reddit.com/r/Gold/comments/1t83sh4/did_i_overpay_like_crazy/",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://www.youtube.com/watch?v=ex6_Leuu1rk",
+        "https://www.youtube.com/watch?v=ex6_Leuu1rk"
+      ]
+    }
+  ]
+}

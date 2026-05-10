@@ -1,0 +1,37 @@
+{
+  "slug": "14kt-gold-teardrop-stud-earrings",
+  "title": "14kt Gold Teardrop Stud Earrings",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-gold-teardrop-stud-earrings/4000334457",
+  "brand": null,
+  "model": "1906824",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1906824",
+      "date": "2026-05-10",
+      "signal_strength": 0.57,
+      "by_source": {
+        "reddit:r/Silverbugs": 2,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 2,
+        "youtube:search": 0
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Is it worth it?",
+        "Is it worth it?",
+        "Found this at a resell store",
+        "[WTS][WTT] stackable pac man ,2 oz silver magic cube, 1 oz screaming girl,pit bu"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Silverbugs/comments/1t08ijl/is_it_worth_it/",
+        "https://reddit.com/r/Gold/comments/1t08f10/is_it_worth_it/",
+        "https://reddit.com/r/Pmsforsale/comments/1spvoag/wtswtt_stackable_pac_man_2_oz_silver_magic_cube_1/",
+        "https://reddit.com/r/Gold/comments/1so891a/found_this_at_a_resell_store/"
+      ]
+    }
+  ]
+}

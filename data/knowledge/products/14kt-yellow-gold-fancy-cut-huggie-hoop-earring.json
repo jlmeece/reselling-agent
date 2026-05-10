@@ -1,0 +1,31 @@
+{
+  "slug": "14kt-yellow-gold-fancy-cut-huggie-hoop-earring",
+  "title": "14kt Yellow Gold Fancy Cut Huggie Hoop Earring",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-fancy-cut-huggie-hoop-earring/4000279551",
+  "brand": null,
+  "model": "1841844",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1841844",
+      "date": "2026-05-10",
+      "signal_strength": 0.14,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 5,
+        "reddit:r/Pmsforsale": 0,
+        "youtube:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/",
+        "https://reddit.com/r/Gold/comments/1sxbybj/what_do_you_think_about_this_value_wise/",
+        "https://reddit.com/r/Gold/comments/1sqndh7/got_this_bracelet_from_costco_with_only_a_65/",
+        "https://reddit.com/r/Gold/comments/1sn1qag/did_i_get_lucky/",
+        "https://reddit.com/r/Gold/comments/1shvc64/caution_jewleryweb_supplier_on_walmartcom/"
+      ]
+    }
+  ]
+}

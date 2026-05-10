@@ -1,0 +1,30 @@
+{
+  "slug": "round-brilliant-1-00-ctw-vs2-clarity-i-color-diamond-band",
+  "title": "Round Brilliant 1.00 ctw VS2 Clarity, I Color Diamond Band",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/round-brilliant-100-ctw-vs2-clarity-i-color-diamond-band/4000358359",
+  "brand": null,
+  "model": "1939555",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1939555",
+      "date": "2026-05-10",
+      "signal_strength": 0.21,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 8
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t8wuul/wts_silver_110_plat_constitutional_copper/",
+        "https://reddit.com/r/Silverbugs/comments/1t6rvys/new_10oz_coin_at_costco_today/",
+        "https://reddit.com/r/Pmsforsale/comments/1t7lvdp/wts_inventory_clear_out_world_silver/",
+        "https://reddit.com/r/Pmsforsale/comments/1t6x0h5/wts_tiny_gold_silver_110_plat_constitutional/",
+        "https://reddit.com/r/Pmsforsale/comments/1t5ycbw/wts_spring_sale_mixed_prem_lot_ase_lot_ase/"
+      ]
+    }
+  ]
+}

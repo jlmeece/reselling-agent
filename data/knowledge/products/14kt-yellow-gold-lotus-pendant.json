@@ -1,0 +1,39 @@
+{
+  "slug": "14kt-yellow-gold-lotus-pendant",
+  "title": "14kt Yellow Gold Lotus Pendant",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-lotus-pendant/4000345200",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 1.38,
+      "by_source": {
+        "reddit:r/Silverbugs": 5,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Is it worth it?",
+        "Did I overpay like crazy?",
+        "Costco Buy",
+        "Is this coin pendant real gold?",
+        "Gifting a Pendant",
+        "Is it worth it?",
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1t83sh4/did_i_overpay_like_crazy/",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Gold/comments/1t79qnw/is_this_coin_pendant_real_gold/",
+        "https://reddit.com/r/Gold/comments/1t6bemz/gifting_a_pendant/"
+      ]
+    }
+  ]
+}

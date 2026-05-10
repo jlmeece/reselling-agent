@@ -1,0 +1,40 @@
+{
+  "slug": "14kt-yellow-gold-mesh-link-bracelet",
+  "title": "14kt Yellow Gold Mesh Link Bracelet",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-mesh-link-bracelet/4000369616",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 10.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 9,
+        "reddit:r/Pmsforsale": 0,
+        "youtube:search": 364
+      },
+      "intent_phrases_seen": [
+        "Costco Buy",
+        "Mortal Kombat 2 - Movie Review!",
+        "Funny I got a MK movie ad on this MK review \ud83d\ude02",
+        "It would be so funny if later in October, he posts his review of Street Fighter.",
+        "WWE BACKLASH 2026 FULL SHOW REVIEW",
+        "Burger King&#39;s NEW Mandalorian &amp; Grogu Meal Review!",
+        "\"These are not the prices you're looking for.\"\n- Oburger Kingobi",
+        "Razor Movie Review by Barbell"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=H3MusejxabQ",
+        "https://www.youtube.com/watch?v=9sBQ5Gglfl4",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://www.youtube.com/watch?v=XwLu4qVLwas",
+        "https://www.youtube.com/watch?v=XwLu4qVLwas"
+      ]
+    }
+  ]
+}

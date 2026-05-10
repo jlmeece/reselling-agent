@@ -1,0 +1,31 @@
+{
+  "slug": "14kt-yellow-gold-rose-stud-earrings",
+  "title": "14kt Yellow Gold Rose Stud Earrings",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-rose-stud-earrings/4000270308",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 0.3,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 5,
+        "reddit:r/Pmsforsale": 5,
+        "youtube:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t8dls5/wts_antique_english_tea_set_antique_irish_tray/",
+        "https://reddit.com/r/Pmsforsale/comments/1t28aog/wts_18k_solid_rose_gold_d20_and_also_maplegrams/",
+        "https://reddit.com/r/Gold/comments/1szx7jl/incredible_find_from_goodwill_18k_bulgari_bzero1/",
+        "https://reddit.com/r/Pmsforsale/comments/1t099u4/wts_18k_solid_rose_gold_d20_and_also_maplegrams/",
+        "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/"
+      ]
+    }
+  ]
+}

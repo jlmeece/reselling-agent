@@ -1,0 +1,39 @@
+{
+  "slug": "bering-classic-stainless-steel-lavender-dial-women-s-quartz-watch-31mm",
+  "title": "Bering Classic Stainless Steel Lavender Dial Women's Quartz Watch, 31mm",
+  "category": "Watches",
+  "costco_url": "https://www.costco.com/p/-/bering-classic-stainless-steel-lavender-dial-womens-quartz-watch-31mm/4000424970",
+  "brand": "Bering",
+  "model": "2017131",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": "Bering",
+      "model": "2017131",
+      "date": "2026-05-10",
+      "signal_strength": 1.7,
+      "by_source": {
+        "reddit:r/Watches": 15,
+        "reddit:r/WatchHorology": 0,
+        "reddit:r/frugalmalefashion": 0,
+        "reddit:r/Costco": 0,
+        "youtube:search": 5,
+        "web:search": 8
+      },
+      "intent_phrases_seen": [
+        "[Vote] vote on my graduation gift watch",
+        "[Tusen\u00f6 Shellback V2] - \u2764\ufe0f at first sight",
+        "[Casio Edifice] Snagged my first Auto! EFK-100D-2ADR for ~$191. Good deal or can",
+        "[Sinn 556 in sage green]",
+        "[1989 Seiko Dolce 31mm] Need Advice Buying from FB Marketplace"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Watches/comments/1t7sise/vote_vote_on_my_graduation_gift_watch/",
+        "https://reddit.com/r/Watches/comments/1t6ki3y/tusen\u00f6_shellback_v2_at_first_sight/",
+        "https://reddit.com/r/Watches/comments/1t64t16/casio_edifice_snagged_my_first_auto_efk100d2adr/",
+        "https://reddit.com/r/Watches/comments/1t5n7lj/sinn_556_in_sage_green/",
+        "https://reddit.com/r/Watches/comments/1t5ex5h/1989_seiko_dolce_31mm_need_advice_buying_from_fb/"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "slug": "14kt-yellow-gold-fancy-square-stud-earrings",
+  "title": "14kt Yellow Gold Fancy Square Stud Earrings",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-fancy-square-stud-earrings/4000375389",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 0.12,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 4,
+        "reddit:r/Pmsforsale": 0,
+        "youtube:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/",
+        "https://reddit.com/r/Gold/comments/1sxbybj/what_do_you_think_about_this_value_wise/",
+        "https://reddit.com/r/Gold/comments/1sqndh7/got_this_bracelet_from_costco_with_only_a_65/",
+        "https://reddit.com/r/Gold/comments/1shvc64/caution_jewleryweb_supplier_on_walmartcom/"
+      ]
+    }
+  ]
+}

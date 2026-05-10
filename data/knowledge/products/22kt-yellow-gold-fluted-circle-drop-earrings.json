@@ -1,0 +1,31 @@
+{
+  "slug": "22kt-yellow-gold-fluted-circle-drop-earrings",
+  "title": "22kt Yellow Gold Fluted Circle Drop Earrings",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/22kt-yellow-gold-fluted-circle-drop-earrings/4201002284",
+  "brand": null,
+  "model": "2222538",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "2222538",
+      "date": "2026-05-10",
+      "signal_strength": 0.14,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 1,
+        "reddit:r/Pmsforsale": 7,
+        "youtube:search": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t4yua4/wts_lots_of_silver_and_gold_gold_nuggets_at_less/",
+        "https://reddit.com/r/Pmsforsale/comments/1t2mwju/wts_perth_lunar_silver_queens_beast_completer/",
+        "https://reddit.com/r/Pmsforsale/comments/1sxjjws/wts_manic_monday_deals_slabbed_bullion_under_spot/",
+        "https://reddit.com/r/Pmsforsale/comments/1st0073/wts_loaded_sale_slabs_premium_silver_gold/",
+        "https://reddit.com/r/Pmsforsale/comments/1sr33zs/wts_loads_of_premium_silver_panda_disney_silver/"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "slug": "14kt-yellow-gold-panther-link-bracelet",
+  "title": "14kt Yellow Gold Panther Link Bracelet",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-panther-link-bracelet/4000270374",
+  "brand": null,
+  "model": "2003074256",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "2003074256",
+      "date": "2026-05-10",
+      "signal_strength": 0.45,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 9,
+        "reddit:r/Pmsforsale": 2,
+        "youtube:search": 0
+      },
+      "intent_phrases_seen": [
+        "Costco Buy"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://reddit.com/r/Silverbugs/comments/1t6rvys/new_10oz_coin_at_costco_today/",
+        "https://reddit.com/r/Gold/comments/1t6l8kj/question_about_selling_jewelry/",
+        "https://reddit.com/r/Pmsforsale/comments/1t0xmqx/wts_silver_kangaroo_phil_maple_ases_other_cool/",
+        "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/"
+      ]
+    }
+  ]
+}

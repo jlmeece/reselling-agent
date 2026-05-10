@@ -1,0 +1,59 @@
+{
+  "slug": "casio-g-shock-mudmaster-men-s-quartz-watch-54-9mm",
+  "title": "Casio G-Shock Mudmaster Men's Quartz Watch, 54.9mm",
+  "category": "Watches",
+  "costco_url": "https://www.costco.com/p/-/casio-g-shock-mudmaster-mens-quartz-watch-549mm/100734254",
+  "brand": "Casio G-Shock",
+  "model": "1526630",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": "Casio G-Shock",
+      "model": "1526630",
+      "date": "2026-05-10",
+      "signal_strength": 1.16,
+      "by_source": {
+        "reddit:r/Watches": 15,
+        "reddit:r/WatchHorology": 0,
+        "reddit:r/frugalmalefashion": 0,
+        "reddit:r/Costco": 0,
+        "youtube:search": 20,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "[Quartz missaligment] Does it really have to be this way?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Watches/comments/1t7400a/quartz_missaligment_does_it_really_have_to_be/",
+        "https://www.youtube.com/watch?v=n2PuvKWXyBQ",
+        "https://reddit.com/r/Watches/comments/1t80l9x/sotc_my_collection_as_a_25_yrs_old_dude/",
+        "https://reddit.com/r/Watches/comments/1t7w9eo/sotc_my_humble_collection_18_months_in/",
+        "https://www.youtube.com/watch?v=n2PuvKWXyBQ"
+      ]
+    },
+    {
+      "brand": "Casio G-Shock",
+      "model": "1526630",
+      "date": "2026-05-10",
+      "signal_strength": 1.49,
+      "by_source": {
+        "reddit:r/Watches": 15,
+        "reddit:r/WatchHorology": 0,
+        "reddit:r/frugalmalefashion": 0,
+        "reddit:r/Costco": 0,
+        "youtube:search": 40,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "[Quartz missaligment] Does it really have to be this way?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Watches/comments/1t7400a/quartz_missaligment_does_it_really_have_to_be/",
+        "https://www.youtube.com/watch?v=n2PuvKWXyBQ",
+        "https://reddit.com/r/Watches/comments/1t80l9x/sotc_my_collection_as_a_25_yrs_old_dude/",
+        "https://reddit.com/r/Watches/comments/1t7w9eo/sotc_my_humble_collection_18_months_in/",
+        "https://www.youtube.com/watch?v=n2PuvKWXyBQ"
+      ]
+    }
+  ]
+}

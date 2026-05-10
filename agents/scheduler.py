@@ -418,17 +418,18 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
 
 # ── Mode: RESEARCH (1x/day) ───────────────────────────────────────────────────
 
-def run_research(config, COL, service, sheet_name, start_row, end_row):
+def run_research(config, COL, service, sheet_name, start_row, end_row, category=None):
     """
     Delegates to researcher.py for PENDING rows.
-    This mode exists so GitHub Actions can trigger it on its own cron.
+    Passes --skip-discovery since discovery runs as a separate earlier step.
     """
     logger.info("Research mode — delegating to researcher.py")
     import subprocess, sys
-    result = subprocess.run(
-        [sys.executable, os.path.join(os.path.dirname(__file__), "researcher.py")],
-        capture_output=False,
-    )
+    cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "researcher.py"),
+           "--skip-discovery"]
+    if category:
+        cmd += ["--category", category]
+    result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
         logger.error(f"researcher.py exited with code {result.returncode}")
 
@@ -494,6 +495,10 @@ def main():
             "rotation:  Score all active products, flag underperformers, send weekly digest (1x/week)"
         ),
     )
+    parser.add_argument("--category", type=str, default=None,
+                        help="Limit research/discovery to one category (e.g. 'Jewelry')")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Limit research to N products (for testing)")
     args = parser.parse_args()
 
     config     = load_config()
@@ -511,7 +516,8 @@ def main():
     elif args.mode == "daily":
         run_daily_sweep(config, COL, service, sheet_name, start_row, end_row)
     elif args.mode == "research":
-        run_research(config, COL, service, sheet_name, start_row, end_row)
+        run_research(config, COL, service, sheet_name, start_row, end_row,
+                     category=args.category)
     elif args.mode == "discovery":
         run_discovery(config, COL, service, sheet_name, start_row, end_row)
     elif args.mode == "rotation":

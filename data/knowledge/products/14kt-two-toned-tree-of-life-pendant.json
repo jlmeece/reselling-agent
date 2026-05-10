@@ -1,0 +1,30 @@
+{
+  "slug": "14kt-two-toned-tree-of-life-pendant",
+  "title": "14kt Two-Toned Tree of Life Pendant",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-two-toned-tree-of-life-pendant/4000417730",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 0.5,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 3,
+        "reddit:r/Pmsforsale": 15
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t7rzp8/wts_sale_engelhard_libertads_geiger_ase_germania/",
+        "https://reddit.com/r/Pmsforsale/comments/1t7ql03/wts_a_wide_variety_of_fractional_gold_1_gram_25/",
+        "https://reddit.com/r/Pmsforsale/comments/1t3jbg4/wts_fractional_gold_and_many_ounces_of_silver/",
+        "https://reddit.com/r/Pmsforsale/comments/1t0xein/wts_lots_of_999_mighty_fine_silver/",
+        "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/"
+      ]
+    }
+  ]
+}

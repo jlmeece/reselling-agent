@@ -1,19 +1,19 @@
 {
   "Jewelry": {
     "tier1_count": 0,
-    "tier2_count": 0,
-    "tier3_count": 1,
-    "total_researched": 1,
-    "last_updated": "2026-05-09",
-    "performance_score": 0.0
+    "tier2_count": 14,
+    "tier3_count": 89,
+    "total_researched": 103,
+    "last_updated": "2026-05-10",
+    "performance_score": 0.041
   },
   "Watches": {
     "tier1_count": 0,
-    "tier2_count": 0,
-    "tier3_count": 0,
-    "total_researched": 0,
-    "last_updated": "2026-05-08",
-    "performance_score": 0.5
+    "tier2_count": 1,
+    "tier3_count": 10,
+    "total_researched": 11,
+    "last_updated": "2026-05-10",
+    "performance_score": 0.027
   },
   "Outdoor Furniture": {
     "tier1_count": 0,

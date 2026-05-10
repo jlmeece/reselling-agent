@@ -1,0 +1,39 @@
+{
+  "slug": "14kt-yellow-gold-2-row-cable-heart-necklace",
+  "title": "14kt Yellow Gold 2 Row Cable Heart Necklace",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-2-row-cable-heart-necklace/4000344000",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 1.23,
+      "by_source": {
+        "reddit:r/Silverbugs": 2,
+        "reddit:r/Gold": 13,
+        "reddit:r/Pmsforsale": 15
+      },
+      "intent_phrases_seen": [
+        "Is it worth it?",
+        "Did I overpay like crazy?",
+        "Costco Buy",
+        "Is it worth it?",
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18",
+        "Is this worth the price?",
+        "Legit ?",
+        "[WTS] [WTT] Price cuts on ancients!!! Roman imperial, provincial, and Greek. Loo"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1t83sh4/did_i_overpay_like_crazy/",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://reddit.com/r/Pmsforsale/comments/1t8m2sa/wts_wtt_price_cuts_on_ancients_roman_imperial/",
+        "https://reddit.com/r/Pmsforsale/comments/1t5u9rp/wts_wtt_all_ancient_roman_silver_great_pieces_for/",
+        "https://reddit.com/r/Pmsforsale/comments/1t3xwp5/wts_wtt_new_ancients_byzantine_gold_tetradrachms/"
+      ]
+    }
+  ]
+}

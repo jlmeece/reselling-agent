@@ -198,6 +198,19 @@ def make_browser():
         pw.stop()
 
 
+def refresh_session(page):
+    """
+    Re-visits the Costco homepage to reset session cookies and keep auth alive.
+    Call every ~20 products during long research runs to prevent CHECK FAILED.
+    """
+    try:
+        logger.info("  Refreshing Costco session (homepage revisit)...")
+        page.goto("https://www.costco.com", timeout=20000, wait_until="domcontentloaded")
+        page.wait_for_timeout(2000 + random.randint(500, 1000))
+    except Exception as e:
+        logger.warning(f"  Session refresh failed (non-fatal): {e}")
+
+
 # ── Brand + Model extraction ───────────────────────────────────────────────────
 
 def _extract_brand(page):
@@ -629,6 +642,10 @@ def scrape_costco(url, page):
         result["model"] = _extract_model(page)
         if result["brand"] or result["model"]:
             logger.debug(f"  Brand={result['brand']!r} Model={result['model']!r}")
+
+        # Weight + karat — for precious metals margin calc
+        from tools.spot_price import parse_gold_weight
+        result["weight_oz"], result["karat"] = parse_gold_weight(result.get("title") or "")
 
     except PlaywrightTimeout:
         result["error"] = "Timed out after 30s"

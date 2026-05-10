@@ -1,0 +1,33 @@
+{
+  "slug": "citrine-and-diamond-14kt-yellow-gold-ring",
+  "title": "Citrine and Diamond 14kt Yellow Gold Ring",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/citrine-and-diamond-14kt-yellow-gold-ring/4000437450",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 0.14,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 7,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [
+        "found these rings",
+        "Is this Germany ring real gold? Doesnt stick to a magnet. Lots of pictures."
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1swo135/found_these_rings/",
+        "https://reddit.com/r/Gold/comments/1sqdqrg/is_this_germany_ring_real_gold_doesnt_stick_to_a/",
+        "https://reddit.com/r/Gold/comments/1t6l8kj/question_about_selling_jewelry/",
+        "https://reddit.com/r/Gold/comments/1t5sqbf/bought_a_ring_advertised_as_silver/",
+        "https://reddit.com/r/Gold/comments/1t359mh/experience_with_png_jewellers_plaza_lakshmi_road/"
+      ]
+    }
+  ]
+}

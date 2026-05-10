@@ -1,0 +1,36 @@
+{
+  "slug": "1-oz-gold-argor-heraeus-kinebar-new-in-assay",
+  "title": "1 oz Gold Argor Heraeus Kinebar (New In Assay)",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/1-oz-gold-argor-heraeus-kinebar-new-in-assay/4000329233",
+  "brand": "Argor-Heraeus",
+  "model": "1886707",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": "Argor-Heraeus",
+      "model": "1886707",
+      "date": "2026-05-10",
+      "signal_strength": 0.3,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 0,
+        "reddit:r/flipping": 0,
+        "youtube:search": 22
+      },
+      "intent_phrases_seen": [
+        "\u2728 Shine with the legendary Argor Gold Bar Dragon #ArgorGold #goldbar #emas #gold"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=uO7aEM6fCBw",
+        "https://www.youtube.com/watch?v=XUiah0Rvmd8",
+        "https://www.youtube.com/watch?v=XUiah0Rvmd8",
+        "https://www.youtube.com/watch?v=XUiah0Rvmd8",
+        "https://www.youtube.com/watch?v=XUiah0Rvmd8"
+      ]
+    }
+  ]
+}

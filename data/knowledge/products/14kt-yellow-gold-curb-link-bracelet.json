@@ -1,0 +1,41 @@
+{
+  "slug": "14kt-yellow-gold-curb-link-bracelet",
+  "title": "14kt Yellow Gold Curb Link Bracelet",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-curb-link-bracelet/4000375187",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 10.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 9,
+        "reddit:r/Pmsforsale": 0,
+        "reddit:r/WallStreetSilver": 0,
+        "youtube:search": 306
+      },
+      "intent_phrases_seen": [
+        "Costco Buy",
+        "WWE BACKLASH 2026 FULL SHOW REVIEW",
+        "Mortal Kombat 2 - Movie Review!",
+        "Funny I got a MK movie ad on this MK review \ud83d\ude02",
+        "It would be so funny if later in October, he posts his review of Street Fighter.",
+        "Godari Gattupaina Movie Review || Sumanth Prabhas || Poolachokka Reviews || Late",
+        "Razor movie review?",
+        "Sathi leelavathi review bro"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=H3MusejxabQ",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://www.youtube.com/watch?v=XwLu4qVLwas",
+        "https://www.youtube.com/watch?v=XwLu4qVLwas",
+        "https://www.youtube.com/watch?v=K_oLHg1hYYc"
+      ]
+    }
+  ]
+}

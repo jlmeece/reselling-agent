@@ -1,0 +1,43 @@
+{
+  "slug": "14kt-gold-line-stud-earrings",
+  "title": "14kt Gold Line Stud Earrings",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-gold-line-stud-earrings/4000406802",
+  "brand": null,
+  "model": "1992770",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1992770",
+      "date": "2026-05-10",
+      "signal_strength": 9.61,
+      "by_source": {
+        "reddit:r/Silverbugs": 6,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/WallStreetSilver": 1,
+        "youtube:search": 181,
+        "forum:forums.kitco.com": 0,
+        "forum:bullionstacker.com": 0
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "How I lessen my chart anxiety",
+        "Is it worth it?",
+        "Buying recycled gold ingots for investment",
+        "Is it worth it?",
+        "Pearl necklace hook material?",
+        "Found this at a resell store",
+        "[WTT] 10g Gold for 9.3g Gold/Sell at spot"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=9sBQ5Gglfl4",
+        "https://www.youtube.com/watch?v=74N5NvKHZfk",
+        "https://www.youtube.com/watch?v=74N5NvKHZfk",
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://www.youtube.com/watch?v=0yzKNZQLhp8"
+      ]
+    }
+  ]
+}

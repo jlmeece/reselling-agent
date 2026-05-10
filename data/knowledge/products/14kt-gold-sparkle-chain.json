@@ -1,0 +1,39 @@
+{
+  "slug": "14kt-gold-sparkle-chain",
+  "title": "14kt Gold Sparkle Chain",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-gold-sparkle-chain/4201002323",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 1.05,
+      "by_source": {
+        "reddit:r/Silverbugs": 5,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 7
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Is it worth it?",
+        "Did I overpay like crazy?",
+        "My late grandmother\u2019s chain- how to tell if it\u2019s real gold?",
+        "Is it worth it?",
+        "[WTS][WTT] SS Tilawa Faceplate 111.7 ozt",
+        "[WTS][WTT] Shipwreck SS Tilawa 111.7 ozt",
+        "[WTS][WTT] SS Tilawa Shipwreck 111.7 ozt"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1t83sh4/did_i_overpay_like_crazy/",
+        "https://reddit.com/r/Gold/comments/1t7qqr8/my_late_grandmothers_chain_how_to_tell_if_its/",
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Pmsforsale/comments/1t2rbll/wtswtt_ss_tilawa_faceplate_1117_ozt/",
+        "https://reddit.com/r/Silverbugs/comments/1t08ijl/is_it_worth_it/"
+      ]
+    }
+  ]
+}

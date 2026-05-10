@@ -1,0 +1,36 @@
+{
+  "slug": "bering-women-s-classic-stainless-steel-brown-milanese-mesh-watch-24mm",
+  "title": "Bering Women's Classic Stainless Steel Brown Milanese Mesh Watch, 24mm",
+  "category": "Watches",
+  "costco_url": "https://www.costco.com/p/-/bering-womens-classic-stainless-steel-brown-milanese-mesh-watch-24mm/4000372684",
+  "brand": "Bering",
+  "model": "1951931",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": "Bering",
+      "model": "1951931",
+      "date": "2026-05-10",
+      "signal_strength": 0.8,
+      "by_source": {
+        "reddit:r/Watches": 15,
+        "reddit:r/WatchHorology": 0,
+        "reddit:r/frugalmalefashion": 0,
+        "reddit:r/Costco": 0,
+        "youtube:search": 5,
+        "web:search": 0
+      },
+      "intent_phrases_seen": [
+        "[Sinn 556 in sage green]",
+        "[lady datejust] [JLC] Help me pick my first luxury watch (mechanical)! ( 10k max"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Watches/comments/1t5n7lj/sinn_556_in_sage_green/",
+        "https://reddit.com/r/Watches/comments/1szdytc/lady_datejust_jlc_help_me_pick_my_first_luxury/",
+        "https://reddit.com/r/Watches/comments/1t8d6oc/recommendation_request_yellowrose_gold_colored/",
+        "https://reddit.com/r/Watches/comments/1t7bmfv/daily_news_baltic_and_space_one_team_up_on_a_very/",
+        "https://reddit.com/r/Watches/comments/1t5zwoi/my_watch_collection/"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "slug": "1-oz-gold-bar-rand-refinery-new-in-assay",
+  "title": "1 oz Gold Bar Rand Refinery (New in Assay)",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/1-oz-gold-bar-rand-refinery-new-in-assay/4000375874",
+  "brand": "Rand Refinery",
+  "model": "1943085",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": "Rand Refinery",
+      "model": "1943085",
+      "date": "2026-05-10",
+      "signal_strength": 3.95,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 3,
+        "reddit:r/Pmsforsale": 6,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 0,
+        "reddit:r/flipping": 0,
+        "youtube:search": 146
+      },
+      "intent_phrases_seen": [
+        "[WTS] some gold below spot",
+        "I get phone calls from Costco a couple times a week.  Voicemails telling me they",
+        "Today is February 11th Houston Texas real human time stamped MS.ELIJHA \u00ae\ufe0f  8:00 "
+      ],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1svw8d0/wts_some_gold_below_spot/",
+        "https://www.youtube.com/watch?v=GbJw9Ff75Nc",
+        "https://www.youtube.com/watch?v=8b-YDugicgk",
+        "https://www.youtube.com/watch?v=I6pJnCdOiqY",
+        "https://www.youtube.com/watch?v=I6pJnCdOiqY"
+      ]
+    }
+  ]
+}

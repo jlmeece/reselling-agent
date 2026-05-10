@@ -1,0 +1,32 @@
+{
+  "slug": "14kt-yellow-gold-pyramid-heart-necklace",
+  "title": "14kt Yellow Gold Pyramid Heart Necklace",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-pyramid-heart-necklace/4000369675",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 0.29,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 7,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1sz8xts/is_the_18k_gold_w_deeper_yellow_means_has_more/",
+        "https://reddit.com/r/Gold/comments/1t6l8kj/question_about_selling_jewelry/",
+        "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/",
+        "https://reddit.com/r/Gold/comments/1sxbybj/what_do_you_think_about_this_value_wise/",
+        "https://reddit.com/r/Gold/comments/1sr9l75/costco_thoughts_on_style_and_price_18k_14g/"
+      ]
+    }
+  ]
+}

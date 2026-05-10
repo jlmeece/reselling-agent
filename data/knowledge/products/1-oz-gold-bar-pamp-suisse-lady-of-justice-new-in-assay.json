@@ -1,0 +1,38 @@
+{
+  "slug": "1-oz-gold-bar-pamp-suisse-lady-of-justice-new-in-assay",
+  "title": "1 oz Gold Bar PAMP Suisse Lady of Justice (New in Assay)",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/1-oz-gold-bar-pamp-suisse-lady-of-justice-new-in-assay/4000416620",
+  "brand": "PAMP",
+  "model": "2006565",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": "PAMP",
+      "model": "2006565",
+      "date": "2026-05-10",
+      "signal_strength": 1.2,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 2,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 0,
+        "reddit:r/flipping": 0,
+        "youtube:search": 78
+      },
+      "intent_phrases_seen": [
+        "Please review Augmont Gold Coin from Ajio. Getting great deal on 5gm for Rs. 76k",
+        "I get phone calls from Costco a couple times a week.  Voicemails telling me they",
+        "Why this 24k MMTC PAMP lotus gold bar is worth the money!"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=sSp_08xYM30",
+        "https://www.youtube.com/watch?v=0x12VftrkqM",
+        "https://www.youtube.com/watch?v=GbJw9Ff75Nc",
+        "https://www.youtube.com/watch?v=lC2w_pSs0Rk",
+        "https://reddit.com/r/Pmsforsale/comments/1swnkqj/wts_wtt_palladium_gold_and_silver_including_110s/"
+      ]
+    }
+  ]
+}

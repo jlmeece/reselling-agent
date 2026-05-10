@@ -1,0 +1,43 @@
+{
+  "slug": "22kt-yellow-gold-barrel-link-necklace",
+  "title": "22kt Yellow Gold Barrel Link Necklace",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/22kt-yellow-gold-barrel-link-necklace/4000430979",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 10.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 4,
+        "reddit:r/Pmsforsale": 1,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 0,
+        "reddit:r/flipping": 0,
+        "youtube:search": 306
+      },
+      "intent_phrases_seen": [
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18",
+        "Mortal Kombat 2 - Movie Review!",
+        "Funny I got a MK movie ad on this MK review \ud83d\ude02",
+        "It would be so funny if later in October, he posts his review of Street Fighter.",
+        "Godari Gattupaina Movie Review || Sumanth Prabhas || Poolachokka Reviews || Late",
+        "Razor movie review?",
+        "Sathi leelavathi review bro",
+        "RAZOR movie review pls"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=9sBQ5Gglfl4",
+        "https://www.youtube.com/watch?v=XwLu4qVLwas",
+        "https://www.youtube.com/watch?v=XwLu4qVLwas",
+        "https://www.youtube.com/watch?v=XwLu4qVLwas",
+        "https://www.youtube.com/watch?v=ex6_Leuu1rk"
+      ]
+    }
+  ]
+}

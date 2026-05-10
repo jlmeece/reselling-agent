@@ -1,0 +1,43 @@
+{
+  "slug": "18kt-yellow-gold-fancy-link-necklace",
+  "title": "18kt Yellow Gold Fancy Link Necklace",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/18kt-yellow-gold-fancy-link-necklace/4000343927",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-10",
+      "signal_strength": 10.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 6,
+        "reddit:r/Pmsforsale": 0,
+        "reddit:r/Costco": 0,
+        "reddit:r/WallStreetSilver": 0,
+        "reddit:r/flipping": 0,
+        "youtube:search": 364
+      },
+      "intent_phrases_seen": [
+        "Costco Buy",
+        "Is the 18k gold w deeper yellow means has more pure gold than lighter colored 18",
+        "Mortal Kombat 2 - Movie Review!",
+        "Funny I got a MK movie ad on this MK review \ud83d\ude02",
+        "It would be so funny if later in October, he posts his review of Street Fighter.",
+        "Burger King&#39;s NEW Mandalorian &amp; Grogu Meal Review!",
+        "\"These are not the prices you're looking for.\"\n- Oburger Kingobi",
+        "MORTAL KOMBAT 2 - Movie Review"
+      ],
+      "top_links": [
+        "https://www.youtube.com/watch?v=9sBQ5Gglfl4",
+        "https://reddit.com/r/Gold/comments/1t7q8jg/costco_buy/",
+        "https://www.youtube.com/watch?v=f3Dpc6LUhMY",
+        "https://www.youtube.com/watch?v=f3Dpc6LUhMY",
+        "https://www.youtube.com/watch?v=ex6_Leuu1rk"
+      ]
+    }
+  ]
+}
