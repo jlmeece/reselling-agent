@@ -579,16 +579,22 @@ def scrape_costco(url, page):
 
         body_text = prod_text  # reuse for stock checks below
 
+        def _limit_label(n):
+            return f"Available ({n}/day limit)" if n else "Available (purchase limit)"
+
         if add_to_cart:
             atc_class = (add_to_cart.get_attribute("class") or "").lower()
             if "out-of-stock" in atc_class or "out_of_stock" in atc_class:
                 # Button present but disabled — item is currently sold out
                 result["stock_status"] = "OUT OF STOCK"
-            elif any(p in body_text for p in ["while supplies last", "limited quantity", "low stock"]):
-                result["stock_status"] = "Limited"
-                result["in_stock"] = True
             elif result["purchase_limit"]:
-                result["stock_status"] = "Limited"
+                # Numeric limit extracted from page — show the actual number
+                result["stock_status"] = _limit_label(result["purchase_limit"])
+                result["in_stock"] = True
+            elif any(p in body_text for p in ["while supplies last", "limited quantity", "low stock"]):
+                # "Limited Quantity" label with no explicit number (common on precious metals).
+                # Researcher will enrich this with the config limit for Precious Metals.
+                result["stock_status"] = "Available (limited)"
                 result["in_stock"] = True
             else:
                 result["stock_status"] = "In Stock"
@@ -602,8 +608,11 @@ def scrape_costco(url, page):
                 result["stock_status"] = "WAREHOUSE ONLY"
             elif any(p in body_text for p in ["out of stock", "currently unavailable", "sold out"]):
                 result["stock_status"] = "OUT OF STOCK"
+            elif result["purchase_limit"]:
+                result["stock_status"] = _limit_label(result["purchase_limit"])
+                result["in_stock"] = True
             elif any(p in body_text for p in ["limited", "while supplies last", "low stock"]):
-                result["stock_status"] = "Limited"
+                result["stock_status"] = "Available (limited)"
                 result["in_stock"] = True
             else:
                 # No Add to Cart button and no explicit OOS text — flag for review

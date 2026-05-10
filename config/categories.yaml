@@ -25,43 +25,51 @@ business:
     active_3:  "18:00"    # Central — UTC 23:00 (CDT) / 00:00 (CST)
 
 categories:
-  Jewelry:
+
+  # ── PRIORITY: Gold bars, silver bars, gold coins ──────────────────────────────
+  Precious Metals:
     fee_rate: 0.15
-    site_url: "coming-soon.com/jewelry"
-    # Rotation config — fluid, adjust as the list grows
-    max_active: 30          # rotation triggers at 30 - 3 = 27 active products
-    capacity_headroom: 3    # always keep 3 test slots open
-    rotation_threshold: 4.0 # perf_score below this = rotation candidate
-    velocity_target: 2      # units/period for full velocity score
+    site_url: "coming-soon.com/precious-metals"
+    max_active: 10          # small — purchase limits mean low unit volume
+    capacity_headroom: 2
+    rotation_threshold: 4.0
+    velocity_target: 2
     research_skill: "skills/research_gold.py"
-    seasonal_peak_months: [11, 12, 1, 2]   # Nov-Feb (gifts, valentines)
+    seasonal_peak_months: [1, 2, 8, 9, 10, 11, 12]  # year-round + holiday/uncertainty spikes
+
     # Costco precious metals purchase limits (verified May 2026):
-    # "Limited Quantity" on listing = operational policy label, NOT low stock
-    # Limits reset every 24 hours (rolling window, not calendar day)
-    # Aggregate cap: 8 units per delivery address per day across ALL precious metals
-    # Online only — no warehouse sales for precious metals
-    # Non-refundable, no price adjustments
+    # "Limited Quantity" on listing = operational POLICY label, NOT low stock.
+    # Limits reset every 24 hours (rolling window, not calendar day).
+    # Aggregate cap: 8 units per delivery address per day across ALL precious metals.
+    # Online only — no warehouse sales. Non-refundable, no price adjustments.
+    # Prices track gold/silver spot daily (dynamic pricing).
     purchase_limits:
-      gold_bar_1oz:   2   # max 2 per 24 hrs (1 transaction per membership)
-      gold_bar_100g:  1   # max 1 per 24 hrs
-      gold_coin_1oz:  2   # max 2 per 24 hrs
-      silver_bar_10oz: 10 # max 10 per day
-      jewelry: null       # no explicit limit (standard retail restrictions only)
-      address_aggregate: 8  # hard cap: 8 total units/day to same address
-    notes: "Gold bars + coins price-track gold spot daily. 'Limited Quantity' = purchase policy, not low stock. List max 2 units for 1oz bars. Premium drivers: Costco trust, mint brand (PAMP > generic), viral social proof, prepper demand."
+      gold_bar_1oz:    2   # max 2 per 24 hrs
+      gold_bar_100g:   1   # max 1 per 24 hrs
+      gold_coin_1oz:   2   # max 2 per 24 hrs
+      silver_bar_10oz: 10  # max 10 per day
+      address_aggregate: 8 # hard cap: 8 total units/day to same address
+
+    notes: >
+      Gold bars + coins price-track spot daily. 'Limited Quantity' = purchase policy label,
+      NOT low stock — always show actual limit (e.g. '2/day limit') not just 'Limited'.
+      Premium drivers: Costco trust, mint brand (PAMP Suisse > Argor Heraeus > generic),
+      viral social proof, prepper/investment demand. Max list qty = 2 for 1oz bars.
+      Melt value and spot premium % are critical scoring signals.
+
     ebay_category_id: "3229"               # Precious Metals
     ebay_item_specifics:
-      "C:Type": ""                         # e.g. Gold Bar, Gold Coin — Claude fills per product
-      "C:Metal": "Gold"
-      "C:Purity": ""                       # e.g. .9999 Fine — Claude fills per product
-      "C:Brand": ""
+      "C:Type": ""                         # Gold Bar / Gold Coin / Silver Bar — Claude fills
+      "C:Metal": ""                        # Gold / Silver / Platinum — Claude fills
+      "C:Purity": ""                       # e.g. .9999 Fine — Claude fills
+      "C:Brand": ""                        # e.g. PAMP Suisse, Argor Heraeus
+
     discovery_urls:
       - "https://www.costco.com/precious-metals.html"
       - "https://www.costco.com/CatalogSearch?keyword=gold+bar"
-      - "https://www.costco.com/gold-bracelets.html"
-      - "https://www.costco.com/gold-earrings.html"
-      - "https://www.costco.com/gold-necklaces.html"
-      - "https://www.costco.com/rings.html"
+      - "https://www.costco.com/CatalogSearch?keyword=silver+bar"
+      - "https://www.costco.com/CatalogSearch?keyword=gold+coin"
+
     community_sources:
       reddit:
         - r/Silverbugs
@@ -69,20 +77,69 @@ categories:
         - r/Pmsforsale
         - r/Costco
         - r/WallStreetSilver
+        - r/CostcoGold
         - r/flipping
       forums:
         - {url: "https://forums.kitco.com",        search_path: "/search?q={query}"}
         - {url: "https://www.bullionstacker.com",  search_path: "/search?q={query}"}
       youtube_query_templates:
-        - "{brand} {model} review"
-        - "is {brand} legit"
-        - "where to buy {brand}"
+        - "costco {title} review"
+        - "{brand} gold bar review"
+        - "buying gold at costco"
       web_terms:
         - "{brand} {model} review"
         - "{brand} resale value"
+        - "costco gold bar worth it"
         - "{title} reddit"
-    stale_days: 30    # legacy — orchestrator now uses freshness scoring
+    stale_days: 7     # gold prices move daily — re-research weekly
 
+  # ── Fashion jewelry: rings, necklaces, earrings, bracelets ───────────────────
+  Jewelry:
+    fee_rate: 0.15
+    site_url: "coming-soon.com/jewelry"
+    max_active: 30
+    capacity_headroom: 3
+    rotation_threshold: 4.0
+    velocity_target: 2
+    research_skill: "skills/research_gold.py"   # reuse until jewelry-specific skill built
+    seasonal_peak_months: [11, 12, 1, 2]        # Nov-Feb (gifts, valentines)
+    notes: >
+      Fashion jewelry only — rings, necklaces, earrings, bracelets.
+      No purchase limits. Markup-driven pricing (not spot-price).
+      Brand matters less than style, metal type (14k/18k), and stone quality.
+      eBay comps: search by metal + style description, not model number.
+
+    ebay_category_id: "67"                      # Fine Jewelry
+    ebay_item_specifics:
+      "C:Metal": ""                             # e.g. 14K Gold, Sterling Silver
+      "C:Type": ""                              # e.g. Ring, Necklace, Earrings
+      "C:Style": ""
+      "C:Brand": ""
+
+    discovery_urls:
+      - "https://www.costco.com/gold-bracelets.html"
+      - "https://www.costco.com/gold-earrings.html"
+      - "https://www.costco.com/gold-necklaces.html"
+      - "https://www.costco.com/rings.html"
+      - "https://www.costco.com/diamond-jewelry.html"
+
+    community_sources:
+      reddit:
+        - r/Costco
+        - r/jewelry
+        - r/EngagementRings
+        - r/frugalmalefashion
+        - r/flipping
+      forums: []
+      youtube_query_templates:
+        - "costco jewelry review"
+        - "{title} review"
+      web_terms:
+        - "{title} review"
+        - "costco {title} worth it"
+    stale_days: 30
+
+  # ── Future categories ─────────────────────────────────────────────────────────
   Outdoor Furniture:
     fee_rate: 0.115
     site_url: "coming-soon.com/outdoor"
@@ -91,14 +148,14 @@ categories:
     rotation_threshold: 4.0
     velocity_target: 1
     research_skill: "skills/research_outdoor.py"
-    seasonal_peak_months: [3, 4, 5, 6]     # Mar-Jun (patio season)
+    seasonal_peak_months: [3, 4, 5, 6]
     notes: "Watch shipping weight — heavy items cut margin fast"
-    ebay_category_id: "139849"             # Metal Patio & Garden Furniture Sets
+    ebay_category_id: "139849"
     ebay_item_specifics:
       "C:Brand": ""
-      "C:Material": ""                     # e.g. Aluminum, HDPE, Wicker
+      "C:Material": ""
       "C:Color": ""
-      "C:Type": ""                         # e.g. Patio Set, Bench, Shade Sail
+      "C:Type": ""
     discovery_urls:
       - "https://www.costco.com/patio-furniture.html"
     community_sources:
@@ -115,7 +172,7 @@ categories:
       web_terms:
         - "{title} review"
         - "{title} wirecutter"
-    stale_days: 21    # legacy
+    stale_days: 21
 
   Watches:
     fee_rate: 0.13
@@ -125,13 +182,13 @@ categories:
     rotation_threshold: 4.0
     velocity_target: 2
     research_skill: "skills/research_watches.py"
-    seasonal_peak_months: [2, 6, 11, 12]    # Valentine's, Father's Day, holiday
-    notes: "Citizen, Seiko, Luminox, Bering — box+papers are standard from Costco. Brand + model number search gives cleanest eBay comps."
-    ebay_category_id: "31387"              # Wristwatches
+    seasonal_peak_months: [2, 6, 11, 12]
+    notes: "Citizen, Seiko, Luminox, Bering — box+papers standard from Costco. Brand + model number search gives cleanest eBay comps."
+    ebay_category_id: "31387"
     ebay_item_specifics:
       "C:Brand": ""
-      "C:Movement": ""                     # e.g. Solar, Quartz, Automatic, Eco-Drive
-      "C:Water Resistance": ""             # e.g. 100m, 200m, 3 ATM
+      "C:Movement": ""
+      "C:Water Resistance": ""
       "C:Case Color": ""
       "C:Band Color": ""
     discovery_urls:
@@ -150,7 +207,7 @@ categories:
       web_terms:
         - "{title} hodinkee"
         - "{title} review"
-    stale_days: 30    # legacy
+    stale_days: 30
 
   Pharmacy:
     fee_rate: 0.1325

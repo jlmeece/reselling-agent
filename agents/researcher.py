@@ -491,9 +491,28 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             if live_price and not costco_cost:
                 costco_cost = live_price
 
+            # Enrich stock label for Precious Metals using config purchase limits.
+            # Costco shows "Limited Quantity" for all precious metals (policy label, not low stock).
+            # We translate "Available (limited)" → "Available (N/day limit)" using the config.
+            if category == "Precious Metals" and stock_status == "Available (limited)":
+                pm_limits = cat_config.get("purchase_limits", {})
+                t = title.lower()
+                if "silver" in t:
+                    daily = pm_limits.get("silver_bar_10oz")
+                elif "coin" in t:
+                    daily = pm_limits.get("gold_coin_1oz")
+                elif "100g" in t or "100 g" in t:
+                    daily = pm_limits.get("gold_bar_100g")
+                else:
+                    daily = pm_limits.get("gold_bar_1oz")  # 1oz bar default
+                if daily:
+                    stock_status = f"Available ({daily}/day limit)"
+                    if not purchase_limit:
+                        purchase_limit = daily
+
             # Spot price context for precious metals
             spot_data = None
-            if category == "Jewelry" and _spot_prices.get("gold"):
+            if category in ("Precious Metals", "Jewelry") and _spot_prices.get("gold"):
                 w_oz, karat = costco_data.get("weight_oz"), costco_data.get("karat")
                 if w_oz is None:
                     w_oz, karat = parse_gold_weight(title)
@@ -645,7 +664,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                     f"eBay premium above melt: {prem}"
                 )
             if purchase_limit:
-                notes += f"\nMember limit: {purchase_limit}/order — list max {purchase_limit} on eBay"
+                notes += f"\nPurchase limit: {purchase_limit}/day — list max {purchase_limit} units on eBay"
             if cart_est:
                 ship_str = f"${cart_est['shipping']:.2f}" if cart_est.get("shipping") is not None else "?"
                 tax_str  = f"${cart_est['tax']:.2f}" if cart_est.get("tax") is not None else "?"
@@ -670,11 +689,13 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 updates.append((COL["comp_count"], ebay_data["active_count"]))
             if live_price:
                 updates.append((COL["costco_cost"], live_price))
-            # Write suggested price to col H (once) and col AQ (permanent record, never overwrite)
+            # Write suggested price to col H (once) and col V (permanent record, never overwrite)
             if suggested_price and not safe_get(row, 7):
                 updates.append((COL["ebay_price"], suggested_price))
-            if suggested_price and not safe_get(row, 42):  # col AQ = index 42
+            if suggested_price and not safe_get(row, col_to_idx(COL["suggested_price"])):
                 updates.append((COL["suggested_price"], suggested_price))
+            if purchase_limit:
+                updates.append((COL["purchase_limit"], f"{purchase_limit}/day"))
             # Update status so researched rows don't get re-queued every run
             # Tier 1 stays PENDING (Jordan email sent; Jordan changes to APPROVED manually)
             if tier == 2:

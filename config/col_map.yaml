@@ -3,25 +3,25 @@
 # Update here if columns are ever added or reordered.
 #
 # Layout philosophy: action-critical columns first (A–D always frozen),
-# monitoring data next (E–U visible), everything else hidden (V–AR).
+# monitoring data next (E–W visible), everything else hidden (X–AR).
 #
 # Formula columns — never overwrite these with agent writes:
-#   I  (net_profit):       =H-G-X-Y   (ebay_price - cost - fees - ship)
-#   J  (net_margin):       =IF(H>0,I/H,0)
-#   N  (comp_saturation):  =IFERROR(M/MAX(K,1),"")
-#   X  (ebay_fees):        =H*W       (ebay_price * fee_rate)
-#   AA (tax_est):          =G*0.0825
-#   AB (site_profit):      =H*0.90-G
-#   AC (ad_budget):        =I*0.15
+#   I  (net_profit):      =H-G-Z-AA   (ebay_price - cost - fees - ship)
+#   J  (net_margin):      =IF(H>0,I/H,0)
+#   N  (comp_saturation): =IFERROR(M/MAX(K,1),"")
+#   Z  (ebay_fees):       =H*Y        (ebay_price * fee_rate)
+#   AC (tax_est):         =G*0.0825
+#   AD (site_profit):     =H*0.90-G
+#   AE (ad_budget):       =I*0.15
 
 columns:
-  # ── Visible (A–U) ────────────────────────────────────────────────
+  # ── Visible (A–W) ─────────────────────────────────────────────────
   status:           "A"   # PENDING/APPROVED/READY/ACTIVE/WATCH/PAUSED_*/
   demand_score:     "B"   # Tier score 0–10 (Tier 1≥7, Tier 2≥4, Tier 3<4)
   title:            "C"   # Product name
-  category:         "D"   # Jewelry / Watches / Outdoor Furniture
+  category:         "D"   # Precious Metals / Jewelry / Watches / Outdoor Furniture
   platform:         "E"   # eBay / Site / Both (set when listed)
-  stock_status:     "F"   # In Stock / Limited / OUT OF STOCK
+  stock_status:     "F"   # In Stock / Available (2/day limit) / OUT OF STOCK
   costco_cost:      "G"   # What you pay at Costco
   ebay_price:       "H"   # Your eBay listing price (editable — agent sets once)
   net_profit:       "I"   # formula — do not overwrite
@@ -37,28 +37,28 @@ columns:
   re_eval_date:     "S"   # PAUSED items: date to re-research
   notes:            "T"   # Research notes + agent reasoning
   units_sold:       "U"   # Units sold (manually entered or future eBay API)
+  suggested_price:  "V"   # Agent's recommended eBay price — written once, never overwritten
+  purchase_limit:   "W"   # Units/day limit (precious metals) or blank for fashion items
 
-  # ── Hidden (V–AR) ────────────────────────────────────────────────
-  sku:              "V"
-  fee_rate:         "W"
-  ebay_fees:        "X"   # formula — do not overwrite
-  ship_cost:        "Y"
-  fulfillment:      "Z"
-  tax_est:          "AA"  # formula — do not overwrite
-  site_profit:      "AB"  # formula — do not overwrite
-  ad_budget:        "AC"  # formula — do not overwrite
-  seo_title:        "AD"
-  bullets:          "AE"
-  description:      "AF"
-  redirect_msg:     "AG"
-  meta_desc:        "AH"
-  keywords:         "AI"
-  alt_text:         "AJ"
-  google_hl:        "AK"
-  google_desc:      "AL"
-  meta_text:        "AM"
-  meta_hl:          "AN"
-  image_urls:       "AO"
-  purchase_limit:   "AP"
-  suggested_price:  "AQ"  # Agent's original price recommendation — written once, never overwritten
+  # ── Hidden (X–AR) ─────────────────────────────────────────────────
+  sku:              "X"
+  fee_rate:         "Y"
+  ebay_fees:        "Z"   # formula — do not overwrite
+  ship_cost:        "AA"
+  fulfillment:      "AB"
+  tax_est:          "AC"  # formula — do not overwrite
+  site_profit:      "AD"  # formula — do not overwrite
+  ad_budget:        "AE"  # formula — do not overwrite
+  seo_title:        "AF"
+  bullets:          "AG"
+  description:      "AH"
+  redirect_msg:     "AI"
+  meta_desc:        "AJ"
+  keywords:         "AK"
+  alt_text:         "AL"
+  google_hl:        "AM"
+  google_desc:      "AN"
+  meta_text:        "AO"
+  meta_hl:          "AP"
+  image_urls:       "AQ"
   perf_score:       "AR"  # Composite performance score (0–10) — written by rotation engine

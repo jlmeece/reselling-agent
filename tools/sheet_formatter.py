@@ -73,7 +73,9 @@ HEADER_LABELS = [
     "RE-EVAL DATE",    # S  18
     "RESEARCH NOTES",  # T  19
     "UNITS SOLD",      # U  20 — manually entered or future eBay API
-    # V–AR hidden
+    "SUGG. PRICE",     # V  21 — agent's recommended eBay price (written once)
+    "PURCH. LIMIT",    # W  22 — units/day cap (precious metals) or blank
+    # X–AR hidden
 ]
 
 COLUMN_WIDTHS = {
@@ -82,7 +84,7 @@ COLUMN_WIDTHS = {
     2:  280,   # C: title
     3:  90,    # D: category
     4:  75,    # E: platform
-    5:  100,   # F: stock
+    5:  110,   # F: stock
     6:  75,    # G: cost
     7:  80,    # H: ebay price
     8:  80,    # I: net profit
@@ -98,11 +100,13 @@ COLUMN_WIDTHS = {
     18: 90,    # S: re-eval date
     19: 380,   # T: research notes
     20: 70,    # U: units sold
+    21: 90,    # V: suggested price
+    22: 110,   # W: purchase limit
 }
 
-VISIBLE_COLS  = 21    # A–U
+VISIBLE_COLS  = 23    # A–W
 TOTAL_COLS    = 44    # A–AR
-HIDDEN_START  = 21    # V onwards (index 21 = col V)
+HIDDEN_START  = 23    # X onwards (index 23 = col X)
 FROZEN_COLS   = 4     # A–D always visible
 
 
