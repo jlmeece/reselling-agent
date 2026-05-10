@@ -81,6 +81,18 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
     urgent_items = []
     checked = 0
 
+    # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL rows.
+    # This prevents a guaranteed crash on CI (GitHub Actions) where no local Chrome exists.
+    has_active = any(
+        safe_get(r, col_to_idx(COL["status"])) in ACTIVE_MONITOR_STATUSES
+        or (safe_get(r, col_to_idx(COL["status"])) == "READY"
+            and safe_get(r, col_to_idx(COL["ebay_listing_url"])).startswith("http"))
+        for r in all_data if r
+    )
+    if not has_active:
+        logger.info("Active monitor: no ACTIVE listings found — skipping browser launch.")
+        return
+
     with make_browser() as page:
         for idx, row in enumerate(all_data):
             sheet_row = idx + start_row
