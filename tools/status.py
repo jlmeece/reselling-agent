@@ -220,7 +220,7 @@ def main():
             run = last.get(mode)
             if run and mode not in printed:
                 ago  = _time_ago(run["date"], run["time"])
-                icon = G + "✓" if run["status"] == "ok" else (Y + "⚠" if run["status"] == "skipped" else R + "✗")
+                icon = G + "OK" if run["status"] == "ok" else (Y + "SKIP" if run["status"] == "skipped" else R + "ERR")
                 dur  = run.get("duration", "")
                 err  = f"  {R}{run['errors']}{W}" if run.get("errors") else ""
                 print(f"  {C}{mode:<12}{W} {run['date']} {run['time']}  {icon}{W} {dur:<8} {DIM}({ago}){W}{err}")
