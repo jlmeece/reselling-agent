@@ -33,11 +33,66 @@ _STATUS_ORDER = ["ACTIVE", "APPROVED", "READY", "WATCH", "PENDING",
 
 
 def _load_history():
+    """Load run history — Sheet Run Log tab first, local JSON as fallback."""
+    sheet_runs = _sheet_run_log()
+    if sheet_runs:
+        return sheet_runs
+
+    # Fallback: local file (only populated by local runs, not GitHub Actions)
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "run_history.json")
     if not os.path.exists(path):
         return []
     with open(path) as f:
         return json.load(f).get("runs", [])
+
+
+def _sheet_run_log():
+    """Read the Run Log tab from Google Sheet. Returns list of run dicts, or [] on failure."""
+    try:
+        import yaml
+        from google.oauth2.service_account import Credentials
+        from googleapiclient.discovery import build
+
+        cfg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "categories.yaml")
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f)
+
+        creds_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "google_credentials.json")
+        sheet_id   = os.getenv("GOOGLE_SHEET_ID")
+
+        creds   = Credentials.from_service_account_file(
+            creds_file, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        )
+        service = build("sheets", "v4", credentials=creds)
+        result  = service.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range="'Run Log'!A2:K500"
+        ).execute()
+        rows = result.get("values", [])
+
+        runs = []
+        for row in rows:
+            if len(row) < 3:
+                continue
+            status_cell = row[3] if len(row) > 3 else ""
+            if "OK" in status_cell or "✓" in status_cell:
+                status = "ok"
+            elif "Skip" in status_cell or "⚠" in status_cell:
+                status = "skipped"
+            else:
+                status = "error"
+
+            runs.append({
+                "date":     row[0] if len(row) > 0 else "",
+                "time":     row[1] if len(row) > 1 else "",
+                "mode":     row[2] if len(row) > 2 else "",
+                "status":   status,
+                "duration": row[4] if len(row) > 4 else "",
+                "errors":   row[10] if len(row) > 10 else "",
+            })
+        return runs
+    except Exception:
+        return []
 
 
 def _last_runs(history):
@@ -174,7 +229,7 @@ def main():
             print(f"  {DIM}No runs recorded yet{W}")
     else:
         print(f"{B}Last runs:{W}")
-        print(f"  {DIM}No run history found -- runs will appear here after first execution{W}")
+        print(f"  {DIM}No runs recorded yet (check GitHub Actions UI or Sheet 'Run Log' tab){W}")
 
     # ── Sheet status counts ──────────────────────────────────────────────────
     print(f"\n{B}Sheet: Product Tracker{W}")
