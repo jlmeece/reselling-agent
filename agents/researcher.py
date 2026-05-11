@@ -225,6 +225,7 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
         f"  Median sold price: ${ebay_data.get('median_sold', 'unknown')}\n"
         f"  Avg sold price: ${ebay_data.get('avg_sold_price', 'unknown')}\n"
         f"  Active competing listings: {ebay_data.get('active_count', 'unknown')}\n"
+        f"  Median active listing price: ${ebay_data.get('median_active', 'unknown')}\n"
         f"  Sold price range: {ebay_data.get('sold_range', 'unknown')}\n"
         f"  Search query used: \"{ebay_data.get('query_used', '')}\"\n\n"
         + (
@@ -234,7 +235,8 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
             f"  Karat/purity: {spot_data['karat']}kt\n"
             f"  Melt value: ${spot_data['melt_value']:.2f}\n"
             f"  eBay premium above melt: {spot_data['premium_pct']:+.1f}%\n"
-            f"  Note: buyers pay premium for Costco trust, mint brand, and convenience — not just melt value.\n\n"
+            f"  Note: buyers pay premium for Costco trust, mint brand, and convenience — not just melt value.\n"
+            f"  IMPORTANT: Sold 90-day median may be stale (reflects older gold prices). Use median active listing price as the primary eBay price signal for gold bars.\n\n"
             if spot_data else ""
         )
         + f"COMMUNITY SIGNAL: {community_data.get('signal_strength', 0):.1f}/10\n"
@@ -444,10 +446,10 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
 
     logger.info(f"Step 2: {len(to_research)} product(s) queued for research.")
 
-    # ── Fetch spot prices once per run (Jewelry only) ─────────────
+    # ── Fetch spot prices once per run (Precious Metals + Jewelry) ──
     from tools.spot_price import get_spot_price, melt_value, spot_premium_pct, parse_gold_weight
     _spot_prices = {}
-    if any(safe_get(r, 3) == "Jewelry" for _, r in to_research):
+    if any(safe_get(r, 3) in ("Jewelry", "Precious Metals") for _, r in to_research):
         for metal in ("gold", "silver", "platinum"):
             _spot_prices[metal] = get_spot_price(metal)
         logger.info(f"  Spot prices: gold=${_spot_prices.get('gold')}/oz  silver=${_spot_prices.get('silver')}/oz")
@@ -607,9 +609,14 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             reasoning        = claude_result["reasoning"]
 
             # Override availability with live scraped status
+            # "Available (N/day limit)" strings use "Available" prefix — map those to Limited (6)
             avail_map = {"In Stock": 10, "Limited": 6, "OUT OF STOCK": 0,
                          "Unknown": 3, "CHECK FAILED": 1}
-            dimension_scores["costco_availability"] = avail_map.get(stock_status, 3)
+            if stock_status and stock_status.startswith("Available"):
+                avail_score = 6  # in-stock with purchase limit ≈ Limited
+            else:
+                avail_score = avail_map.get(stock_status, 3)
+            dimension_scores["costco_availability"] = avail_score
 
             # Incorporate community signal into demand score (weighted blend)
             if community_data["signal_strength"] > 1:
@@ -619,6 +626,28 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 dimension_scores["demand_signals"] = round(
                     claude_demand * 0.70 + community_score * 0.30, 1
                 )
+
+            # Precious Metals: override two dimensions with spot-price-aware logic.
+            # Generic scoring breaks for gold bars because:
+            #   - margin_potential uses stale eBay sold comps (90d old = gold was cheaper)
+            #   - competition_density penalizes 47-462 active listings as "crowded"
+            #     but for a liquid commodity, that's normal market depth, not competition
+            if category == "Precious Metals" and spot_data and spot_data.get("melt_value"):
+                try:
+                    raw_cost = float(str(live_price or costco_cost).replace("$", "").replace(",", ""))
+                    spot_premium_pct_val = (raw_cost - spot_data["melt_value"]) / spot_data["melt_value"]
+                    if spot_premium_pct_val < 0.02:
+                        dimension_scores["margin_potential"] = 8   # within 2% of spot — great entry
+                    elif spot_premium_pct_val < 0.05:
+                        dimension_scores["margin_potential"] = 6
+                    elif spot_premium_pct_val < 0.10:
+                        dimension_scores["margin_potential"] = 4
+                    else:
+                        dimension_scores["margin_potential"] = 2   # >10% over spot — bad entry
+                except (ValueError, TypeError, ZeroDivisionError):
+                    pass
+                # Active listing count = market liquidity for a commodity, not crowding
+                dimension_scores["competition_density"] = 5  # neutral
 
             # 3e. Pass 3: deterministic scoring
             pass3_fn = _pass3_for_category(category)

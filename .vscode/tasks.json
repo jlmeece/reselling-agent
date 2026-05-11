@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "WAT: Check Status",
+      "type": "shell",
+      "command": "python tools/status.py",
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true,
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "WAT: Run Discovery (Precious Metals)",
+      "type": "shell",
+      "command": "python agents/scheduler.py --mode discovery --category \"Precious Metals\"",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "WAT: Run Research (Precious Metals)",
+      "type": "shell",
+      "command": "python agents/scheduler.py --mode research --category \"Precious Metals\"",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "WAT: Run Active Monitor",
+      "type": "shell",
+      "command": "python agents/scheduler.py --mode active",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "WAT: Run Daily Sweep",
+      "type": "shell",
+      "command": "python agents/scheduler.py --mode daily",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    }
+  ]
+}

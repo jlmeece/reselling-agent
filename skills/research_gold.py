@@ -26,7 +26,7 @@ from base_scoring import LENS_WEIGHTS   # kept for backwards compatibility
 
 
 class GoldResearch(ResearchBase):
-    CATEGORY_NAME    = "Jewelry"
+    CATEGORY_NAME    = "Precious Metals"
     FULFILLMENT_RISK = "low"   # gold ships small, minimal breakage risk
 
     PASS1_SIGNALS = [

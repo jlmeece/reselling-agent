@@ -264,6 +264,79 @@ def send_rotation_digest(rotation_by_category, run_date, sheet_url=None):
     _send_email(subject, html_body, urgent=False)
 
 
+def send_run_summary(mode: str, results: dict, run_time: str = None, sheet_url: str = None):
+    """
+    Sends a brief green summary email after every scheduled run — even quiet ones.
+    Closes the "silent run" gap where Jordan has no idea if the agent ran.
+
+    results keys: status, new_products, researched, tier1, tier2, tier3,
+                  scout_health, errors, spot_gold, spot_silver, product_lines
+    product_lines: list of str like "Argor Heraeus → Tier 2 (4.62)"
+    """
+    from datetime import datetime
+    run_time   = run_time   or datetime.now().strftime("%Y-%m-%d %H:%M CDT")
+    sheet_url  = sheet_url  or f"https://docs.google.com/spreadsheets/d/{os.getenv('GOOGLE_SHEET_ID','')}/edit"
+    status     = results.get("status", "ok")
+    icon       = "✓" if status == "ok" else ("⚠" if status == "skipped" else "✗")
+    errors     = results.get("errors", "")
+
+    summary_rows = []
+    if results.get("new_products") is not None:
+        summary_rows.append(("New products discovered", results["new_products"], "#007aff"))
+    if results.get("researched") is not None:
+        summary_rows.append(("Products researched", results["researched"], "#007aff"))
+    if results.get("tier1") is not None:
+        t1, t2 = results.get("tier1", 0), results.get("tier2", 0)
+        summary_rows.append(("Tier 1 (act now)", t1, "#34c759" if t1 else "#aeaeb2"))
+        summary_rows.append(("Tier 2 (watch)",   t2, "#ff9500"  if t2 else "#aeaeb2"))
+    if results.get("spot_gold"):
+        gold_str = f"${results['spot_gold']:,.2f}/oz"
+        if results.get("spot_silver"):
+            gold_str += f"  |  Silver ${results['spot_silver']:,.2f}/oz"
+        summary_rows.append(("Spot prices", gold_str, "#636366"))
+    if results.get("scout_health"):
+        summary_rows.append(("Scout health", results["scout_health"], "#636366"))
+    if errors:
+        summary_rows.append(("Errors", errors, "#ff3b30"))
+
+    product_rows = [
+        {"title": line, "row": ""}
+        for line in (results.get("product_lines") or [])
+    ]
+
+    status_label = f"{icon} {mode.title()}"
+    n_researched = results.get("researched", 0) or 0
+    subject = f"[WAT] {status_label} — {n_researched} researched" if n_researched else f"[WAT] {status_label} complete"
+    if results.get("tier2"):
+        subject += f", {results['tier2']} Tier 2"
+    if results.get("tier1"):
+        subject += f", {results['tier1']} Tier 1"
+
+    html_body = _html_routine(status_label, summary_rows, product_rows, sheet_url, run_time)
+    _send_email(subject, html_body, urgent=False)
+
+
+def send_failure_alert(job_name: str, error: str = "", run_time: str = None, sheet_url: str = None):
+    """
+    Red alert when a GitHub Actions job crashes. Called from the workflow's
+    failure notification step: python tools/alert_sender.py --mode failure --job <job>
+    """
+    from datetime import datetime
+    run_time  = run_time  or datetime.now().strftime("%Y-%m-%d %H:%M CDT")
+    sheet_url = sheet_url or f"https://docs.google.com/spreadsheets/d/{os.getenv('GOOGLE_SHEET_ID','')}/edit"
+
+    items = [{
+        "title":    f"Job failed: {job_name}",
+        "row":      "",
+        "category": "GitHub Actions",
+        "reason":   error or "Non-zero exit code — check Actions logs for details",
+    }]
+    subject = f"WAT Agent — {job_name} job FAILED"
+    html_body = _html_urgent(subject, items, sheet_url, run_time)
+    _send_email(f"🚨 {subject}", html_body, urgent=True)
+    _send_sms(f"⚠ WAT FAILED: {job_name}\n{error[:80] or 'Check GitHub Actions'}")
+
+
 # ── Internal send helpers ─────────────────────────────────────────────────────
 
 def _send_email(subject, html_body, urgent=False, plain_fallback=""):
@@ -315,3 +388,20 @@ def _send_sms(text):
         logger.info("SMS sent")
     except Exception as e:
         logger.error(f"SMS failed: {e}")
+
+
+# ── CLI entry point (used by GitHub Actions failure step) ─────────────────────
+
+if __name__ == "__main__":
+    import argparse
+    from dotenv import load_dotenv
+    load_dotenv(encoding="utf-8", override=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", required=True, choices=["failure"])
+    parser.add_argument("--job",  default="unknown", help="GitHub Actions job name")
+    parser.add_argument("--error", default="", help="Optional error message")
+    args = parser.parse_args()
+
+    if args.mode == "failure":
+        send_failure_alert(args.job, error=args.error)

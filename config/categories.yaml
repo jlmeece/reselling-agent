@@ -28,7 +28,7 @@ categories:
 
   # ── PRIORITY: Gold bars, silver bars, gold coins ──────────────────────────────
   Precious Metals:
-    fee_rate: 0.15
+    fee_rate: 0.04   # eBay bullion category 3229: ~1.35% FVF + ~2.7% payment processing ≈ 4% total (verify with your eBay account)
     site_url: "coming-soon.com/precious-metals"
     max_active: 10          # small — purchase limits mean low unit volume
     max_discovery: 30       # hard cap: covers gold bars + silver bars + gold coins (~25 real products)
@@ -45,7 +45,7 @@ categories:
     # Online only — no warehouse sales. Non-refundable, no price adjustments.
     # Prices track gold/silver spot daily (dynamic pricing).
     purchase_limits:
-      gold_bar_1oz:    2   # max 2 per 24 hrs
+      gold_bar_1oz:    4   # max 4 per 24 hrs (updated May 2026 — confirmed on product page)
       gold_bar_100g:   1   # max 1 per 24 hrs
       gold_coin_1oz:   2   # max 2 per 24 hrs
       silver_bar_10oz: 10  # max 10 per day

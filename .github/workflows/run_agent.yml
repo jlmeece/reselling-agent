@@ -45,16 +45,26 @@ jobs:
       - run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
       - run: python agents/scheduler.py --mode discovery --category "Precious Metals"
         env: &common_env
-          ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_SHEET_ID:         ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_CREDENTIALS_FILE: google_credentials.json
-          ALERT_FROM_EMAIL:        ${{ secrets.ALERT_FROM_EMAIL }}
-          ALERT_FROM_PASSWORD:     ${{ secrets.ALERT_FROM_PASSWORD }}
-          ALERT_TO_SMS:            ${{ secrets.ALERT_TO_SMS }}
-          ALERT_TO_EMAIL:          ${{ secrets.ALERT_TO_EMAIL }}
-          YOUTUBE_API_KEY:         ${{ secrets.YOUTUBE_API_KEY }}
-          GOOGLE_CSE_KEY:          ${{ secrets.GOOGLE_CSE_KEY }}
-          GOOGLE_CSE_ID:           ${{ secrets.GOOGLE_CSE_ID }}
+          ANTHROPIC_API_KEY:          ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SHEET_ID:            ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDENTIALS_FILE:    google_credentials.json
+          ALERT_FROM_EMAIL:           ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD:        ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:               ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:             ${{ secrets.ALERT_TO_EMAIL }}
+          YOUTUBE_API_KEY:            ${{ secrets.YOUTUBE_API_KEY }}
+          GOOGLE_CSE_KEY:             ${{ secrets.GOOGLE_CSE_KEY }}
+          GOOGLE_CSE_ID:              ${{ secrets.GOOGLE_CSE_ID }}
+          HEALTHCHECK_URL_DISCOVERY:  ${{ secrets.HEALTHCHECK_URL_DISCOVERY }}
+      - name: Notify on failure
+        if: failure()
+        run: python tools/alert_sender.py --mode failure --job discovery
+        env:
+          ALERT_FROM_EMAIL:    ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD: ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:        ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:      ${{ secrets.ALERT_TO_EMAIL }}
+          GOOGLE_SHEET_ID:     ${{ secrets.GOOGLE_SHEET_ID }}
 
   # ── Active monitor: check live listings (3x/day) ────────────────────────────
   active-monitor:
@@ -76,13 +86,23 @@ jobs:
       - run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
       - run: python agents/scheduler.py --mode active
         env:
-          ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_SHEET_ID:         ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_CREDENTIALS_FILE: google_credentials.json
-          ALERT_FROM_EMAIL:        ${{ secrets.ALERT_FROM_EMAIL }}
-          ALERT_FROM_PASSWORD:     ${{ secrets.ALERT_FROM_PASSWORD }}
-          ALERT_TO_SMS:            ${{ secrets.ALERT_TO_SMS }}
-          ALERT_TO_EMAIL:          ${{ secrets.ALERT_TO_EMAIL }}
+          ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SHEET_ID:          ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDENTIALS_FILE:  google_credentials.json
+          ALERT_FROM_EMAIL:         ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD:      ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:             ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:           ${{ secrets.ALERT_TO_EMAIL }}
+          HEALTHCHECK_URL_ACTIVE:   ${{ secrets.HEALTHCHECK_URL_ACTIVE }}
+      - name: Notify on failure
+        if: failure()
+        run: python tools/alert_sender.py --mode failure --job active-monitor
+        env:
+          ALERT_FROM_EMAIL:    ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD: ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:        ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:      ${{ secrets.ALERT_TO_EMAIL }}
+          GOOGLE_SHEET_ID:     ${{ secrets.GOOGLE_SHEET_ID }}
 
   # ── Daily sweep: APPROVED→READY, PAUSED_OOS/PAUSED_MARGIN check (1x/day) ────
   daily-sweep:
@@ -107,6 +127,16 @@ jobs:
           ALERT_FROM_PASSWORD:     ${{ secrets.ALERT_FROM_PASSWORD }}
           ALERT_TO_SMS:            ${{ secrets.ALERT_TO_SMS }}
           ALERT_TO_EMAIL:          ${{ secrets.ALERT_TO_EMAIL }}
+          HEALTHCHECK_URL_DAILY:   ${{ secrets.HEALTHCHECK_URL_DAILY }}
+      - name: Notify on failure
+        if: failure()
+        run: python tools/alert_sender.py --mode failure --job daily-sweep
+        env:
+          ALERT_FROM_EMAIL:    ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD: ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:        ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:      ${{ secrets.ALERT_TO_EMAIL }}
+          GOOGLE_SHEET_ID:     ${{ secrets.GOOGLE_SHEET_ID }}
 
   # ── Research: score PENDING products (1x/day) ───────────────────────────────
   research:
@@ -124,16 +154,26 @@ jobs:
       - run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
       - run: python agents/scheduler.py --mode research --category "Precious Metals"
         env:
-          ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_SHEET_ID:         ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_CREDENTIALS_FILE: google_credentials.json
-          ALERT_FROM_EMAIL:        ${{ secrets.ALERT_FROM_EMAIL }}
-          ALERT_FROM_PASSWORD:     ${{ secrets.ALERT_FROM_PASSWORD }}
-          ALERT_TO_SMS:            ${{ secrets.ALERT_TO_SMS }}
-          ALERT_TO_EMAIL:          ${{ secrets.ALERT_TO_EMAIL }}
-          YOUTUBE_API_KEY:         ${{ secrets.YOUTUBE_API_KEY }}
-          GOOGLE_CSE_KEY:          ${{ secrets.GOOGLE_CSE_KEY }}
-          GOOGLE_CSE_ID:           ${{ secrets.GOOGLE_CSE_ID }}
+          ANTHROPIC_API_KEY:         ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SHEET_ID:           ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDENTIALS_FILE:   google_credentials.json
+          ALERT_FROM_EMAIL:          ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD:       ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:              ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:            ${{ secrets.ALERT_TO_EMAIL }}
+          YOUTUBE_API_KEY:           ${{ secrets.YOUTUBE_API_KEY }}
+          GOOGLE_CSE_KEY:            ${{ secrets.GOOGLE_CSE_KEY }}
+          GOOGLE_CSE_ID:             ${{ secrets.GOOGLE_CSE_ID }}
+          HEALTHCHECK_URL_RESEARCH:  ${{ secrets.HEALTHCHECK_URL_RESEARCH }}
+      - name: Notify on failure
+        if: failure()
+        run: python tools/alert_sender.py --mode failure --job research
+        env:
+          ALERT_FROM_EMAIL:    ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD: ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:        ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:      ${{ secrets.ALERT_TO_EMAIL }}
+          GOOGLE_SHEET_ID:     ${{ secrets.GOOGLE_SHEET_ID }}
 
   # ── Rotation digest: score all active products, flag underperformers (Fridays) ─
   rotation-digest:
@@ -150,10 +190,20 @@ jobs:
       - run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
       - run: python agents/scheduler.py --mode rotation
         env:
-          ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_SHEET_ID:         ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_CREDENTIALS_FILE: google_credentials.json
-          ALERT_FROM_EMAIL:        ${{ secrets.ALERT_FROM_EMAIL }}
-          ALERT_FROM_PASSWORD:     ${{ secrets.ALERT_FROM_PASSWORD }}
-          ALERT_TO_SMS:            ${{ secrets.ALERT_TO_SMS }}
-          ALERT_TO_EMAIL:          ${{ secrets.ALERT_TO_EMAIL }}
+          ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SHEET_ID:          ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDENTIALS_FILE:  google_credentials.json
+          ALERT_FROM_EMAIL:         ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD:      ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:             ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:           ${{ secrets.ALERT_TO_EMAIL }}
+          HEALTHCHECK_URL_ROTATION: ${{ secrets.HEALTHCHECK_URL_ROTATION }}
+      - name: Notify on failure
+        if: failure()
+        run: python tools/alert_sender.py --mode failure --job rotation-digest
+        env:
+          ALERT_FROM_EMAIL:    ${{ secrets.ALERT_FROM_EMAIL }}
+          ALERT_FROM_PASSWORD: ${{ secrets.ALERT_FROM_PASSWORD }}
+          ALERT_TO_SMS:        ${{ secrets.ALERT_TO_SMS }}
+          ALERT_TO_EMAIL:      ${{ secrets.ALERT_TO_EMAIL }}
+          GOOGLE_SHEET_ID:     ${{ secrets.GOOGLE_SHEET_ID }}

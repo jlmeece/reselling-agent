@@ -32,7 +32,8 @@ from tools.status_logic import (
     ACTIVE_MONITOR_STATUSES, DAILY_SWEEP_STATUSES, SKIP_STATUSES,
 )
 from tools.listing_copy import generate_listing_copy
-from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest
+from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest, send_run_summary
+from tools.run_logger import log_run_start, log_run_end
 
 
 # ── Config loaders ────────────────────────────────────────────────────────────
@@ -523,19 +524,45 @@ def main():
     end_row    = business["data_end_row"]
 
     logger.info(f"Scheduler [{args.mode}] started: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    _run_start = log_run_start(args.mode)
+    _run_results = {"status": "ok"}
 
-    if args.mode == "active":
-        run_active_monitor(config, COL, service, sheet_name, start_row, end_row)
-    elif args.mode == "daily":
-        run_daily_sweep(config, COL, service, sheet_name, start_row, end_row)
-    elif args.mode == "research":
-        run_research(config, COL, service, sheet_name, start_row, end_row,
-                     category=args.category)
-    elif args.mode == "discovery":
-        run_discovery(config, COL, service, sheet_name, start_row, end_row,
-                      category=args.category)
-    elif args.mode == "rotation":
-        run_rotation(config, COL, service, sheet_name, start_row, end_row)
+    try:
+        if args.mode == "active":
+            run_active_monitor(config, COL, service, sheet_name, start_row, end_row)
+        elif args.mode == "daily":
+            run_daily_sweep(config, COL, service, sheet_name, start_row, end_row)
+        elif args.mode == "research":
+            run_research(config, COL, service, sheet_name, start_row, end_row,
+                         category=args.category)
+        elif args.mode == "discovery":
+            run_discovery(config, COL, service, sheet_name, start_row, end_row,
+                          category=args.category)
+        elif args.mode == "rotation":
+            run_rotation(config, COL, service, sheet_name, start_row, end_row)
+    except Exception as e:
+        _run_results["status"] = "error"
+        _run_results["errors"] = str(e)[:120]
+        logger.error(f"Scheduler [{args.mode}] failed: {e}")
+        raise
+    finally:
+        log_run_end(args.mode, _run_start, _run_results, service)
+        # Heartbeat ping — tells healthchecks.io this run completed successfully
+        _hc_key = f"HEALTHCHECK_URL_{args.mode.upper()}"
+        _hc_url = os.getenv(_hc_key)
+        if _hc_url and _run_results["status"] == "ok":
+            try:
+                import urllib.request
+                urllib.request.urlopen(_hc_url, timeout=5)
+                logger.debug(f"Heartbeat ping sent ({_hc_key})")
+            except Exception:
+                pass
+        # Run summary email (skip for active monitor — already handled by send_urgent_alert)
+        if args.mode != "active":
+            try:
+                send_run_summary(args.mode, _run_results)
+            except Exception as e:
+                logger.warning(f"Run summary email failed: {e}")
 
     logger.info(f"Scheduler [{args.mode}] complete.")
 
