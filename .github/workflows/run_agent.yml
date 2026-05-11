@@ -1,33 +1,29 @@
 name: Costco → eBay Agent
 
-# Five modes run on different cadences.
+# Cloud-safe modes only. Active monitor runs LOCAL (requires Jordan's Chrome session).
 # All times are UTC. Jordan is Central time (CDT = UTC-5, CST = UTC-6).
 #
 # Mode        Local (CDT)         UTC cron
 # ---------   -----------------   ------------------
 # discovery   7:00 AM daily       0 12 * * *
-# active (1)  8:00 AM daily       0 13 * * *
 # daily       9:00 AM daily       0 14 * * *
 # research    10:00 AM daily      0 15 * * *
-# active (2)  1:00 PM daily       0 18 * * *
-# active (3)  6:00 PM daily       0 23 * * *
 # rotation    9:00 AM Fri only    0 14 * * 5
+#
+# active monitor — run locally via VS Code task "WAT: Run Active Monitor"
 
 on:
   schedule:
     - cron: '0 12 * * *'   # 7:00 AM CDT  — discovery (daily)
-    - cron: '0 13 * * *'   # 8:00 AM CDT  — active monitor run 1 (daily)
     - cron: '0 14 * * *'   # 9:00 AM CDT  — daily sweep (daily)
     - cron: '0 15 * * *'   # 10:00 AM CDT — research (daily)
-    - cron: '0 18 * * *'   # 1:00 PM CDT  — active monitor run 2 (daily)
-    - cron: '0 23 * * *'   # 6:00 PM CDT  — active monitor run 3 (daily)
     - cron: '0 14 * * 5'   # 9:00 AM CDT  — rotation digest (Fridays only)
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Run mode (active | daily | research | discovery | rotation)'
+        description: 'Run mode (daily | research | discovery | rotation)'
         required: false
-        default: 'active'
+        default: 'research'
 
 jobs:
 
@@ -59,44 +55,6 @@ jobs:
       - name: Notify on failure
         if: failure()
         run: python tools/alert_sender.py --mode failure --job discovery
-        env:
-          ALERT_FROM_EMAIL:    ${{ secrets.ALERT_FROM_EMAIL }}
-          ALERT_FROM_PASSWORD: ${{ secrets.ALERT_FROM_PASSWORD }}
-          ALERT_TO_SMS:        ${{ secrets.ALERT_TO_SMS }}
-          ALERT_TO_EMAIL:      ${{ secrets.ALERT_TO_EMAIL }}
-          GOOGLE_SHEET_ID:     ${{ secrets.GOOGLE_SHEET_ID }}
-
-  # ── Active monitor: check live listings (3x/day) ────────────────────────────
-  active-monitor:
-    if: >
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'active') ||
-      (github.event_name == 'schedule' && (
-        github.event.schedule == '0 13 * * *' ||
-        github.event.schedule == '0 18 * * *' ||
-        github.event.schedule == '0 23 * * *'
-      ))
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
-      - run: pip install -r requirements.txt
-      - run: playwright install chromium --with-deps
-      - run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
-      - run: python agents/scheduler.py --mode active
-        env:
-          ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_SHEET_ID:          ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_CREDENTIALS_FILE:  google_credentials.json
-          ALERT_FROM_EMAIL:         ${{ secrets.ALERT_FROM_EMAIL }}
-          ALERT_FROM_PASSWORD:      ${{ secrets.ALERT_FROM_PASSWORD }}
-          ALERT_TO_SMS:             ${{ secrets.ALERT_TO_SMS }}
-          ALERT_TO_EMAIL:           ${{ secrets.ALERT_TO_EMAIL }}
-          HEALTHCHECK_URL_ACTIVE:   ${{ secrets.HEALTHCHECK_URL_ACTIVE }}
-      - name: Notify on failure
-        if: failure()
-        run: python tools/alert_sender.py --mode failure --job active-monitor
         env:
           ALERT_FROM_EMAIL:    ${{ secrets.ALERT_FROM_EMAIL }}
           ALERT_FROM_PASSWORD: ${{ secrets.ALERT_FROM_PASSWORD }}

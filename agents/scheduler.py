@@ -17,6 +17,7 @@ import argparse
 import os
 import sys
 import time
+import traceback
 import yaml
 from datetime import datetime
 from dotenv import load_dotenv
@@ -518,16 +519,17 @@ def main():
     config     = load_config()
     COL        = load_col_map()
     business   = config["business"]
-    service    = get_sheets_service()
     sheet_name = business["sheet_name"]
     start_row  = business["data_start_row"]
     end_row    = business["data_end_row"]
 
     logger.info(f"Scheduler [{args.mode}] started: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    _run_start = log_run_start(args.mode)
+    _run_start   = log_run_start(args.mode)
     _run_results = {"status": "ok"}
+    service      = None  # defined here so finally block can always reference it
 
     try:
+        service = get_sheets_service()
         if args.mode == "active":
             run_active_monitor(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "daily":
@@ -542,7 +544,7 @@ def main():
             run_rotation(config, COL, service, sheet_name, start_row, end_row)
     except Exception as e:
         _run_results["status"] = "error"
-        _run_results["errors"] = str(e)[:120]
+        _run_results["errors"] = traceback.format_exc()[-600:]
         logger.error(f"Scheduler [{args.mode}] failed: {e}")
         raise
     finally:

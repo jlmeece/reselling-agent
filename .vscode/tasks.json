@@ -31,7 +31,7 @@
       "problemMatcher": []
     },
     {
-      "label": "WAT: Run Active Monitor",
+      "label": "WAT: Run Active Monitor (LOCAL ONLY — needs Chrome session)",
       "type": "shell",
       "command": "python agents/scheduler.py --mode active",
       "group": "none",
