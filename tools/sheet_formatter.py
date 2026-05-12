@@ -628,128 +628,197 @@ def _ensure_legend_tab(service, spreadsheet_id):
         meta = _get_sheet_meta(service, spreadsheet_id)
 
     legend_id = _get_tab_id(meta, "Legend")
-    # Write content
+
+    # ── Content rows ─────────────────────────────────────────────────────────────
+    # Each section starts with a DIVIDER row (all-caps label in col A, cols B-D blank).
+    # Divider rows get dark navy background + white text in the formatting pass below.
+    # We track which row indices are dividers so we can style them.
+
+    rows = []
+    divider_rows  = []   # 0-based row indices that get section-divider styling
+    status_rows   = []   # (row_idx, status_name) for color coding
+    col_hdr_rows  = []   # 0-based row indices for column-header style (STATUS | MEANING …)
+
+    def _divider(label):
+        divider_rows.append(len(rows))
+        rows.append([label, "", "", ""])
+
+    def _blank():
+        rows.append(["", "", "", ""])
+
+    def _row(*cells):
+        rows.append(list(cells) + [""] * (4 - len(cells)))
+
+    # ── Row 0: Main title ────────────────────────────────────────────────────────
+    divider_rows.append(0)
+    rows.append(["WAT Agent — Reference Guide", "", "", ""])
+
+    _blank()
+
+    # ── STATUS DEFINITIONS ───────────────────────────────────────────────────────
+    _divider("STATUS DEFINITIONS")
+    col_hdr_rows.append(len(rows))
+    _row("STATUS", "MEANING", "WHEN IT'S SET", "NEXT ACTION")
+    for status_row in STATUS_LEGEND[1:]:   # skip the original header
+        status_name = status_row[0]
+        status_rows.append((len(rows), status_name))
+        rows.append(list(status_row))
+
+    _blank()
+
+    # ── TIER & COMP SCORE ────────────────────────────────────────────────────────
+    _divider("TIER SCORE  (col B)")
+    _row("Tier 1  ≥ 7.0", "Strong opportunity — PENDING status. Review and approve to list.", "", "Green cell")
+    _row("Tier 2  4.0–6.9", "Promising but not ready — WATCH status. Re-scored weekly automatically.", "", "Yellow cell")
+    _row("Tier 3  < 4.0", "Not viable now — PAUSED_DEMAND. Re-eval in 30 days.", "", "Red cell")
+
+    _blank()
+
+    _divider("COMP SCORE  (col N)  —  active listings ÷ 90-day sold count")
+    _row("Low  (green)",  "< 2× — fewer sellers than buyers. Strong demand window.", "", "< 2×")
+    _row("Med  (yellow)", "2× to 10× — normal competitive market. Pricing and photos matter.", "", "2–10×")
+    _row("High (orange)", "≥ 10× — saturated. Avoid unless margin is exceptional.", "", "> 10×")
+
+    _blank()
+
+    # ── COLUMN REFERENCE ─────────────────────────────────────────────────────────
+    _divider("COLUMN QUICK REFERENCE")
+    _row("Col A", "STATUS — current pipeline stage. Use the dropdown to change.", "", "")
+    _row("Col B", "TIER SCORE — 0-10 composite. Green ≥7, Yellow 4-7, Red <4.", "", "")
+    _row("Col G", "COST $ — what you pay at Costco.", "", "")
+    _row("Col H", "eBay PRICE — your listing price. Agent sets once; edit freely.", "", "")
+    _row("Col I", "NET PROFIT — formula: eBay Price − Cost − Fees − Shipping.", "", "")
+    _row("Col J", "MARGIN — formula: Net Profit / eBay Price. Target ≥ 10%.", "", "")
+    _row("Col N", "COMP SCORE — active listings / 90d sold. Low = less competition.", "", "")
+    _row("Col Q", "eBay LISTING — paste your live eBay URL here → triggers ACTIVE monitoring.", "", "")
+    _row("Col T", "RESEARCH NOTES — first line: [Tier | Score | Sugg: $ | margin | Costco URL].", "", "")
+    _row("Col V", "SUGG. PRICE — agent's one-time recommended price. Do not overwrite.", "", "")
+    _row("Col W", "PURCH. LIMIT — Costco daily buy limit. Precious metals: 2/day.", "", "")
+
+    _blank()
+
+    # ── 5-STEP WORKFLOW ──────────────────────────────────────────────────────────
+    _divider("5-STEP WORKFLOW")
+    _row("1  Discover",  "Agent scrapes Costco → adds new products as PENDING. Runs 7 AM daily (GitHub).")
+    _row("2  Research",  "Agent scores PENDING → Tier 1 stays PENDING, Tier 2 becomes WATCH. Runs 10 AM.")
+    _row("3  Approve",   "YOU change col A from PENDING → APPROVED. Agent generates listing copy + verifies stock.")
+    _row("4  List",      "Agent sets APPROVED → READY. Export CSV (VS Code task) → upload to eBay Seller Hub.")
+    _row("5  Monitor",   "Paste eBay URL in col Q → auto-set to ACTIVE. Active Monitor checks stock/price 3×/day.")
+
+    _blank()
+
+    # ── VS CODE TASKS ─────────────────────────────────────────────────────────────
+    _divider("VS CODE TASKS   Ctrl+Shift+P → 'Tasks: Run Task'")
+    _row("WAT: Check Status",           "Quick snapshot — last runs, product counts, spot prices, next scheduled run.")
+    _row("WAT: Run Discovery",          "Scrape Costco for new products → PENDING. Also runs automatically at 7 AM.")
+    _row("WAT: Run Research",           "Score all PENDING rows (eBay comps + Claude). Also runs at 10 AM.")
+    _row("WAT: Research — Re-score Only", "Same as Research but skips discovery. ~2 min. Use after manually adding rows.")
+    _row("WAT: Run Daily Sweep",        "APPROVED→READY + PAUSED stock/margin recovery. Also runs at 9 AM.")
+    _row("WAT: Run Rotation Digest",    "Weekly: score all WATCH products, flag underperformers. Auto-runs Fridays.")
+    _row("WAT: Run Active Monitor",     "LOCAL ONLY — checks stock/price for ACTIVE listings. Needs Chrome open.")
+    _row("WAT: Setup Sheet",            "Re-apply dashboard formatting. Safe to re-run anytime sheet looks wrong.")
+    _row("WAT: Export eBay CSV",        "Generate upload CSV for READY rows → upload at eBay Seller Hub.")
+
+    # ── Write values ─────────────────────────────────────────────────────────────
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range="'Legend'!A1",
         valueInputOption="USER_ENTERED",
-        body={"values": [
-            ["Status Definitions — Product Tracker"],
-            [""],
-        ] + STATUS_LEGEND + [
-            [""],
-            ["TIER SCORE (col B)"],
-            ["Tier 1", "Score >= 7.0 — strong buy signal. Status: PENDING (awaiting your approval).", "", ""],
-            ["Tier 2", "Score 4.0–6.9 — promising but not ready. Status: WATCH (re-scored weekly).", "", ""],
-            ["Tier 3", "Score < 4.0 — not viable now. Status: PAUSED_DEMAND (re-eval in 30 days).", "", ""],
-            [""],
-            ["COMP SCORE (col N) — active listings ÷ 90-day sold count. Lower = less competition."],
-            ["Low  (green)",   "< 2× — fewer active sellers than recent buyers. Strong demand signal.", "", ""],
-            ["Med  (yellow)",  "2× to 10× — normal competitive market. Pricing matters.", "", ""],
-            ["High (orange)",  ">= 10× — saturated. Many sellers, slow turnover. Avoid unless margin is exceptional.", "", ""],
-            [""],
-            ["COLUMN QUICK REFERENCE"],
-            ["Col B",  "TIER SCORE — 0-10 composite score. Green >=7 (T1), Yellow 4-7 (T2), Red <4 (T3).", "", ""],
-            ["Col G",  "COST $ — what you pay at Costco (agent-updated).", "", ""],
-            ["Col H",  "eBay PRICE — your listing price. Agent sets once; edit freely after that.", "", ""],
-            ["Col I",  "NET PROFIT — formula: eBay Price - Cost - eBay Fees - Shipping.", "", ""],
-            ["Col J",  "MARGIN — formula: Net Profit / eBay Price. Target >= 10%.", "", ""],
-            ["Col N",  "COMP SCORE — active listings / 90d sold. See scale above.", "", ""],
-            ["Col T",  "RESEARCH NOTES — first line: [Tier | Score | Sugg price | margin | Costco URL].", "", ""],
-            ["Col V",  "SUGG. PRICE — agent's one-time recommended eBay price. Do not overwrite.", "", ""],
-            ["Col W",  "PURCH. LIMIT — Costco daily buy limit (e.g. 2/day). Caps how many you can list.", "", ""],
-            ["Col Q",  "eBay LISTING — paste your live eBay URL here to activate monitoring.", "", ""],
-            ["Col R",  "COSTCO URL — direct product link (also shown in Col T notes first line).", "", ""],
-            [""],
-            ["VS CODE TASKS  (Ctrl+Shift+P > Tasks: Run Task)"],
-            ["WAT: Check Status",                        "Quick snapshot: last runs, product counts, spot prices, next scheduled run.", "", ""],
-            ["WAT: Run Discovery",                       "Scrape Costco for new products → adds as PENDING. Runs automatically at 7 AM.", "", ""],
-            ["WAT: Run Research",                        "Score all PENDING rows (eBay comps + Claude). Runs automatically at 10 AM.", "", ""],
-            ["WAT: Research — Re-score Only",            "Same as Research but skips Costco scraping. ~2 min vs 10 min. Use when you add rows manually.", "", ""],
-            ["WAT: Run Daily Sweep",                     "APPROVED→READY check + PAUSED stock/margin recovery. Runs automatically at 9 AM.", "", ""],
-            ["WAT: Run Rotation Digest",                 "Score all WATCH products against each other, flag underperformers. Runs Fridays automatically.", "", ""],
-            ["WAT: Run Active Monitor",                  "LOCAL ONLY — checks stock/price for ACTIVE listings. Needs your Chrome session open.", "", ""],
-            ["WAT: Setup Sheet",                         "Re-apply dashboard formatting if sheet looks wrong. Safe to re-run anytime.", "", ""],
-            ["WAT: Export eBay CSV",                     "Generate upload CSV for all READY rows. Upload at seller.ebay.com > Seller Hub > Listings.", "", ""],
-            [""],
-            ["WORKFLOW GUIDE"],
-            ["Step 1: Discover",  "Agent finds products → PENDING. Runs daily at 7 AM (GitHub Actions).", "", ""],
-            ["Step 2: Research",  "Agent scores PENDING → Tier 1 (email + PENDING) or Tier 2 (WATCH). Runs 10 AM.", "", ""],
-            ["Step 3: Approve",   "YOU change PENDING → APPROVED in col A. Agent generates copy + verifies stock.", "", ""],
-            ["Step 4: List",      "Agent sets APPROVED → READY. Run Export eBay CSV, upload to Seller Hub.", "", ""],
-            ["Step 5: Monitor",   "Paste eBay URL in col Q → auto-set to ACTIVE. Active Monitor checks 3x/day locally.", "", ""],
-        ]},
+        body={"values": rows},
     ).execute()
 
-    # Format
+    # ── Formatting ───────────────────────────────────────────────────────────────
+    total_rows = len(rows)
     requests = [
-        # Title
-        {"repeatCell": {
-            "range": {"sheetId": legend_id, "startRowIndex": 0, "endRowIndex": 1,
-                       "startColumnIndex": 0, "endColumnIndex": 4},
-            "cell": {"userEnteredFormat": {
-                "backgroundColor": TITLE_BG,
-                "textFormat": {"foregroundColor": HDR_FG, "bold": True, "fontSize": 13},
-            }}, "fields": "userEnteredFormat",
+        # Freeze row 1 (title)
+        {"updateSheetProperties": {
+            "properties": {"sheetId": legend_id, "gridProperties": {"frozenRowCount": 1}},
+            "fields": "gridProperties.frozenRowCount",
         }},
-        # Header row of legend table (row 3, idx 2)
+        # Base style for all content rows: wrap text, font 10, top-align
         {"repeatCell": {
-            "range": {"sheetId": legend_id, "startRowIndex": 2, "endRowIndex": 3,
-                       "startColumnIndex": 0, "endColumnIndex": 4},
-            "cell": {"userEnteredFormat": {
-                "backgroundColor": HDR_BG,
-                "textFormat": {"foregroundColor": HDR_FG, "bold": True, "fontSize": 10},
-                "horizontalAlignment": "LEFT",
-            }}, "fields": "userEnteredFormat",
-        }},
-        # Wrap text for readability
-        {"repeatCell": {
-            "range": {"sheetId": legend_id, "startRowIndex": 3, "endRowIndex": 30,
+            "range": {"sheetId": legend_id, "startRowIndex": 1, "endRowIndex": total_rows + 5,
                        "startColumnIndex": 0, "endColumnIndex": 4},
             "cell": {"userEnteredFormat": {
                 "wrapStrategy": "WRAP",
                 "verticalAlignment": "TOP",
                 "textFormat": {"fontSize": 10},
-            }}, "fields": "userEnteredFormat",
+                "padding": {"top": 5, "bottom": 5, "left": 8, "right": 4},
+            }},
+            "fields": "userEnteredFormat",
         }},
-        # Column widths
+        # Column widths: label | description | detail | tag
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-            "properties": {"pixelSize": 110}, "fields": "pixelSize",
+            "properties": {"pixelSize": 140}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-            "properties": {"pixelSize": 380}, "fields": "pixelSize",
+            "properties": {"pixelSize": 520}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-            "properties": {"pixelSize": 320}, "fields": "pixelSize",
+            "properties": {"pixelSize": 280}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 3, "endIndex": 4},
-            "properties": {"pixelSize": 380}, "fields": "pixelSize",
-        }},
-        # Row colors for status rows (rows 4-9 = idx 3-8)
-        {"updateSheetProperties": {
-            "properties": {"sheetId": legend_id, "gridProperties": {"frozenRowCount": 3}},
-            "fields": "gridProperties.frozenRowCount",
+            "properties": {"pixelSize": 80}, "fields": "pixelSize",
         }},
     ]
-    # Color-code each status row to match Product Tracker
-    for i, status in enumerate([
-        "PENDING", "APPROVED", "READY", "ACTIVE", "WATCH",
-        "PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL",
-    ]):
-        row_idx = 3 + i  # rows 4-9 (0-indexed 3-8)
+
+    # Section dividers: dark navy bg + white bold text spanning all 4 cols
+    for row_idx in divider_rows:
+        is_title = (row_idx == 0)
+        requests.append({"repeatCell": {
+            "range": {"sheetId": legend_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
+                       "startColumnIndex": 0, "endColumnIndex": 4},
+            "cell": {"userEnteredFormat": {
+                "backgroundColor": TITLE_BG if is_title else HDR_BG,
+                "textFormat": {
+                    "foregroundColor": HDR_FG, "bold": True,
+                    "fontSize": 13 if is_title else 10,
+                },
+                "verticalAlignment": "MIDDLE",
+                "padding": {"top": 6, "bottom": 6, "left": 10, "right": 4},
+            }},
+            "fields": "userEnteredFormat",
+        }})
+        # Row height: taller for dividers
+        requests.append({"updateDimensionProperties": {
+            "range": {"sheetId": legend_id, "dimension": "ROWS",
+                       "startIndex": row_idx, "endIndex": row_idx + 1},
+            "properties": {"pixelSize": 32 if is_title else 26},
+            "fields": "pixelSize",
+        }})
+
+    # Column header rows (STATUS | MEANING | …): medium navy, bold
+    for row_idx in col_hdr_rows:
+        requests.append({"repeatCell": {
+            "range": {"sheetId": legend_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
+                       "startColumnIndex": 0, "endColumnIndex": 4},
+            "cell": {"userEnteredFormat": {
+                "backgroundColor": STATS_BG,
+                "textFormat": {"foregroundColor": HDR_FG, "bold": True, "fontSize": 9},
+                "horizontalAlignment": "LEFT",
+            }},
+            "fields": "userEnteredFormat",
+        }})
+
+    # Status rows: color-code the label cell (col A) to match Product Tracker
+    for row_idx, status_name in status_rows:
+        color = STATUS_COLORS.get(status_name, _rgb("FFFFFF"))
         requests.append({"repeatCell": {
             "range": {"sheetId": legend_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
                        "startColumnIndex": 0, "endColumnIndex": 1},
             "cell": {"userEnteredFormat": {
-                "backgroundColor": STATUS_COLORS[status],
+                "backgroundColor": color,
                 "textFormat": {"bold": True, "fontSize": 10},
                 "horizontalAlignment": "CENTER",
-            }}, "fields": "userEnteredFormat",
+                "verticalAlignment": "MIDDLE",
+            }},
+            "fields": "userEnteredFormat",
         }})
+
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id, body={"requests": requests}
     ).execute()
