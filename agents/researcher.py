@@ -56,6 +56,15 @@ from skills.research_watches import run_pass3 as watches_pass3
 from skills.scoring import score_dimension
 
 
+def col_to_idx(col_letter: str) -> int:
+    """Convert column letter to 0-based index: 'A'→0, 'B'→1, ..., 'Z'→25, 'AA'→26."""
+    col_letter = col_letter.upper()
+    result = 0
+    for ch in col_letter:
+        result = result * 26 + (ord(ch) - ord('A') + 1)
+    return result - 1
+
+
 # ── Config ────────────────────────────────────────────────────────
 
 def _load_config():
@@ -571,6 +580,23 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
 
             # Suggested listing price — fill col H when not already set
             suggested_price = _suggest_ebay_price(costco_cost, ebay_data, fee_rate)
+
+            # Precious metals fallback: when eBay comps return no usable median
+            # (common for $3k+ gold bars), estimate from melt value × target premium.
+            # Costco gold bars typically sell 3–8% above spot on eBay; 5% is conservative.
+            if not suggested_price and spot_data and spot_data.get("melt_value"):
+                target_premium = 0.05
+                fallback = spot_data["melt_value"] * (1 + target_premium)
+                try:
+                    cost_f = float(str(costco_cost).replace("$", "").replace(",", ""))
+                    min_price = cost_f / (1 - fee_rate - 0.10)
+                    if fallback >= min_price:
+                        suggested_price = round(fallback) - 0.01
+                        ebay_data["price_basis"]    = "melt×1.05"
+                        ebay_data["query_strategy"] = "spot-fallback"
+                except (ValueError, TypeError):
+                    pass
+
             if suggested_price and not ebay_price:
                 ebay_price = suggested_price
 
@@ -657,7 +683,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             weighted_score = result["weighted_score"]
             logger.info(f"  → Tier {tier} | Score {weighted_score} | {stock_status}")
 
-            # Build sheet notes summary — Tier line + community breakdown
+            # Build sheet notes summary — summary header + Tier line + community breakdown
             top_lens = max(result["lens_scores"], key=result["lens_scores"].get)
             demand_note = claude_result.get("demand_note", "")
             comm_summary = community_data.get("summary", "")
@@ -671,7 +697,21 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 strategy  = ebay_data.get("query_strategy", "title")
                 price_note = f" | Suggested eBay: ${suggested_price:.2f} (basis: {basis}, search: {strategy})"
 
+            # ── Summary header line (always the first thing Jordan sees in Col T) ──
+            # Shows tier, score, suggested price, estimated margin, and clickable Costco URL.
+            margin_str = ""
+            if suggested_price and costco_cost:
+                try:
+                    cost_f = float(str(costco_cost).replace("$", "").replace(",", ""))
+                    net_f  = suggested_price - cost_f - suggested_price * fee_rate
+                    margin_str = f" | ~{net_f / suggested_price * 100:.1f}% margin"
+                except (ValueError, TypeError):
+                    pass
+            price_summary = f"Sugg: ${suggested_price:,.2f}{margin_str} | " if suggested_price else ""
+            summary_line = f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}]"
+
             notes = (
+                f"{summary_line}\n"
                 f"Tier {tier} (score {weighted_score}) | {result['recommendation']} | "
                 f"Strongest lens: {top_lens.replace('_', ' ').title()} | {demand_note}"
                 f"{price_note}\n"
