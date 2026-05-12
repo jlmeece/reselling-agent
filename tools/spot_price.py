@@ -5,11 +5,17 @@ Ticker symbols: GC=F (gold futures), SI=F (silver futures), PL=F (platinum futur
 
 No API key required. Cached per run to avoid repeat calls.
 Returns prices in USD per troy ounce.
+
+Also provides check_spot_movement() — call once per daily sweep to alert when
+gold/silver moves past a threshold since the previous run. A 1.5%+ move on
+gold (~$45+ on a $3,000 bar) meaningfully changes margin calculations.
 """
 
+import os
 import time
 import json
 import urllib.request
+from datetime import date
 from loguru import logger
 
 # Troy oz conversions
@@ -95,6 +101,120 @@ def spot_premium_pct(sale_price: float, weight_oz: float,
     if mv is None or mv <= 0:
         return None
     return round((sale_price - mv) / mv * 100, 1)
+
+
+def check_spot_movement(
+    gold_threshold_pct: float = 1.5,
+    silver_threshold_pct: float = 2.0,
+) -> dict | None:
+    """
+    Compare today's gold/silver prices against the last recorded prices.
+    Returns an alert dict if any metal moved past its threshold, else None.
+
+    Alert dict: {
+        "metals": [{"metal": "gold", "prev": 3100.0, "curr": 3162.5, "pct": 2.02}],
+        "summary": "Gold up 2.0% ($62.50/oz) since last check. ...",
+        "urgent": True,   # True if move >= 2x threshold
+    }
+
+    Saves current prices to data/spot_history.json after each call.
+    """
+    history_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "data", "spot_history.json"
+    )
+
+    # Load previous prices
+    prev = {}
+    if os.path.exists(history_path):
+        try:
+            with open(history_path) as f:
+                prev = json.load(f)
+        except Exception:
+            prev = {}
+
+    metals_to_check = {
+        "gold":   (get_spot_price("gold"),   gold_threshold_pct),
+        "silver": (get_spot_price("silver"), silver_threshold_pct),
+    }
+
+    alerts = []
+    for metal, (curr_price, threshold) in metals_to_check.items():
+        if curr_price is None:
+            continue
+        prev_entry = prev.get(metal, {})
+        prev_price = prev_entry.get("price")
+        prev_date  = prev_entry.get("date", "")
+
+        if prev_price and prev_price > 0:
+            pct_change = (curr_price - prev_price) / prev_price * 100
+            abs_change = curr_price - prev_price
+            if abs(pct_change) >= threshold:
+                direction = "UP" if pct_change > 0 else "DOWN"
+                alerts.append({
+                    "metal":     metal,
+                    "prev":      prev_price,
+                    "curr":      curr_price,
+                    "pct":       round(pct_change, 2),
+                    "abs":       round(abs_change, 2),
+                    "direction": direction,
+                    "prev_date": prev_date,
+                    "threshold": threshold,
+                })
+
+    # Save current prices
+    today_str = date.today().isoformat()
+    new_history = {}
+    for metal, (curr_price, _) in metals_to_check.items():
+        if curr_price:
+            new_history[metal] = {"price": curr_price, "date": today_str}
+    if new_history:
+        try:
+            with open(history_path, "w") as f:
+                json.dump(new_history, f, indent=2)
+        except Exception as e:
+            logger.warning(f"spot_history save failed: {e}")
+
+    if not alerts:
+        return None
+
+    # Build summary message
+    lines = []
+    for a in alerts:
+        sign  = "+" if a["pct"] > 0 else ""
+        lines.append(
+            f"{a['metal'].title()} {a['direction']} {sign}{a['pct']:.1f}% "
+            f"(${abs(a['abs']):.2f}/oz) since {a['prev_date']} "
+            f"[${a['prev']:,.2f} → ${a['curr']:,.2f}]"
+        )
+
+    # Implications for inventory
+    implications = []
+    gold_alert = next((a for a in alerts if a["metal"] == "gold"), None)
+    if gold_alert:
+        if gold_alert["pct"] < 0:
+            implications.append(
+                "Gold dropped — WATCH products that were borderline may now clear the margin threshold. "
+                "Consider triggering a Re-score Only research run."
+            )
+        else:
+            implications.append(
+                "Gold rose — ACTIVE listing margins may have tightened if Costco raised prices. "
+                "Run Active Monitor to verify margin on any live listings."
+            )
+
+    summary = "\n".join(lines)
+    if implications:
+        summary += "\n\nAction suggested:\n" + "\n".join(implications)
+
+    urgent = any(abs(a["pct"]) >= a["threshold"] * 2 for a in alerts)
+
+    logger.info(f"  Spot movement alert: {summary[:120]}")
+    return {
+        "metals":  alerts,
+        "summary": summary,
+        "urgent":  urgent,
+    }
 
 
 def parse_gold_weight(title: str) -> tuple[float | None, int | None]:

@@ -853,6 +853,12 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     _save_tier2_watchlist(tier2_watchlist)
 
     # ── Step 5: Tier 1 digest email ───────────────────────────────
+    # Track data quality issues across the run (spot-fallback pricing used)
+    spot_fallback_count = sum(
+        1 for item in tier1_results + new_tier2
+        if "melt" in str(item.get("reason", ""))
+    )
+
     if tier1_results:
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         subject  = (
@@ -861,7 +867,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
         )
         lines = [
             f"{len(tier1_results)} product(s) scored Tier 1 from today's research run.",
-            "Set AG = APPROVED in your sheet to list.\n",
+            "Set status = APPROVED in your sheet to greenlight.\n",
         ]
         for i, item in enumerate(tier1_results, 1):
             lines.append(f"{i}. {item['title']} — Score: {item['score']}")
@@ -874,8 +880,39 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             lines.append(f"   Sheet row: {item['row']}")
             lines.append(f"   Costco URL: {item['costco_url']}\n")
         lines.append(f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+
+        # Data quality notice — surfaces when eBay comp data was sparse
+        if spot_fallback_count > 0:
+            lines.append(
+                f"\n--- DATA QUALITY NOTE ---\n"
+                f"{spot_fallback_count} product(s) used melt-value pricing this run because "
+                f"eBay sold comps returned no usable median price.\n"
+                f"Suggested prices for those products are estimates (spot x 1.05), not market-validated.\n"
+                f"Upgrade path: Terapeak (eBay Seller Hub > Research) provides 12 months of "
+                f"historical sales data and would improve pricing accuracy for precious metals. "
+                f"Integration is on the Phase 3 roadmap."
+            )
+
         send_alert(subject, "\n".join(lines), urgent=False)
         logger.info(f"Tier 1 digest sent — {len(tier1_results)} product(s).")
+
+    # ── Step 5b: Run summary (even with no Tier 1s) ───────────────
+    # Send a brief summary so Jordan knows what ran even on quiet days
+    elif to_research:
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        subject  = f"[WAT Research] {len(to_research)} scored — 0 Tier 1 — {date.today().isoformat()}"
+        lines = [
+            f"Research run complete. No Tier 1 products found today.",
+            f"Scored: {len(to_research)} | Tier 2 (WATCH): {len(new_tier2)} | Tier 3 (PAUSED): {len(to_research) - len(tier1_results) - len(new_tier2)}",
+        ]
+        if spot_fallback_count > 0:
+            lines.append(
+                f"\nNote: {spot_fallback_count} product(s) used melt-value pricing (eBay comps sparse). "
+                f"Terapeak integration would improve this — on Phase 3 roadmap."
+            )
+        lines.append(f"\nhttps://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+        send_alert(subject, "\n".join(lines), urgent=False)
+        logger.info("Run summary sent (no Tier 1 results).")
 
     logger.info(
         f"Research run complete. "

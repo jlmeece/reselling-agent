@@ -35,6 +35,7 @@ from tools.status_logic import (
 from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest, send_run_summary
 from tools.run_logger import log_run_start, log_run_end
+from tools.spot_price import check_spot_movement
 
 
 # ── Config loaders ────────────────────────────────────────────────────────────
@@ -245,6 +246,29 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
 
     business   = config["business"]
     categories = config["categories"]
+
+    # ── Spot price movement check ─────────────────────────────────────────────
+    # Fires an alert if gold/silver moved > threshold since the last daily run.
+    # 1.5% on gold = ~$45-60/oz — enough to shift margin by 1-2 points.
+    try:
+        spot_alert = check_spot_movement(gold_threshold_pct=1.5, silver_threshold_pct=2.0)
+        if spot_alert:
+            from tools.alert_sender import send_alert
+            urgency = spot_alert["urgent"]
+            subject = (
+                "[WAT] Spot price moved significantly — review margins"
+                if urgency else
+                "[WAT] Spot price update — check WATCH items"
+            )
+            body = (
+                "Metal spot prices have moved past the alert threshold since the last check.\n\n"
+                + spot_alert["summary"]
+                + "\n\n---\nThis alert fires when gold moves >1.5% or silver >2.0% in a day."
+            )
+            send_alert(subject, body, urgent=urgency)
+            logger.info(f"  Spot movement alert sent (urgent={urgency})")
+    except Exception as e:
+        logger.warning(f"  Spot movement check failed (non-fatal): {e}")
 
     all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
