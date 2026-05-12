@@ -518,20 +518,86 @@ def run_rotation(config, COL, service, sheet_name, start_row, end_row):
         logger.info("Rotation check complete — no categories at capacity or all scores healthy.")
 
 
+# ── Mode: REFRESH-NOTES (one-shot) ───────────────────────────────────────────
+
+def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
+    """
+    Retroactively rewrites Col T first-line summary for rows that have notes but
+    are missing the [T header format. Safe to re-run — skips already-formatted rows.
+
+    No eBay calls, no Claude calls. Reads from existing sheet data only.
+    Typical runtime: <30 seconds.
+    """
+    business  = config["business"]
+    fee_rate  = business.get("default_fee_rate", 0.1325)
+
+    range_name = f"'{sheet_name}'!A{start_row}:AR{end_row}"
+    rows = read_sheet(service, range_name)
+    logger.info(f"refresh-notes: read {len(rows)} rows, scanning for old-format notes...")
+
+    updated_count = 0
+    for i, row in enumerate(rows):
+        sheet_row = start_row + i
+
+        def _get(col_letter):
+            idx = col_to_idx(col_letter)
+            return str(row[idx]).strip() if idx < len(row) else ""
+
+        notes = _get(COL["notes"])
+        if not notes or notes.startswith("[T"):
+            continue   # empty or already has new format — skip
+
+        # Extract data from existing row
+        score_str  = _get(COL["demand_score"])
+        costco_url = _get(COL["costco_url"])
+        sugg_str   = _get(COL["suggested_price"])
+        cost_str   = _get(COL["costco_cost"])
+
+        # Derive tier from score
+        tier = "?"
+        try:
+            sc   = float(score_str)
+            tier = "1" if sc >= 7.0 else ("2" if sc >= 4.0 else "3")
+        except (ValueError, TypeError):
+            pass
+
+        # Build price+margin summary
+        price_summary = ""
+        if sugg_str:
+            try:
+                sp     = float(sugg_str.replace("$", "").replace(",", ""))
+                cost_f = float(cost_str.replace("$", "").replace(",", ""))
+                net_f  = sp - cost_f - sp * fee_rate
+                price_summary = f"Sugg: ${sp:,.2f} | ~{net_f / sp * 100:.1f}% margin | "
+            except (ValueError, TypeError):
+                price_summary = f"Sugg: {sugg_str} | "
+
+        url_part = f"Costco: {costco_url}" if costco_url else "Costco: (see Col R)"
+        summary_line = f"[T{tier} | Score {score_str} | {price_summary}{url_part}]"
+        new_notes    = summary_line + "\n" + notes
+
+        write_row_partial(service, sheet_name, sheet_row, [(COL["notes"], new_notes)])
+        updated_count += 1
+        logger.info(f"  Row {sheet_row}: header added ({score_str} / {tier})")
+
+    logger.info(f"refresh-notes: updated {updated_count} rows.")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
-        choices=["active", "daily", "research", "discovery", "rotation"],
+        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes"],
         default="active",
         help=(
-            "active:    Check ACTIVE listings for stock/price changes (3x/day)\n"
-            "daily:     Verify APPROVED stock, promote to READY, check PAUSED_OOS (1x/day)\n"
-            "research:  Score PENDING products via researcher.py (1x/day)\n"
-            "discovery: Find new Costco products, add as PENDING (1x/day)\n"
-            "rotation:  Score all active products, flag underperformers, send weekly digest (1x/week)"
+            "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
+            "daily:          Verify APPROVED stock, promote to READY, check PAUSED_OOS (1x/day)\n"
+            "research:       Score PENDING products via researcher.py (1x/day)\n"
+            "discovery:      Find new Costco products, add as PENDING (1x/day)\n"
+            "rotation:       Score all active products, flag underperformers, send weekly digest (1x/week)\n"
+            "refresh-notes:  Retroactively add [T header to existing Col T notes (one-shot)"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -566,6 +632,8 @@ def main():
                           category=args.category)
         elif args.mode == "rotation":
             run_rotation(config, COL, service, sheet_name, start_row, end_row)
+        elif args.mode == "refresh-notes":
+            run_refresh_notes(config, COL, service, sheet_name, start_row, end_row)
     except Exception as e:
         _run_results["status"] = "error"
         _run_results["errors"] = traceback.format_exc()[-600:]
