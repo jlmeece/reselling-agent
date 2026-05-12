@@ -18,9 +18,12 @@ Fulfillment risk = "low" — watches ship small and insured easily.
 import sys
 import os
 
-_SHARED_SKILLS = r"C:\Users\jorda\.claude\skills"
-if _SHARED_SKILLS not in sys.path:
-    sys.path.insert(0, _SHARED_SKILLS)
+# Try global skills dir (Windows local dev), fall back to bundled copy in skills/ (CI/Ubuntu)
+_GLOBAL_SKILLS = r"C:\Users\jorda\.claude\skills"
+_LOCAL_SKILLS  = os.path.dirname(os.path.abspath(__file__))
+for _p in [_GLOBAL_SKILLS, _LOCAL_SKILLS]:
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from base_research import ResearchBase
 from base_scoring import LENS_WEIGHTS
