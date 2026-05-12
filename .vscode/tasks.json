@@ -1,21 +1,20 @@
 {
   "version": "2.0.0",
   "tasks": [
+
+    // ── Daily workflow ─────────────────────────────────────────────────────────
     {
       "label": "WAT: Check Status",
+      "detail": "Snapshot: last runs, product counts by status, spot prices, next scheduled run",
       "type": "shell",
       "command": "python tools/status.py",
       "group": "none",
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": true,
-        "focus": true
-      },
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true, "focus": true },
       "problemMatcher": []
     },
     {
       "label": "WAT: Run Discovery (Precious Metals)",
+      "detail": "Scrape Costco for new Precious Metals products → add as PENDING in sheet",
       "type": "shell",
       "command": "python agents/scheduler.py --mode discovery --category \"Precious Metals\"",
       "group": "none",
@@ -24,6 +23,7 @@
     },
     {
       "label": "WAT: Run Research (Precious Metals)",
+      "detail": "Score all PENDING rows: eBay comps + community signals + Claude → Tier 1/2/3",
       "type": "shell",
       "command": "python agents/scheduler.py --mode research --category \"Precious Metals\"",
       "group": "none",
@@ -31,20 +31,63 @@
       "problemMatcher": []
     },
     {
-      "label": "WAT: Run Active Monitor (LOCAL ONLY — needs Chrome session)",
+      "label": "WAT: Research — Re-score Only (no Costco scraping)",
+      "detail": "Skip discovery, re-score existing PENDING/WATCH rows only. Faster (~2 min vs 10 min)",
       "type": "shell",
-      "command": "python agents/scheduler.py --mode active",
+      "command": "python agents/scheduler.py --mode research --category \"Precious Metals\" --skip-discovery",
       "group": "none",
       "presentation": { "reveal": "always", "panel": "shared", "clear": true },
       "problemMatcher": []
     },
     {
       "label": "WAT: Run Daily Sweep",
+      "detail": "APPROVED→READY check, PAUSED_OOS/PAUSED_MARGIN stock/margin recovery (cloud-safe)",
       "type": "shell",
       "command": "python agents/scheduler.py --mode daily",
       "group": "none",
       "presentation": { "reveal": "always", "panel": "shared", "clear": true },
       "problemMatcher": []
+    },
+    {
+      "label": "WAT: Run Rotation Digest",
+      "detail": "Score all WATCH products against each other, flag underperformers. Run on Fridays.",
+      "type": "shell",
+      "command": "python agents/scheduler.py --mode rotation",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+
+    // ── Session-dependent (requires your Chrome session) ───────────────────────
+    {
+      "label": "WAT: Run Active Monitor (LOCAL ONLY — needs Chrome session)",
+      "detail": "Check stock/price/margin for all ACTIVE listings. Needs Costco Chrome session open.",
+      "type": "shell",
+      "command": "python agents/scheduler.py --mode active",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+
+    // ── Sheet & tooling ────────────────────────────────────────────────────────
+    {
+      "label": "WAT: Setup Sheet (refresh formatting)",
+      "detail": "Re-apply dashboard formatting, headers, conditional colors, Legend tab. Safe to re-run.",
+      "type": "shell",
+      "command": "python agents/setup_sheet.py",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "WAT: Export eBay CSV",
+      "detail": "Generate eBay Seller Hub upload CSV for all READY rows. Upload at seller.ebay.com.",
+      "type": "shell",
+      "command": "python tools/ebay_export.py",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
     }
+
   ]
 }
