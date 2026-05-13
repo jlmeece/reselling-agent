@@ -65,7 +65,11 @@ def _via_google_cse(query: str) -> list[dict]:
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        logger.debug(f"  web_scout CSE failed: {e}")
+        err = str(e)
+        if "403" in err or "quota" in err.lower():
+            logger.warning("  web_scout: Google CSE quota exhausted (100/day) — falling back to DuckDuckGo")
+        else:
+            logger.debug(f"  web_scout CSE failed: {e}")
         return []
     return data.get("items", []) or []
 
@@ -83,7 +87,7 @@ def _via_duckduckgo(query: str) -> list[dict]:
         }
         url = DDG_HTML_URL.format(query=urllib.parse.quote(query))
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             html = resp.read().decode("utf-8", errors="ignore")
     except Exception as e:
         logger.debug(f"  web_scout DDG fetch failed: {e}")
