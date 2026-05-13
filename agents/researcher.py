@@ -156,7 +156,7 @@ def _add_new_products_batch(service, sheet_name, products, COL):
             COL["costco_cost"]:  product.get("price") or "",
             COL["status"]:       "PENDING",
             COL["last_checked"]: now,
-            COL["notes"]:        "Discovered by agent — awaiting research",
+            COL["tier_summary"]: "Discovered — awaiting research",
             COL["comp_saturation"]: "=IFERROR(M{ROW}/MAX(K{ROW},1),\"\")",
         })
     append_rows_batch(service, sheet_name, col_value_dicts)
@@ -404,7 +404,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     start_row  = business["data_start_row"]
     end_row    = business["data_end_row"]
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
 
     # ── Step 1: Discover new products ────────────────────────────
     if skip_discovery:
@@ -428,7 +428,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             return
 
         # Reload sheet data now that new rows are added
-        all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+        all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
 
     # ── Step 2: Identify rows needing research ────────────────────
     tier2_watchlist = _load_tier2_watchlist()
@@ -610,7 +610,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 write_row_partial(service, sheet_name, sheet_row, [
                     (COL["stock_status"],  "WAREHOUSE ONLY"),
                     (COL["last_checked"],  datetime.now().strftime("%Y-%m-%d %H:%M")),
-                    (COL["notes"],         "Warehouse-only item — not available for online dropship"),
+                    (COL["tier_summary"],  "Warehouse-only — not available for online dropship"),
                 ])
                 continue
 
@@ -732,7 +732,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             except Exception as e:
                 logger.error(f"  Claude research failed: {e}")
                 write_row_partial(service, sheet_name, sheet_row, [
-                    (COL["notes"], f"Research failed: {e}"),
+                    (COL["tier_summary"], f"Research failed: {e}"),
                 ])
                 continue
 
@@ -802,36 +802,27 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 strategy  = ebay_data.get("query_strategy", "title")
                 price_note = f" | Suggested eBay: ${suggested_price:.2f} (basis: {basis}, search: {strategy})"
 
-            # ── Summary header line (always the first thing Jordan sees in Col T) ──
-            # Shows tier, score, suggested price, estimated margin, and clickable Costco URL.
+            # ── Col T: short one-liner (always first thing Jordan sees) ──────────────
             margin_str = ""
             if suggested_price and costco_cost:
                 try:
                     cost_f = float(str(costco_cost).replace("$", "").replace(",", ""))
                     net_f  = suggested_price - cost_f - suggested_price * fee_rate
-                    margin_str = f" | ~{net_f / suggested_price * 100:.1f}% margin"
+                    margin_str = f" | ~{net_f / suggested_price * 100:.1f}%"
                 except (ValueError, TypeError):
                     pass
             price_summary = f"Sugg: ${suggested_price:,.2f}{margin_str} | " if suggested_price else ""
 
-            # Sale / shipping flags for the header
-            sale_tag = ""
+            # Sale / shipping flags — boost score for on-sale items
             if on_sale:
-                sale_tag = f"SALE -${sale_savings:.0f}" if sale_savings else "SALE"
-                if sale_expires:
-                    sale_tag += f" ends {sale_expires}"
-                sale_tag += " | "
-                # Boost weighted score by 0.5 for time-limited sale items (flip window)
                 weighted_score = round(min(10.0, weighted_score + 0.5), 2)
-            ship_tag = "FREE SHIP | " if free_shipping else ""
 
-            summary_line = (
-                f"[T{tier} | Score {weighted_score} | "
-                f"{sale_tag}{ship_tag}{price_summary}Costco: {costco_url}]"
+            tier_summary_line = (
+                f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}]"
             )
 
-            notes = (
-                f"{summary_line}\n"
+            # ── Col AU: full research narrative (hidden) ───────────────────────────
+            full_notes = (
                 f"Tier {tier} (score {weighted_score}) | {result['recommendation']} | "
                 f"Strongest lens: {top_lens.replace('_', ' ').title()} | {demand_note}"
                 f"{price_note}\n"
@@ -839,10 +830,10 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 f"Sources: {comm_breakdown}"
             )
             if intent_seen:
-                notes += f"\nIntent phrases: " + " | ".join(intent_seen[:3])
+                full_notes += "\nIntent phrases: " + " | ".join(intent_seen[:3])
             if spot_data and spot_data.get("melt_value"):
                 prem = f"{spot_data['premium_pct']:+.1f}%" if spot_data.get("premium_pct") is not None else "unknown"
-                notes += (
+                full_notes += (
                     f"\n{spot_data.get('metal', 'gold').title()} spot: ${spot_data['spot_price']:.2f}/oz | "
                     f"Weight: {spot_data['weight_oz']:.4f} oz | "
                     f"Melt: ${spot_data['melt_value']:.2f} | "
@@ -850,27 +841,38 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 )
             if on_sale and sale_savings:
                 exp_str = f", expires {sale_expires}" if sale_expires else ""
-                notes += f"\n🔥 ON SALE: ${sale_savings:.0f} off{exp_str} — time-limited flip opportunity (+0.5 score boost)"
+                full_notes += f"\n🔥 ON SALE: ${sale_savings:.0f} off{exp_str} — time-limited flip opportunity (+0.5 score boost)"
             if free_shipping:
-                notes += "\n📦 FREE SHIPPING from Costco — higher margin potential vs. paid-ship comps"
+                full_notes += "\n📦 FREE SHIPPING from Costco — higher margin potential vs. paid-ship comps"
             if purchase_limit:
-                notes += f"\nPurchase limit: {purchase_limit}/day — list max {purchase_limit} units on eBay"
+                full_notes += f"\nPurchase limit: {purchase_limit}/day — list max {purchase_limit} units on eBay"
             if cart_est:
                 ship_str = f"${cart_est['shipping']:.2f}" if cart_est.get("shipping") is not None else "?"
                 tax_str  = f"${cart_est['tax']:.2f}" if cart_est.get("tax") is not None else "?"
-                notes += f"\nCostco cart est: ship={ship_str} tax={tax_str}"
+                full_notes += f"\nCostco cart est: ship={ship_str} tax={tax_str}"
                 if cart_est.get("delivery_window"):
-                    notes += f" | delivery: {cart_est['delivery_window']}"
+                    full_notes += f" | delivery: {cart_est['delivery_window']}"
+
+            # ── Col X: sale badge; Col Y: free ship badge ──────────────────────────
+            sale_info_val = ""
+            if on_sale:
+                sale_info_val = f"🔥 -${sale_savings:.0f}" if sale_savings else "🔥 SALE"
+                if sale_expires:
+                    sale_info_val += f" ends {sale_expires}"
+            free_ship_val = "✓ FREE" if free_shipping else ""
 
             # 3f. Write to sheet
             from datetime import timedelta
             recheck_date_str = (date.today() + timedelta(days=30)).isoformat()
             updates = [
                 (COL["demand_score"],  weighted_score),
-                (COL["stock_status"],  stock_status),
+                (COL["stock_status"],  stock_status),       # col F — stock only, no badges
                 (COL["last_checked"],  datetime.now().strftime("%Y-%m-%d %H:%M")),
-                (COL["notes"],         notes),
-                (COL["fee_rate"],      fee_rate),   # col Y — needed for =H*Y (eBay fees formula)
+                (COL["tier_summary"],  tier_summary_line),  # col T — short one-liner
+                (COL["full_notes"],    full_notes),          # col AU — full narrative (hidden)
+                (COL["sale_info"],     sale_info_val),       # col X — sale badge
+                (COL["free_shipping"], free_ship_val),       # col Y — free ship badge
+                (COL["fee_rate"],      fee_rate),            # col AA — needed for =H*AA (eBay fees formula)
             ]
             if ebay_data.get("sold_90d") is not None:
                 updates.append((COL["sold_90d"],   ebay_data["sold_90d"]))
@@ -894,12 +896,11 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             elif tier == 3:
                 updates.append((COL["status"], "PAUSED_DEMAND"))
                 updates.append((COL["re_eval_date"], recheck_date_str))
-            # Cart estimate — ship_cost overwrites col X; tax overwrites formula in col Z
+            # Cart estimate — ship_cost → col AC; tax_est → col AE (formula column, overwrite OK here)
             if cart_est.get("shipping") is not None:
                 updates.append((COL["ship_cost"], cart_est["shipping"]))
             if cart_est.get("tax") is not None:
                 updates.append((COL["tax_est"], cart_est["tax"]))
-            # purchase_limit is captured in notes text; sheet col AO not yet provisioned
             # Clear re_eval_date when a PAUSED item gets re-researched
             if safe_get(row, 0) == "PAUSED":
                 updates.append((COL["re_eval_date"], recheck_date_str))
@@ -907,7 +908,8 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
 
             # 3g. Listing copy — generate immediately for Tier 1/2 so it's ready before
             # Jordan reads the email. Tier 3 skips (PAUSED, not worth the API spend).
-            if tier in (1, 2) and not safe_get(row, 28):  # col AC (index 28) = seo_title
+            seo_title_idx = col_to_idx(COL["seo_title"])
+            if tier in (1, 2) and not safe_get(row, seo_title_idx):
                 try:
                     copy_batch = [{
                         "title":         title,
@@ -1058,7 +1060,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     # Refresh Summary dashboard so Jordan sees live counts immediately after research
     try:
         from tools.sheet_formatter import refresh_summary_tab
-        fresh_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+        fresh_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
         refresh_summary_tab(service, sheet_name, all_data=fresh_data)
     except Exception as e:
         logger.warning(f"  Summary tab refresh failed (non-fatal): {e}")

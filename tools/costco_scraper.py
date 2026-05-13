@@ -705,17 +705,7 @@ def scrape_costco(url, page):
             result["title"] = h1.inner_text().strip()
 
         # Brand + model — best-effort, multiple fallbacks. Either may stay None.
-        # Decorate stock_status with sale / free-shipping badges
-        if result["on_sale"] or result["free_shipping"]:
-            badges = []
-            if result["on_sale"]:
-                exp = f" ends {result['sale_expires']}" if result["sale_expires"] else ""
-                badges.append(f"SALE{exp}")
-            if result["free_shipping"]:
-                badges.append("FREE SHIP")
-            base = result["stock_status"]
-            result["stock_status"] = " | ".join(badges + [base])
-
+        # sale_info and free_shipping are written to dedicated cols X/Y by researcher.py.
         result["brand"] = _extract_brand(page)
         result["model"] = _extract_model(page)
         if result["brand"] or result["model"]:

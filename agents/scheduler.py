@@ -78,7 +78,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
     business = config["business"]
     categories = config["categories"]
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     urgent_items = []
@@ -210,7 +210,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
             updates = [
                 (COL["stock_status"],  stock_status),
                 (COL["last_checked"],  run_time),
-                (COL["notes"],         notes),
+                (COL["tier_summary"],         notes),
                 (COL["image_urls"],    image_urls),
                 (COL["price_change"],  "YES — update listing" if price_changed else ""),
             ]
@@ -297,7 +297,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     except Exception as e:
         logger.warning(f"  Spot movement check failed (non-fatal): {e}")
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
     today    = date_type.today()
 
@@ -332,7 +332,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
             write_row_partial(service, sheet_name, sheet_row, [
                 (COL["status"],      "PENDING"),
                 (COL["re_eval_date"], ""),
-                (COL["notes"],       f"Re-eval date reached ({re_eval_raw}) — returned to PENDING for re-research"),
+                (COL["tier_summary"],       f"Re-eval date reached ({re_eval_raw}) — returned to PENDING for re-research"),
             ])
             re_eval_promoted.append({"title": title, "row": sheet_row})
             logger.info(f"  {status} -> PENDING (re_eval_date reached): {title[:50]}")
@@ -375,7 +375,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
 
             if status == "APPROVED":
                 if stock_status == "OUT OF STOCK":
-                    updates.append((COL["notes"], "Stock OOS — holding APPROVED until restocked"))
+                    updates.append((COL["tier_summary"], "Stock OOS — holding APPROVED until restocked"))
                     logger.info(f"  APPROVED held — OOS")
                 else:
                     if not seo_title:
@@ -387,11 +387,11 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                             "discount_code": business["discount_code"],
                         })
                         copy_row_map.append((sheet_row, title))
-                        updates.append((COL["notes"], "Stock OK — generating copy, will promote to READY"))
+                        updates.append((COL["tier_summary"], "Stock OK — generating copy, will promote to READY"))
                         logger.info(f"  Stock OK, copy queued")
                     else:
                         updates.append((COL["status"], "READY"))
-                        updates.append((COL["notes"], "Stock verified, copy ready — run ebay_export.py to list"))
+                        updates.append((COL["tier_summary"], "Stock verified, copy ready — run ebay_export.py to list"))
                         ready_items.append({"title": title, "row": sheet_row, "has_copy": True})
                         logger.info(f"  APPROVED -> READY")
 
@@ -399,7 +399,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                 _, reason_code, notes = determine_status(
                     status, stock_status, None, False, None,
                 )
-                updates.append((COL["notes"], notes))
+                updates.append((COL["tier_summary"], notes))
                 if reason_code == "restock":
                     updates.append((COL["status"], "WATCH"))
                     oos_recovered.append({"title": title, "row": sheet_row})
@@ -422,7 +422,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                     status, stock_status, margin, False, None,
                     min_margin=business["min_margin_threshold"],
                 )
-                updates.append((COL["notes"], notes))
+                updates.append((COL["tier_summary"], notes))
                 if reason_code == "margin_recovered":
                     updates.append((COL["status"], "WATCH"))
                     margin_recovered.append({"title": title, "row": sheet_row})
@@ -450,7 +450,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                         (COL["keywords"],     result.get("keywords", "")),
                         (COL["alt_text"],     result.get("alt_text", "")),
                         (COL["status"],       "READY"),
-                        (COL["notes"],        "Copy generated, stock OK — run ebay_export.py to list"),
+                        (COL["tier_summary"],        "Copy generated, stock OK — run ebay_export.py to list"),
                     ]
                     write_row_partial(service, sheet_name, row_num, copy_updates)
                     ready_items.append({"title": title, "row": row_num, "has_copy": True})
@@ -527,7 +527,7 @@ def run_rotation(config, COL, service, sheet_name, start_row, end_row):
     """
     from tools.rotation_engine import run_rotation_check, save_rotation_log
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
     run_date = datetime.now().strftime("%Y-%m-%d")
 
     logger.info("Running rotation check across all categories...")
@@ -558,7 +558,7 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
     business  = config["business"]
     fee_rate  = business.get("default_fee_rate", 0.1325)
 
-    range_name = f"'{sheet_name}'!A{start_row}:AR{end_row}"
+    range_name = f"'{sheet_name}'!A{start_row}:AU{end_row}"
     rows = read_sheet(service, range_name)
     logger.info(f"refresh-notes: read {len(rows)} rows, scanning for old-format notes...")
 
@@ -570,8 +570,8 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
             idx = col_to_idx(col_letter)
             return str(row[idx]).strip() if idx < len(row) else ""
 
-        notes = _get(COL["notes"])
-        if not notes or notes.startswith("[T"):
+        tier_sum = _get(COL["tier_summary"])
+        if not tier_sum or tier_sum.startswith("[T"):
             continue   # empty or already has new format — skip
 
         # Extract data from existing row
@@ -601,13 +601,121 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
 
         url_part = f"Costco: {costco_url}" if costco_url else "Costco: (see Col R)"
         summary_line = f"[T{tier} | Score {score_str} | {price_summary}{url_part}]"
-        new_notes    = summary_line + "\n" + notes
 
-        write_row_partial(service, sheet_name, sheet_row, [(COL["notes"], new_notes)])
+        write_row_partial(service, sheet_name, sheet_row, [(COL["tier_summary"], summary_line)])
         updated_count += 1
         logger.info(f"  Row {sheet_row}: header added ({score_str} / {tier})")
 
     logger.info(f"refresh-notes: updated {updated_count} rows.")
+
+
+# ── Mode: RECHECK (one-shot) ──────────────────────────────────────────────────
+
+def run_recheck(config, COL, service, sheet_name, start_row, end_row):
+    """
+    Retries Costco scrape for rows that previously failed:
+      - stock_status contains "CHECK FAILED"
+      - costco_cost (col G) is empty
+      - ebay_price (col H) is empty
+
+    No eBay calls, no Claude calls — just refreshes the Costco data.
+    Run after network issues or Costco session failures to recover failed rows.
+    Typical runtime: 2-5 min depending on how many rows need retrying.
+    """
+    from tools.costco_scraper import refresh_session
+
+    all_data  = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+    run_time  = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Identify rows needing a recheck
+    targets = []
+    for idx, row in enumerate(all_data):
+        if not row:
+            continue
+        status      = safe_get(row, col_to_idx(COL["status"]))
+        stock       = safe_get(row, col_to_idx(COL["stock_status"]))
+        costco_url  = safe_get(row, col_to_idx(COL["costco_url"]))
+        cost        = safe_get(row, col_to_idx(COL["costco_cost"]))
+        ebay_price  = safe_get(row, col_to_idx(COL["ebay_price"]))
+        title       = safe_get(row, col_to_idx(COL["title"]))
+
+        if not costco_url.startswith("http"):
+            continue
+        if status in ("ACTIVE", "READY"):  # already live — active monitor handles these
+            continue
+
+        needs_recheck = (
+            "CHECK FAILED" in stock
+            or not cost
+            or not ebay_price
+        )
+        if needs_recheck:
+            targets.append((idx + start_row, row, title, costco_url, status))
+
+    if not targets:
+        logger.info("recheck: no rows need retrying — sheet is clean.")
+        return
+
+    logger.info(f"recheck: {len(targets)} rows targeted (CHECK FAILED / missing price).")
+
+    fixed   = 0
+    still_failing = 0
+
+    with make_browser() as page:
+        for attempt_round in range(2):  # 2 passes max; session refresh between rounds
+            if attempt_round > 0:
+                logger.info("recheck: pass 2 — refreshing session and retrying remaining failures...")
+                refresh_session(page)
+
+            remaining = []
+            for sheet_row, row, title, costco_url, status in targets:
+                logger.info(f"  recheck row {sheet_row}: {title[:50]}")
+                costco_data  = scrape_costco(costco_url, page=page)
+                stock_status = costco_data["stock_status"]
+                new_price    = costco_data["price"]
+                on_sale      = costco_data.get("on_sale", False)
+                sale_savings = costco_data.get("sale_savings")
+                sale_expires = costco_data.get("sale_expires")
+                free_ship    = costco_data.get("free_shipping", False)
+
+                if stock_status == "CHECK FAILED":
+                    remaining.append((sheet_row, row, title, costco_url, status))
+                    logger.warning(f"    still failing: {title[:40]}")
+                    time.sleep(3)
+                    continue
+
+                # Build updates
+                sale_val = ""
+                if on_sale:
+                    sale_val = f"🔥 -${sale_savings:.0f}" if sale_savings else "🔥 SALE"
+                    if sale_expires:
+                        sale_val += f" ends {sale_expires}"
+                ship_val = "✓ FREE" if free_ship else ""
+
+                updates = [
+                    (COL["stock_status"],  stock_status),
+                    (COL["last_checked"],  run_time),
+                    (COL["sale_info"],     sale_val),
+                    (COL["free_shipping"], ship_val),
+                    (COL["tier_summary"],  f"[Rechecked {run_time}] {stock_status}"),
+                ]
+                if new_price:
+                    updates.append((COL["costco_cost"], new_price))
+
+                write_row_partial(service, sheet_name, sheet_row, updates)
+                fixed += 1
+                logger.info(f"    fixed: {stock_status} | price=${new_price}")
+                time.sleep(3)
+
+            targets = remaining
+            if not targets:
+                break
+
+    still_failing = len(targets)
+    logger.info(
+        f"recheck complete: {fixed} fixed, {still_failing} still failing. "
+        f"Run 'python agents/setup_costco_session.py' if Chrome session is stale."
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -616,7 +724,7 @@ def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
-        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes"],
+        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -624,7 +732,8 @@ def main():
             "research:       Score PENDING products via researcher.py (1x/day)\n"
             "discovery:      Find new Costco products, add as PENDING (1x/day)\n"
             "rotation:       Score all active products, flag underperformers, send weekly digest (1x/week)\n"
-            "refresh-notes:  Retroactively add [T header to existing Col T notes (one-shot)"
+            "refresh-notes:  Retroactively reformat Col T summary line (one-shot)\n"
+            "recheck:        Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot)"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -661,6 +770,8 @@ def main():
             run_rotation(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "refresh-notes":
             run_refresh_notes(config, COL, service, sheet_name, start_row, end_row)
+        elif args.mode == "recheck":
+            run_recheck(config, COL, service, sheet_name, start_row, end_row)
     except Exception as e:
         _run_results["status"] = "error"
         _run_results["errors"] = traceback.format_exc()[-600:]

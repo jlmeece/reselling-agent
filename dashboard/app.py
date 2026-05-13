@@ -1,0 +1,558 @@
+"""
+JA_Liquidations — Seller Intelligence Dashboard
+================================================
+Industrial seller-tool aesthetic: dark terminal meets modern SaaS.
+Near-black background, amber accents, monospace data, high-density layout.
+
+Run: python -m streamlit run dashboard/app.py
+     (from the reselling-agent project root)
+"""
+
+import os
+import sys
+import json
+from datetime import datetime
+from collections import defaultdict
+
+import streamlit as st
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv
+load_dotenv(encoding="utf-8", override=True)
+
+# ── Page config ───────────────────────────────────────────────────────────────
+
+st.set_page_config(
+    page_title="JA_Liquidations — WAT Dashboard",
+    page_icon="📦",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# ── Industrial dark theme CSS ─────────────────────────────────────────────────
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Root colors */
+:root {
+    --bg:        #0A0E1A;
+    --surface:   #111827;
+    --border:    #1E2D45;
+    --amber:     #F5A623;
+    --amber-dim: #B37A15;
+    --green:     #39D353;
+    --red:       #FF4444;
+    --blue:      #4A9EFF;
+    --purple:    #C084FC;
+    --teal:      #2DD4BF;
+    --muted:     #6B7280;
+    --text:      #E5E7EB;
+    --bright:    #F9FAFB;
+}
+
+/* Base */
+html, body, .stApp { background: var(--bg) !important; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+
+/* Hide streamlit chrome */
+#MainMenu, footer, header { visibility: hidden; }
+.block-container { padding: 1.5rem 2rem 2rem; max-width: 1600px; }
+
+/* Typography */
+h1 { font-family: 'Barlow Condensed', sans-serif; font-size: 2.4rem; font-weight: 800;
+     letter-spacing: 0.04em; color: var(--bright); margin-bottom: 0; }
+h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.3rem; font-weight: 700;
+     letter-spacing: 0.08em; color: var(--amber); text-transform: uppercase;
+     border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-top: 1.4rem; }
+h3 { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 600;
+     color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* Metric cards */
+div[data-testid="metric-container"] {
+    background: var(--surface) !important;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px !important;
+}
+div[data-testid="metric-container"] label {
+    font-family: 'Barlow Condensed', sans-serif !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.12em !important;
+    color: var(--muted) !important;
+    text-transform: uppercase !important;
+}
+div[data-testid="metric-container"] [data-testid="metric-value"] {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 1.8rem !important;
+    font-weight: 600 !important;
+    color: var(--bright) !important;
+}
+
+/* Dataframe / tables */
+.stDataFrame { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.stDataFrame table { font-family: 'JetBrains Mono', monospace !important; font-size: 0.78rem; }
+.stDataFrame thead th { background: var(--surface) !important; color: var(--amber) !important;
+    font-family: 'Barlow Condensed', sans-serif !important; font-size: 0.8rem !important;
+    font-weight: 700 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
+.stDataFrame tbody tr:hover { background: #1A2333 !important; }
+
+/* Buttons */
+.stButton > button { background: var(--surface) !important; color: var(--amber) !important;
+    border: 1px solid var(--amber-dim) !important; border-radius: 4px !important;
+    font-family: 'Barlow Condensed', sans-serif !important; font-weight: 700 !important;
+    font-size: 0.85rem !important; letter-spacing: 0.08em !important;
+    text-transform: uppercase !important; padding: 6px 18px !important; }
+.stButton > button:hover { background: var(--amber-dim) !important; color: #000 !important; }
+
+/* Sidebar */
+section[data-testid="stSidebar"] { background: var(--surface) !important; border-right: 1px solid var(--border); }
+
+/* Status pills */
+.pill {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem;
+    font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    margin: 2px 3px;
+}
+.pill-pending  { background: #3D3500; color: #FFD700; border: 1px solid #665A00; }
+.pill-approved { background: #0D2D0D; color: #39D353; border: 1px solid #1A5C1A; }
+.pill-ready    { background: #0A2222; color: #2DD4BF; border: 1px solid #155555; }
+.pill-active   { background: #0D2400; color: #78FF55; border: 1px solid #1E5000; }
+.pill-watch    { background: #0A1E3D; color: #4A9EFF; border: 1px solid #1A3A6A; }
+.pill-paused   { background: #2D1700; color: #FF9500; border: 1px solid #5C3000; }
+
+/* Alert cards */
+.alert-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--amber); border-radius: 6px;
+    padding: 12px 16px; margin: 6px 0; font-size: 0.82rem;
+}
+.alert-card.sale { border-left-color: var(--amber); }
+.alert-card.ship { border-left-color: var(--teal); }
+.alert-card.urgent { border-left-color: var(--red); }
+
+/* Run log monospace */
+.run-log { background: #080C14; border: 1px solid var(--border); border-radius: 4px;
+    padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+    color: #7CB9E8; line-height: 1.6; max-height: 260px; overflow-y: auto; }
+
+/* Section divider */
+.sec-divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0 0.5rem; }
+
+/* Score badge */
+.score-t1 { color: var(--green); font-weight: 600; }
+.score-t2 { color: #FFD700; font-weight: 600; }
+.score-t3 { color: var(--red); }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Data loading ──────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=120)
+def load_sheet_data():
+    """Load all rows from Product Tracker via Sheets API. Cached 2 min."""
+    try:
+        from tools.sheet_writer import get_sheets_service, read_sheet
+        import yaml
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "categories.yaml")
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        business   = config["business"]
+        sheet_name = business["sheet_name"]
+        start_row  = business["data_start_row"]
+        end_row    = business["data_end_row"]
+        service    = get_sheets_service()
+        rows       = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+        return rows, sheet_name
+    except Exception as e:
+        return [], f"error: {e}"
+
+
+def safe(lst, i, default=""):
+    return str(lst[i]).strip() if lst and i < len(lst) else default
+
+
+def col_idx(letter):
+    result = 0
+    for c in letter.upper():
+        result = result * 26 + (ord(c) - ord("A") + 1)
+    return result - 1
+
+
+# Column indices based on col_map.yaml
+A_STATUS   = 0
+B_SCORE    = 1
+C_TITLE    = 2
+D_CAT      = 3
+E_PLAT     = 4
+F_STOCK    = 5
+G_COST     = 6
+H_PRICE    = 7
+I_PROFIT   = 8
+J_MARGIN   = 9
+K_SOLD90   = 10
+L_AVG      = 11
+M_ACTIVE   = 12
+N_COMP     = 13
+O_CHECKED  = 14
+R_URL      = 17
+T_SUMMARY  = 19
+V_SUGG     = 21
+W_LIMIT    = 22
+X_SALE     = 23
+Y_SHIP     = 24
+
+
+def parse_rows(rows):
+    pipeline = defaultdict(int)
+    products = []
+    sale_items = []
+    ship_items = []
+    cat_stats  = defaultdict(lambda: {"count": 0, "score_sum": 0.0, "score_n": 0,
+                                       "t1": 0, "margin_sum": 0.0, "margin_n": 0})
+    top_pending = []
+
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        status   = safe(row, A_STATUS)
+        score_s  = safe(row, B_SCORE)
+        title    = safe(row, C_TITLE)
+        category = safe(row, D_CAT)
+        stock    = safe(row, F_STOCK)
+        cost_s   = safe(row, G_COST)
+        price_s  = safe(row, H_PRICE)
+        profit_s = safe(row, I_PROFIT)
+        margin_s = safe(row, J_MARGIN)
+        sold90   = safe(row, K_SOLD90)
+        avg_s    = safe(row, L_AVG)
+        comp_s   = safe(row, M_ACTIVE)
+        checked  = safe(row, O_CHECKED)
+        url      = safe(row, R_URL)
+        summary  = safe(row, T_SUMMARY)
+        sugg_s   = safe(row, V_SUGG)
+        limit_s  = safe(row, W_LIMIT)
+        sale_val = safe(row, X_SALE)
+        ship_val = safe(row, Y_SHIP)
+
+        if not status:
+            continue
+
+        pipeline[status] += 1
+
+        try:
+            score = float(score_s)
+        except (ValueError, TypeError):
+            score = None
+
+        try:
+            cost  = float(cost_s.replace("$", "").replace(",", ""))
+            price = float(price_s.replace("$", "").replace(",", ""))
+            margin = (price - cost - price * 0.1325) / price if price > 0 else None
+        except (ValueError, TypeError):
+            cost = price = margin = None
+
+        if score is not None:
+            cat = cat_stats[category or "Unknown"]
+            cat["count"] += 1
+            cat["score_sum"] += score
+            cat["score_n"] += 1
+            if score >= 7.0:
+                cat["t1"] += 1
+            if margin is not None:
+                cat["margin_sum"] += margin
+                cat["margin_n"] += 1
+
+        products.append({
+            "status": status, "score": score, "title": title, "category": category,
+            "stock": stock, "cost": cost, "price": price, "margin": margin,
+            "sold_90d": sold90, "avg_price": avg_s, "comp_count": comp_s,
+            "last_checked": checked, "costco_url": url, "summary": summary,
+            "sugg_price": sugg_s, "purch_limit": limit_s,
+            "sale_val": sale_val, "ship_val": ship_val,
+        })
+
+        if sale_val:
+            sale_items.append({"title": title, "sale": sale_val, "stock": stock,
+                                "score": score, "url": url})
+        if ship_val:
+            ship_items.append({"title": title, "ship": ship_val, "score": score})
+
+        if status == "PENDING" and score is not None:
+            top_pending.append({"score": score, "title": title, "url": url,
+                                 "summary": summary})
+
+    top_pending.sort(key=lambda x: -x["score"])
+    return pipeline, products, sale_items, ship_items, cat_stats, top_pending
+
+
+def load_run_history():
+    """Read last few entries from run_history.json."""
+    try:
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "run_history.json")
+        if not os.path.exists(path):
+            return []
+        with open(path) as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data[-20:]
+        return []
+    except Exception:
+        return []
+
+
+# ── Header ────────────────────────────────────────────────────────────────────
+
+st.markdown("""
+<div style="display:flex; align-items:baseline; gap:16px; margin-bottom:0.5rem;">
+  <h1 style="margin:0;">JA_LIQUIDATIONS</h1>
+  <span style="font-family:'Barlow Condensed',sans-serif; font-size:1.1rem;
+               color:#6B7280; letter-spacing:0.12em; text-transform:uppercase;">
+    WAT Seller Intelligence
+  </span>
+</div>
+""", unsafe_allow_html=True)
+
+# Refresh button
+col_hdr_a, col_hdr_b = st.columns([6, 1])
+with col_hdr_b:
+    if st.button("⟳  REFRESH"):
+        st.cache_data.clear()
+
+# ── Load data ─────────────────────────────────────────────────────────────────
+
+with st.spinner("Loading sheet data..."):
+    rows, sheet_name = load_sheet_data()
+
+if not rows:
+    st.error(f"Could not load sheet data: {sheet_name}")
+    st.stop()
+
+pipeline, products, sale_items, ship_items, cat_stats, top_pending = parse_rows(rows)
+
+total = sum(pipeline.values())
+n_active  = pipeline.get("ACTIVE", 0)
+n_ready   = pipeline.get("READY", 0)
+n_pending = pipeline.get("PENDING", 0)
+n_watch   = pipeline.get("WATCH", 0)
+n_approved = pipeline.get("APPROVED", 0)
+n_paused  = sum(v for k, v in pipeline.items() if k.startswith("PAUSED"))
+
+# ── Pipeline pill bar ─────────────────────────────────────────────────────────
+
+st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
+
+pills = ""
+pill_map = [
+    ("PENDING",  n_pending,  "pending"),
+    ("APPROVED", n_approved, "approved"),
+    ("READY",    n_ready,    "ready"),
+    ("ACTIVE",   n_active,   "active"),
+    ("WATCH",    n_watch,    "watch"),
+    ("PAUSED",   n_paused,   "paused"),
+]
+for label, count, cls in pill_map:
+    pills += f'<span class="pill pill-{cls}">{label} &nbsp;<b>{count}</b></span>'
+
+st.markdown(
+    f'<div style="margin:8px 0 16px;">{pills}'
+    f'<span style="float:right; font-family:\'Barlow Condensed\',sans-serif; '
+    f'font-size:0.85rem; color:#6B7280; letter-spacing:0.08em;">'
+    f'TOTAL TRACKED: {total}</span></div>',
+    unsafe_allow_html=True
+)
+
+# ── KPI row ───────────────────────────────────────────────────────────────────
+
+kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
+
+tier1_count = sum(1 for p in products if p["score"] and p["score"] >= 7.0)
+avg_score   = (
+    sum(p["score"] for p in products if p["score"] is not None) /
+    max(1, sum(1 for p in products if p["score"] is not None))
+)
+avg_margin_all = [p["margin"] for p in products if p["margin"] is not None]
+avg_margin = sum(avg_margin_all) / len(avg_margin_all) if avg_margin_all else 0
+
+kpi1.metric("Tier 1 Products",    tier1_count)
+kpi2.metric("Avg Score",          f"{avg_score:.1f}")
+kpi3.metric("On Sale 🔥",         len(sale_items))
+kpi4.metric("Free Ship 📦",       len(ship_items))
+kpi5.metric("Avg Margin",         f"{avg_margin * 100:.1f}%")
+kpi6.metric("Live on eBay",       n_active)
+
+st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
+
+# ── Main layout: left = opportunity table, right = alerts + focus ─────────────
+
+left_col, right_col = st.columns([3, 2], gap="large")
+
+with left_col:
+    # ── Opportunity table ──────────────────────────────────────────────────────
+    st.markdown("## Opportunity Queue")
+    st.markdown("<h3>PENDING — sorted by score</h3>", unsafe_allow_html=True)
+
+    import pandas as pd
+
+    pending_rows = [p for p in products if p["status"] == "PENDING" and p["score"] is not None]
+    pending_rows.sort(key=lambda x: -x["score"])
+
+    if pending_rows:
+        df_pending = pd.DataFrame([{
+            "Score": f"{p['score']:.1f}",
+            "Tier":  ("T1 🟢" if p["score"] >= 7 else ("T2 🟡" if p["score"] >= 4 else "T3 🔴")),
+            "Title": p["title"][:55],
+            "Category": p["category"],
+            "Cost":  f"${p['cost']:,.0f}" if p["cost"] else "—",
+            "eBay":  f"${p['price']:,.0f}" if p["price"] else "—",
+            "Margin": f"{p['margin']*100:.1f}%" if p["margin"] else "—",
+            "Sold 90d": p["sold_90d"] or "—",
+            "SALE": "🔥" if p["sale_val"] else "",
+            "SHIP": "📦" if p["ship_val"] else "",
+        } for p in pending_rows])
+
+        st.dataframe(df_pending, use_container_width=True, height=380, hide_index=True)
+    else:
+        st.markdown('<div style="color:#6B7280; font-size:0.85rem;">No PENDING products in queue.</div>',
+                    unsafe_allow_html=True)
+
+    # ── All products table (collapsed) ────────────────────────────────────────
+    with st.expander("Full product table (all statuses)"):
+        all_rows = [p for p in products if p["score"] is not None]
+        all_rows.sort(key=lambda x: -(x["score"] or 0))
+        df_all = pd.DataFrame([{
+            "Status": p["status"],
+            "Score": f"{p['score']:.1f}" if p["score"] else "—",
+            "Title": p["title"][:50],
+            "Category": p["category"],
+            "Cost": f"${p['cost']:,.0f}" if p["cost"] else "—",
+            "eBay": f"${p['price']:,.0f}" if p["price"] else "—",
+            "Margin": f"{p['margin']*100:.1f}%" if p["margin"] else "—",
+            "Stock": p["stock"][:20],
+            "SALE": "🔥" if p["sale_val"] else "",
+            "FREE SHIP": "📦" if p["ship_val"] else "",
+        } for p in all_rows])
+        st.dataframe(df_all, use_container_width=True, height=400, hide_index=True)
+
+with right_col:
+    # ── Sale alerts ──────────────────────────────────────────────────────────
+    st.markdown("## Sale Opportunities")
+    if sale_items:
+        for item in sale_items[:8]:
+            score_str = f"Score {item['score']:.1f}" if item["score"] else ""
+            st.markdown(
+                f'<div class="alert-card sale">'
+                f'<b style="color:#F5A623;">{item["sale"]}</b> &nbsp;'
+                f'<span style="color:#E5E7EB;">{item["title"][:50]}</span><br>'
+                f'<span style="color:#6B7280; font-size:0.75rem;">{item["stock"]} &nbsp;|&nbsp; {score_str}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+    else:
+        st.markdown('<div style="color:#6B7280; font-size:0.85rem; margin:4px 0 12px;">No active sales detected.</div>',
+                    unsafe_allow_html=True)
+
+    # ── Free ship alerts ──────────────────────────────────────────────────────
+    if ship_items:
+        st.markdown("## Free Shipping")
+        for item in ship_items[:5]:
+            score_str = f"Score {item['score']:.1f}" if item["score"] else ""
+            st.markdown(
+                f'<div class="alert-card ship">'
+                f'<b style="color:#2DD4BF;">📦 FREE SHIP</b> &nbsp;'
+                f'<span style="color:#E5E7EB;">{item["title"][:50]}</span><br>'
+                f'<span style="color:#6B7280; font-size:0.75rem;">{score_str}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    # ── Focus recommendation ──────────────────────────────────────────────────
+    st.markdown("## Where to Focus")
+    if top_pending:
+        best = top_pending[0]
+        st.markdown(
+            f'<div class="alert-card" style="border-left-color:#39D353;">'
+            f'<div style="font-family:\'Barlow Condensed\',sans-serif; font-size:0.7rem; '
+            f'color:#6B7280; text-transform:uppercase; letter-spacing:0.1em;">Top PENDING → APPROVE</div>'
+            f'<div style="font-size:0.92rem; margin:4px 0; color:#F9FAFB;">{best["title"][:60]}</div>'
+            f'<div style="font-family:\'JetBrains Mono\',monospace; font-size:0.78rem; color:#39D353;">'
+            f'Score {best["score"]:.1f}</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    if n_ready > 0:
+        st.markdown(
+            f'<div class="alert-card urgent">'
+            f'<b style="color:#FF4444;">ACTION:</b> {n_ready} product(s) READY — '
+            f'export CSV and list on eBay</div>',
+            unsafe_allow_html=True
+        )
+
+st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
+
+# ── Category ROI ──────────────────────────────────────────────────────────────
+
+st.markdown("## Category ROI Breakdown")
+
+cat_table = []
+for cat_name, d in sorted(cat_stats.items()):
+    avg_score_c  = d["score_sum"] / d["score_n"] if d["score_n"] else 0
+    avg_margin_c = d["margin_sum"] / d["margin_n"] * 100 if d["margin_n"] else 0
+    cat_table.append({
+        "Category": cat_name,
+        "Products": d["count"],
+        "Avg Score": f"{avg_score_c:.1f}",
+        "T1 Count": d["t1"],
+        "Avg Margin": f"{avg_margin_c:.1f}%",
+        "margin_raw": avg_margin_c,
+    })
+cat_table.sort(key=lambda x: -x["margin_raw"])
+
+if cat_table:
+    cat1, cat2 = st.columns([2, 3])
+    with cat1:
+        df_cat = pd.DataFrame([{k: v for k, v in r.items() if k != "margin_raw"} for r in cat_table])
+        st.dataframe(df_cat, use_container_width=True, hide_index=True)
+    with cat2:
+        chart_data = pd.DataFrame({
+            "Category": [r["Category"] for r in cat_table],
+            "Avg Margin %": [r["margin_raw"] for r in cat_table],
+        }).set_index("Category")
+        st.bar_chart(chart_data, color="#F5A623")
+
+st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
+
+# ── Run history log ───────────────────────────────────────────────────────────
+
+st.markdown("## Recent Run Activity")
+
+run_history = load_run_history()
+if run_history:
+    log_lines = []
+    for entry in reversed(run_history[-20:]):
+        ts     = entry.get("started_at", entry.get("timestamp", ""))[:16]
+        mode   = entry.get("mode", "?").upper()
+        status = entry.get("status", "?")
+        notes  = entry.get("notes", "")
+        t1     = entry.get("tier1", "")
+        t1_str = f" | T1:{t1}" if t1 else ""
+        icon   = "✓" if status == "ok" else "✗"
+        log_lines.append(f"[{ts}] {icon} {mode:<14} {status}{t1_str}  {notes}"[:110])
+    log_html = "<br>".join(log_lines)
+    st.markdown(f'<div class="run-log">{log_html}</div>', unsafe_allow_html=True)
+else:
+    st.markdown('<div style="color:#6B7280; font-size:0.82rem;">No run history yet. '
+                'Check the Run Log tab in Google Sheets instead.</div>', unsafe_allow_html=True)
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+
+st.markdown(
+    f'<div style="margin-top:2rem; font-family:\'Barlow Condensed\',sans-serif; '
+    f'font-size:0.7rem; color:#374151; letter-spacing:0.1em; text-transform:uppercase;">'
+    f'JA_LIQUIDATIONS · WAT Framework · Last load: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+    f'</div>',
+    unsafe_allow_html=True
+)

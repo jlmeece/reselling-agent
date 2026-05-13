@@ -4,7 +4,7 @@ Builds the Product Tracker dashboard and supporting tabs.
 
 Layout: STATUS and TIER SCORE are columns A and B — always visible.
 Columns A–D are frozen so they stay in view while scrolling right.
-Columns T–AM are hidden (SEO copy, formulas, ad copy, image URLs).
+Columns Z–AU are hidden (SKU, fees, SEO copy, formulas, ad copy, image URLs, full notes).
 
 Run via: python agents/setup_sheet.py
 Safe to re-run — clears formatting before applying fresh.
@@ -71,11 +71,13 @@ HEADER_LABELS = [
     "eBay LISTING",    # Q  16
     "COSTCO URL",      # R  17
     "RE-EVAL DATE",    # S  18
-    "RESEARCH NOTES",  # T  19
+    "TIER SUMMARY",    # T  19 — short: [T2 | Score 8.2 | Sugg: $899 | margin 18%]
     "UNITS SOLD",      # U  20 — manually entered or future eBay API
     "SUGG. PRICE",     # V  21 — agent's recommended eBay price (written once)
     "PURCH. LIMIT",    # W  22 — units/day cap (precious metals) or blank
-    # X–AR hidden
+    "SALE",            # X  23 — 🔥 -$150 ends 5/31 (blank if not on sale)
+    "FREE SHIP",       # Y  24 — ✓ FREE (blank otherwise)
+    # Z–AU hidden
 ]
 
 COLUMN_WIDTHS = {
@@ -98,16 +100,21 @@ COLUMN_WIDTHS = {
     16: 60,    # Q: ebay listing url
     17: 60,    # R: costco url
     18: 90,    # S: re-eval date
-    19: 380,   # T: research notes
+    19: 180,   # T: tier summary (short one-liner)
     20: 70,    # U: units sold
     21: 90,    # V: suggested price
     22: 110,   # W: purchase limit
+    23: 130,   # X: sale badge
+    24: 80,    # Y: free shipping badge
 }
 
-VISIBLE_COLS  = 23    # A–W
-TOTAL_COLS    = 44    # A–AR
-HIDDEN_START  = 23    # X onwards (index 23 = col X)
+VISIBLE_COLS  = 25    # A–Y
+TOTAL_COLS    = 46    # A–AU
+HIDDEN_START  = 25    # Z onwards (index 25 = col Z)
 FROZEN_COLS   = 4     # A–D always visible
+
+SALE_COL_IDX  = 23    # X — orange badge when non-empty
+SHIP_COL_IDX  = 24    # Y — green badge when non-empty
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────
@@ -486,7 +493,7 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
             "properties": {"pixelSize": width}, "fields": "pixelSize",
         }})
 
-    # 11. Hide columns T–AM (index 19–38)
+    # 11. Hide columns Z–AU (index 25–46)
     requests.append({"updateDimensionProperties": {
         "range": {"sheetId": tab_id, "dimension": "COLUMNS",
                   "startIndex": HIDDEN_START, "endIndex": TOTAL_COLS},
@@ -506,14 +513,7 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
             "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy,padding)",
         }
     })
-    # Notes column (T = index 19): wrap text
-    requests.append({
-        "repeatCell": {
-            "range": _cell_range(tab_id, data_row_idx, 1000, 19, 20),
-            "cell": {"userEnteredFormat": {"wrapStrategy": "WRAP", "textFormat": {"fontSize": 8}}},
-            "fields": "userEnteredFormat(wrapStrategy,textFormat)",
-        }
-    })
+    # T (index 19) is now a short one-liner; CLIP like other visible cols (already covered above)
 
     # 13. Solid row borders (every row in data area)
     requests.append(_row_border_request(tab_id, data_row_idx, 1000))
@@ -570,6 +570,40 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
             }
         })
 
+    # 17c. Conditional formatting — SALE col (X = index 23): amber bg when non-empty
+    sale_ref = f"$X{data_start_row}"
+    requests.append({
+        "addConditionalFormatRule": {
+            "rule": {
+                "ranges": [_cell_range(tab_id, data_row_idx, 1000, SALE_COL_IDX, SALE_COL_IDX + 1)],
+                "booleanRule": {
+                    "condition": {"type": "CUSTOM_FORMULA",
+                                   "values": [{"userEnteredValue": f'={sale_ref}<>""'}]},
+                    "format": {"backgroundColor": _rgb("FFB300"),
+                               "textFormat": {"bold": True, "foregroundColor": _rgb("1A1A1A")}},
+                },
+            },
+            "index": 0,
+        }
+    })
+
+    # 17d. Conditional formatting — FREE SHIP col (Y = index 24): teal bg when non-empty
+    ship_ref = f"$Y{data_start_row}"
+    requests.append({
+        "addConditionalFormatRule": {
+            "rule": {
+                "ranges": [_cell_range(tab_id, data_row_idx, 1000, SHIP_COL_IDX, SHIP_COL_IDX + 1)],
+                "booleanRule": {
+                    "condition": {"type": "CUSTOM_FORMULA",
+                                   "values": [{"userEnteredValue": f'={ship_ref}<>""'}]},
+                    "format": {"backgroundColor": _rgb("00897B"),
+                               "textFormat": {"bold": True, "foregroundColor": _rgb("FFFFFF")}},
+                },
+            },
+            "index": 0,
+        }
+    })
+
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id, body={"requests": requests}
     ).execute()
@@ -600,7 +634,7 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
     # Rebuild Summary tab with current sheet data
     all_data = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
-        range=f"'{sheet_name}'!A4:AZ1000",
+        range=f"'{sheet_name}'!A4:AU1000",
     ).execute().get("values", [])
     refresh_summary_tab(service, sheet_name, all_data=all_data)
 
@@ -698,7 +732,9 @@ def _ensure_legend_tab(service, spreadsheet_id):
     _row("Col J", "MARGIN — formula: Net Profit / eBay Price. Target ≥ 10%.", "", "")
     _row("Col N", "COMP SCORE — active listings / 90d sold. Low = less competition.", "", "")
     _row("Col Q", "eBay LISTING — paste your live eBay URL here → triggers ACTIVE monitoring.", "", "")
-    _row("Col T", "RESEARCH NOTES — first line: [Tier | Score | Sugg: $ | margin | Costco URL].", "", "")
+    _row("Col T", "TIER SUMMARY — short one-liner: [T2 | Score 8.2 | Sugg: $899 | margin 18%].", "", "")
+    _row("Col X", "SALE — 🔥 -$150 ends 5/31 badge when product is on sale at Costco. Blank otherwise.", "", "")
+    _row("Col Y", "FREE SHIP — ✓ FREE badge when Costco ships this product for free. Blank otherwise.", "", "")
     _row("Col V", "SUGG. PRICE — agent's one-time recommended price. Do not overwrite.", "", "")
     _row("Col W", "PURCH. LIMIT — Costco daily buy limit. Precious metals: 2/day.", "", "")
 
@@ -834,13 +870,18 @@ def _ensure_legend_tab(service, spreadsheet_id):
 
 def _write_header_text(service, spreadsheet_id, sheet_name, data_start_row):
     header_row = data_start_row - 1
+    stats_row = [""] * VISIBLE_COLS
+    stats_row[0]  = "PIPELINE  P:—  T1:—  ACT:—  RDY:—  URG:—  TOT:—"
+    stats_row[8]  = "OPPORTUNITIES  🔥— ON SALE  📦— FREE SHIP"
+    stats_row[14] = "FOCUS  Top: —  Score: —"
+    stats_row[21] = "Last run: —"
     service.spreadsheets().values().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body={"valueInputOption": "USER_ENTERED", "data": [
             {"range": f"'{sheet_name}'!A1",
-             "values": [["Costco → eBay Reselling Dashboard"]]},
+             "values": [["Costco → eBay Reselling Dashboard  |  JA_Liquidations"]]},
             {"range": f"'{sheet_name}'!A2",
-             "values": [["Last run: — | Tracked: — | Tier 1 ready: — | Pending: — | Urgent: —"]]},
+             "values": [stats_row]},
             {"range": f"'{sheet_name}'!A{header_row}",
              "values": [HEADER_LABELS]},
         ]},
@@ -848,20 +889,41 @@ def _write_header_text(service, spreadsheet_id, sheet_name, data_start_row):
 
 
 def update_stats_row(service, sheet_name, stats: dict):
-    """Update the stats banner (row 2) with live counts after each agent run."""
+    """
+    Update the stats banner (row 2) with live counts after each agent run.
+    Writes a rich multi-section layout across visible cols A–Y.
+    """
     spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
-    text = (
-        f"Last run: {stats.get('last_run', '—')}  |  "
-        f"Tracked: {stats.get('total', '—')}  |  "
-        f"Tier 1 ready: {stats.get('tier1', '—')}  |  "
-        f"Pending review: {stats.get('pending', '—')}  |  "
-        f"Urgent: {stats.get('urgent', '—')}"
-    )
+
+    lr   = stats.get("last_run", "—")
+    tot  = stats.get("total", "—")
+    t1   = stats.get("tier1", "—")
+    pend = stats.get("pending", "—")
+    urg  = stats.get("urgent", "—")
+    sale = stats.get("on_sale", "—")
+    ship = stats.get("free_ship", "—")
+    act  = stats.get("active", "—")
+    rdy  = stats.get("ready", "—")
+    top  = stats.get("top_pending_title", "—")
+    top_score = stats.get("top_pending_score", "—")
+
+    # Section text for each cell region (written to specific columns)
+    pipeline_txt = f"PIPELINE  P:{pend}  T1:{t1}  ACT:{act}  RDY:{rdy}  URG:{urg}  TOT:{tot}"
+    opps_txt     = f"OPPORTUNITIES  🔥{sale} ON SALE  📦{ship} FREE SHIP"
+    focus_txt    = f"FOCUS  Top: {str(top)[:30]}  Score:{top_score}"
+    run_txt      = f"Last run: {lr}"
+
+    values = [[""] * VISIBLE_COLS]
+    values[0][0]  = pipeline_txt   # A2
+    values[0][8]  = opps_txt       # I2
+    values[0][14] = focus_txt      # O2
+    values[0][21] = run_txt        # V2
+
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=f"'{sheet_name}'!A2",
         valueInputOption="USER_ENTERED",
-        body={"values": [[text]]},
+        body={"values": values},
     ).execute()
 
 
@@ -910,10 +972,11 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
         score_s  = _safe(row, 1)   # B
         title    = _safe(row, 2)   # C
         category = _safe(row, 3)   # D
-        stock    = _safe(row, 5)   # F
         ebay_s   = _safe(row, 7)   # H
         cost_s   = _safe(row, 6)   # G
         url      = _safe(row, 17)  # R
+        sale_val = _safe(row, 23)  # X — dedicated SALE col
+        ship_val = _safe(row, 24)  # Y — dedicated FREE SHIP col
 
         if not status:
             continue
@@ -942,9 +1005,9 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
         except (ValueError, TypeError):
             pass
 
-        if "SALE" in stock.upper():
+        if sale_val:
             sale_count += 1
-        if "FREE SHIP" in stock.upper():
+        if ship_val:
             ship_count += 1
 
         if status == "PENDING" and score is not None:

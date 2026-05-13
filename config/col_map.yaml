@@ -3,19 +3,23 @@
 # Update here if columns are ever added or reordered.
 #
 # Layout philosophy: action-critical columns first (A–D always frozen),
-# monitoring data next (E–W visible), everything else hidden (X–AR).
+# monitoring data next (E–Y visible), everything else hidden (Z–AU).
 #
 # Formula columns — never overwrite these with agent writes:
-#   I  (net_profit):      =H-G-Z-AA   (ebay_price - cost - fees - ship)
+#   I  (net_profit):      =H-G-AC-AD  (ebay_price - cost - fees - ship)
 #   J  (net_margin):      =IF(H>0,I/H,0)
 #   N  (comp_saturation): =IFERROR(M/MAX(K,1),"")
-#   Z  (ebay_fees):       =H*Y        (ebay_price * fee_rate)
-#   AC (tax_est):         =G*0.0825
-#   AD (site_profit):     =H*0.90-G
-#   AE (ad_budget):       =I*0.15
+#   AB (ebay_fees):       =H*AA       (ebay_price * fee_rate)
+#   AE (tax_est):         =G*0.0825
+#   AF (site_profit):     =H*0.90-G
+#   AG (ad_budget):       =I*0.15
+#
+# NOTE: 2 new visible cols (X=sale_info, Y=free_shipping) were inserted after W.
+# All former hidden cols X–AR shifted 2 right → Z–AT.
+# Google Sheets auto-updates formula references on column insert.
 
 columns:
-  # ── Visible (A–W) ─────────────────────────────────────────────────
+  # ── Visible (A–Y) ─────────────────────────────────────────────────
   status:           "A"   # PENDING/APPROVED/READY/ACTIVE/WATCH/PAUSED_*/
   demand_score:     "B"   # Tier score 0–10 (Tier 1≥7, Tier 2≥4, Tier 3<4)
   title:            "C"   # Product name
@@ -35,30 +39,33 @@ columns:
   ebay_listing_url: "Q"   # Paste live eBay listing URL here
   costco_url:       "R"   # Source product link
   re_eval_date:     "S"   # PAUSED items: date to re-research
-  notes:            "T"   # Research notes + agent reasoning
+  tier_summary:     "T"   # Short summary: [T2 | Score 8.2 | Sugg: $899 | margin 18%]
   units_sold:       "U"   # Units sold (manually entered or future eBay API)
   suggested_price:  "V"   # Agent's recommended eBay price — written once, never overwritten
   purchase_limit:   "W"   # Units/day limit (precious metals) or blank for fashion items
+  sale_info:        "X"   # Sale badge: 🔥 -$150 ends 5/31 (blank if not on sale)
+  free_shipping:    "Y"   # Free ship badge: ✓ FREE (blank otherwise)
 
-  # ── Hidden (X–AR) ─────────────────────────────────────────────────
-  sku:              "X"
-  fee_rate:         "Y"
-  ebay_fees:        "Z"   # formula — do not overwrite
-  ship_cost:        "AA"
-  fulfillment:      "AB"
-  tax_est:          "AC"  # formula — do not overwrite
-  site_profit:      "AD"  # formula — do not overwrite
-  ad_budget:        "AE"  # formula — do not overwrite
-  seo_title:        "AF"
-  bullets:          "AG"
-  description:      "AH"
-  redirect_msg:     "AI"
-  meta_desc:        "AJ"
-  keywords:         "AK"
-  alt_text:         "AL"
-  google_hl:        "AM"
-  google_desc:      "AN"
-  meta_text:        "AO"
-  meta_hl:          "AP"
-  image_urls:       "AQ"
-  perf_score:       "AR"  # Composite performance score (0–10) — written by rotation engine
+  # ── Hidden (Z–AU) ─────────────────────────────────────────────────
+  sku:              "Z"
+  fee_rate:         "AA"
+  ebay_fees:        "AB"  # formula =H*AA — do not overwrite
+  ship_cost:        "AC"
+  fulfillment:      "AD"
+  tax_est:          "AE"  # formula =G*0.0825 — do not overwrite
+  site_profit:      "AF"  # formula =H*0.90-G — do not overwrite
+  ad_budget:        "AG"  # formula =I*0.15 — do not overwrite
+  seo_title:        "AH"
+  bullets:          "AI"
+  description:      "AJ"
+  redirect_msg:     "AK"
+  meta_desc:        "AL"
+  keywords:         "AM"
+  alt_text:         "AN"
+  google_hl:        "AO"
+  google_desc:      "AP"
+  meta_text:        "AQ"
+  meta_hl:          "AR"
+  image_urls:       "AS"
+  perf_score:       "AT"  # Composite performance score (0–10) — written by rotation engine
+  full_notes:       "AU"  # Full research narrative, eBay comps, community signals (hidden)
