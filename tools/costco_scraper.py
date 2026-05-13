@@ -200,7 +200,33 @@ def make_browser():
         page = context.new_page()
         try:
             logger.info("  Warming up Costco session (homepage visit)...")
-            page.goto("https://www.costco.com", timeout=30000, wait_until="domcontentloaded")
+            try:
+                page.goto("https://www.costco.com", timeout=30000, wait_until="domcontentloaded")
+            except Exception as nav_err:
+                # Homepage timed out — Chrome is frozen or Costco blocked the session.
+                # Kill Chrome, relaunch fresh, and retry the warm-up once.
+                logger.warning(
+                    f"  Homepage navigation failed ({nav_err.__class__.__name__}) — "
+                    f"restarting Chrome and retrying warm-up..."
+                )
+                page.close()
+                browser.close()
+                pw.stop()
+                _kill_agent_chrome()
+                time.sleep(4)
+                _ensure_chrome()
+                pw = sync_playwright().start()
+                browser = pw.chromium.connect_over_cdp(CHROME_DEBUG_URL, timeout=60000)
+                context = browser.contexts[0] if browser.contexts else browser.new_context()
+                if cookies:
+                    try:
+                        context.add_cookies(cookies)
+                    except Exception:
+                        pass
+                page = context.new_page()
+                logger.info("  Retry warm-up after Chrome restart...")
+                page.goto("https://www.costco.com", timeout=45000, wait_until="domcontentloaded")
+
             page.wait_for_timeout(3000 + random.randint(500, 1500))
             yield page
         finally:
@@ -611,7 +637,7 @@ def scrape_costco(url, page):
             elif result["purchase_limit"]:
                 result["stock_status"] = _limit_label(result["purchase_limit"])
                 result["in_stock"] = True
-            elif any(p in body_text for p in ["limited", "while supplies last", "low stock"]):
+            elif any(p in body_text for p in ["while supplies last", "limited quantity", "low stock"]):
                 result["stock_status"] = "Available (limited)"
                 result["in_stock"] = True
             else:
