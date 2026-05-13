@@ -627,25 +627,32 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row):
     from tools.ebay_research import get_ebay_comps
 
     def _suggest_price(cost_s, ebay_data, fee_rate):
-        """Inline price suggestion: median sold → median active → avg sold."""
+        """Price suggestion: median sold → median active → avg sold → cost×1.30 fallback.
+        Always returns a price when cost is known — Col H must never be blank."""
         MIN_MARGIN = 0.10
+        try:
+            cost = float(str(cost_s).replace("$", "").replace(",", ""))
+        except (ValueError, TypeError):
+            return None
+        if cost <= 0:
+            return None
+
         anchor = (
             ebay_data.get("median_sold")
             or ebay_data.get("median_active")
             or ebay_data.get("avg_sold_price")
         )
-        if not anchor:
-            return None
-        try:
-            price = float(anchor)
-            cost  = float(str(cost_s).replace("$", "").replace(",", ""))
-            min_p = cost / (1 - fee_rate - MIN_MARGIN)
-            if price < min_p:
-                return None
-            price = min(price, cost * 3.0)
-            return round(price) - 0.01
-        except (ValueError, TypeError):
-            return None
+        if anchor:
+            try:
+                price = float(anchor)
+                min_p = cost / (1 - fee_rate - MIN_MARGIN)
+                price = max(price, min_p)          # floor at break-even+margin
+                price = min(price, cost * 3.0)     # cap at 3× cost
+                return round(price) - 0.01
+            except (ValueError, TypeError):
+                pass
+        # No eBay data — cost-based fallback so Col H is never left blank
+        return round(cost * 1.30) - 0.01
 
     categories = config["categories"]
     all_data   = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
@@ -751,13 +758,11 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row):
                 t["needs_costco"] = False
                 time.sleep(2)
 
-        # ── eBay comps pass: fill missing H/L/K/M for all qualifying rows ────
-        # Includes rows that just had Costco fixed AND pre-existing rows with blank price
-        ebay_targets = [t for t in targets if t["needs_ebay"] and not t["needs_costco"]]
-        # Also add any Costco-fixed rows that now need eBay data
-        for t in targets:
-            if not t["needs_costco"] and t["needs_ebay"] and t not in ebay_targets:
-                ebay_targets.append(t)
+        # ── eBay comps pass: fill missing H/L/K/M for ALL rows that need it ────
+        # Run eBay comps regardless of whether Costco succeeded or failed —
+        # eBay data is independent and Col H/L must always be populated.
+        # For Costco-failed rows: use existing cost from the sheet if available.
+        ebay_targets = [t for t in targets if t["needs_ebay"]]
 
         logger.info(f"recheck: running eBay comps for {len(ebay_targets)} rows with missing price data...")
 

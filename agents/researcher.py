@@ -322,49 +322,57 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
 def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float | None:
     """
     Data-backed eBay listing price suggestion.
-    Anchor: median sold → median active → avg sold (in that priority order).
-    Saturation discount: -3% when active listings > 2× sold count (crowded market).
-    Margin floor: price must yield >= 10% net margin after fees.
-    Returns price rounded to nearest .99, or None if data is insufficient.
+    Anchor priority: median sold → median active → avg sold → cost-based fallback.
+
+    Always returns a price when cost is known — never leaves Col H blank.
+    Fallback when eBay data is sparse: cost × 1.30 (30% markup floor).
+    Jordan cannot review products without a price in Col H.
     """
     MIN_MARGIN = 0.10
+
+    try:
+        cost = float(str(costco_cost).replace("$", "").replace(",", ""))
+    except (ValueError, TypeError):
+        cost = 0
 
     anchor = (
         ebay_data.get("median_sold")
         or ebay_data.get("median_active")
-        or ebay_data.get("avg_sold_price")   # fallback when scraper returns avg but not median
+        or ebay_data.get("avg_sold_price")
     )
-    if not anchor:
-        return None
 
-    price = float(anchor)
+    if anchor:
+        price = float(anchor)
 
-    sold   = ebay_data.get("sold_90d") or 0
-    active = ebay_data.get("active_count") or 0
-    if sold > 0 and active > sold * 2:
-        price *= 0.97  # crowded market — price 3% below median to move faster
+        sold   = ebay_data.get("sold_90d") or 0
+        active = ebay_data.get("active_count") or 0
+        if sold > 0 and active > sold * 2:
+            price *= 0.97  # crowded market — price 3% below median
 
-    try:
-        cost = float(str(costco_cost).replace("$", "").replace(",", ""))
         if cost > 0:
             min_price = cost / (1 - fee_rate - MIN_MARGIN)
             if price < min_price:
+                # Market is below our floor — use cost-based floor instead
                 logger.debug(
-                    f"  _suggest_ebay_price: skipping — market ${price:.2f} < floor ${min_price:.2f} "
-                    f"(cost ${cost:.2f}, fee {fee_rate:.1%}). Col H left blank."
+                    f"  _suggest_ebay_price: market ${price:.2f} < floor ${min_price:.2f}. "
+                    f"Using cost-based floor."
                 )
-                return None  # market price can't cover costs — not viable, don't suggest
-            # Sanity cap: suggested price should never exceed 3× Costco cost
-            # (catches bad eBay comps from range-averaging or wrong product matches)
+                price = min_price
             max_price = cost * 3.0
             if price > max_price:
                 logger.warning(
-                    f"  _suggest_ebay_price: ${price:.2f} exceeds 3× cost cap (${max_price:.2f}). "
-                    f"Capping. Check eBay comps — possible wrong-product match."
+                    f"  _suggest_ebay_price: ${price:.2f} exceeds 3× cost cap (${max_price:.2f}). Capping."
                 )
                 price = max_price
-    except (ValueError, TypeError):
-        pass
+    elif cost > 0:
+        # No eBay data at all — use cost × 1.30 as a starting point.
+        # This gives Jordan something to work with. Mark it as an estimate.
+        price = cost * 1.30
+        ebay_data["price_basis"]    = "cost×1.30-estimate"
+        ebay_data["query_strategy"] = "no-ebay-data"
+        logger.info(f"  _suggest_ebay_price: no eBay data — using cost×1.30 fallback (${price:.2f})")
+    else:
+        return None  # no cost, no eBay data — genuinely can't price
 
     price = round(price) - 0.01
     return price if price >= 1 else None
@@ -538,22 +546,28 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             if live_price and not costco_cost:
                 costco_cost = live_price
 
-            # Consecutive CHECK FAILED guard — Costco session likely dead.
+            # Consecutive CHECK FAILED guard — try session refresh, but never halt the queue.
+            # Aborting here would leave 30+ products with zero eBay comps and blank prices.
+            # Instead: refresh on 2 consecutive fails, log on 3+, and always continue.
             if stock_status == "CHECK FAILED":
                 consecutive_check_fails += 1
                 if consecutive_check_fails == 2:
-                    logger.warning(
-                        f"  2 consecutive CHECK FAILED — attempting session refresh..."
-                    )
+                    logger.warning("  2 consecutive CHECK FAILED — attempting session refresh...")
                     refresh_session(costco_page)
                 elif consecutive_check_fails >= MAX_CONSECUTIVE_CHECK_FAILS:
-                    logger.error(
-                        f"  {MAX_CONSECUTIVE_CHECK_FAILS} consecutive CHECK FAILED results — "
-                        f"Costco session is dead. Halting research to avoid scoring products "
-                        f"with missing data. Re-run after verifying session with: "
-                        f"python tools/setup_costco_session.py"
+                    logger.warning(
+                        f"  {consecutive_check_fails} consecutive CHECK FAILED — "
+                        f"Costco session may be dead but continuing queue to fill eBay data. "
+                        f"Run python tools/setup_costco_session.py to restore Costco scraping."
                     )
-                    break
+                    # Use existing cost from sheet if we have it — eBay comps can still run
+                    if not costco_cost:
+                        write_row_partial(service, sheet_name, sheet_row, [
+                            (COL["stock_status"],  "CHECK FAILED"),
+                            (COL["last_checked"],  datetime.now().strftime("%Y-%m-%d %H:%M")),
+                        ])
+                        # No cost at all — can't price. Skip this product but keep going.
+                        continue
             else:
                 consecutive_check_fails = 0
 
