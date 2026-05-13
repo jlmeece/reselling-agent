@@ -613,109 +613,220 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
 
 def run_recheck(config, COL, service, sheet_name, start_row, end_row):
     """
-    Retries Costco scrape for rows that previously failed:
-      - stock_status contains "CHECK FAILED"
-      - costco_cost (col G) is empty
-      - ebay_price (col H) is empty
+    Full data-fill pass for rows with missing or failed data:
+      - CHECK FAILED stock status  →  re-scrape Costco
+      - Blank costco_cost (G)      →  re-scrape Costco
+      - Blank ebay_price (H)       →  run eBay comps, write suggested price
+      - Blank avg_price (L)        →  run eBay comps, write eBay market data
 
-    No eBay calls, no Claude calls — just refreshes the Costco data.
-    Run after network issues or Costco session failures to recover failed rows.
-    Typical runtime: 2-5 min depending on how many rows need retrying.
+    eBay comps run independently of Costco — if Costco fails, eBay data still gets
+    written. G/H/L/K must all be populated for Jordan to review any product.
     """
+    import random
     from tools.costco_scraper import refresh_session
+    from tools.ebay_research import get_ebay_comps
 
-    all_data  = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
-    run_time  = datetime.now().strftime("%Y-%m-%d %H:%M")
+    def _suggest_price(cost_s, ebay_data, fee_rate):
+        """Inline price suggestion: median sold → median active → avg sold."""
+        MIN_MARGIN = 0.10
+        anchor = (
+            ebay_data.get("median_sold")
+            or ebay_data.get("median_active")
+            or ebay_data.get("avg_sold_price")
+        )
+        if not anchor:
+            return None
+        try:
+            price = float(anchor)
+            cost  = float(str(cost_s).replace("$", "").replace(",", ""))
+            min_p = cost / (1 - fee_rate - MIN_MARGIN)
+            if price < min_p:
+                return None
+            price = min(price, cost * 3.0)
+            return round(price) - 0.01
+        except (ValueError, TypeError):
+            return None
+
+    categories = config["categories"]
+    all_data   = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+    run_time   = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # Identify rows needing a recheck
     targets = []
     for idx, row in enumerate(all_data):
-        if not row:
+        if not row or not row[0]:
             continue
-        status      = safe_get(row, col_to_idx(COL["status"]))
-        stock       = safe_get(row, col_to_idx(COL["stock_status"]))
-        costco_url  = safe_get(row, col_to_idx(COL["costco_url"]))
-        cost        = safe_get(row, col_to_idx(COL["costco_cost"]))
-        ebay_price  = safe_get(row, col_to_idx(COL["ebay_price"]))
-        title       = safe_get(row, col_to_idx(COL["title"]))
+        status     = safe_get(row, col_to_idx(COL["status"]))
+        stock      = safe_get(row, col_to_idx(COL["stock_status"]))
+        costco_url = safe_get(row, col_to_idx(COL["costco_url"]))
+        cost       = safe_get(row, col_to_idx(COL["costco_cost"]))
+        ebay_price = safe_get(row, col_to_idx(COL["ebay_price"]))
+        avg_price  = safe_get(row, col_to_idx(COL["avg_price"]))
+        title      = safe_get(row, col_to_idx(COL["title"]))
+        category   = safe_get(row, col_to_idx(COL["category"]))
 
         if not costco_url.startswith("http"):
             continue
-        if status in ("ACTIVE", "READY"):  # already live — active monitor handles these
+        if status in ("ACTIVE", "READY"):
             continue
 
-        needs_recheck = (
-            "CHECK FAILED" in stock
-            or not cost
-            or not ebay_price
-        )
-        if needs_recheck:
-            targets.append((idx + start_row, row, title, costco_url, status))
+        needs_costco = "CHECK FAILED" in stock or not cost
+        needs_ebay   = not ebay_price or not avg_price
+
+        if needs_costco or needs_ebay:
+            targets.append({
+                "sheet_row":   idx + start_row,
+                "row":         row,
+                "title":       title,
+                "category":    category,
+                "costco_url":  costco_url,
+                "status":      status,
+                "needs_costco": needs_costco,
+                "needs_ebay":  needs_ebay,
+                "cost":        cost,
+                "ebay_price":  ebay_price,
+            })
 
     if not targets:
-        logger.info("recheck: no rows need retrying — sheet is clean.")
+        logger.info("recheck: no rows need retrying — G/H/L all populated.")
         return
 
-    logger.info(f"recheck: {len(targets)} rows targeted (CHECK FAILED / missing price).")
+    costco_fail = [t for t in targets if t["needs_costco"]]
+    ebay_fill   = [t for t in targets if t["needs_ebay"]]
+    logger.info(
+        f"recheck: {len(targets)} rows targeted — "
+        f"{len(costco_fail)} need Costco re-scrape, "
+        f"{len(ebay_fill)} need eBay price data."
+    )
 
-    fixed   = 0
-    still_failing = 0
+    fixed        = 0
+    still_costco = []
 
     with make_browser() as page:
-        for attempt_round in range(2):  # 2 passes max; session refresh between rounds
-            if attempt_round > 0:
-                logger.info("recheck: pass 2 — refreshing session and retrying remaining failures...")
+        # ── Pass 1 + 2: Costco re-scrape for failed/missing cost ─────────────
+        for attempt_round in range(2):
+            if attempt_round > 0 and still_costco:
+                logger.info("recheck: pass 2 — session refresh, retrying Costco failures...")
                 refresh_session(page)
+                targets_this_pass = still_costco
+                still_costco = []
+            else:
+                targets_this_pass = [t for t in targets if t["needs_costco"]]
 
-            remaining = []
-            for sheet_row, row, title, costco_url, status in targets:
-                logger.info(f"  recheck row {sheet_row}: {title[:50]}")
-                costco_data  = scrape_costco(costco_url, page=page)
+            for t in targets_this_pass:
+                logger.info(f"  [Costco] row {t['sheet_row']}: {t['title'][:50]}")
+                costco_data  = scrape_costco(t["costco_url"], page=page)
                 stock_status = costco_data["stock_status"]
                 new_price    = costco_data["price"]
+
+                if stock_status == "CHECK FAILED":
+                    still_costco.append(t)
+                    logger.warning(f"    still failing: {t['title'][:40]}")
+                    time.sleep(3)
+                    continue
+
                 on_sale      = costco_data.get("on_sale", False)
                 sale_savings = costco_data.get("sale_savings")
                 sale_expires = costco_data.get("sale_expires")
                 free_ship    = costco_data.get("free_shipping", False)
 
-                if stock_status == "CHECK FAILED":
-                    remaining.append((sheet_row, row, title, costco_url, status))
-                    logger.warning(f"    still failing: {title[:40]}")
-                    time.sleep(3)
-                    continue
-
-                # Build updates
                 sale_val = ""
                 if on_sale:
                     sale_val = f"🔥 -${sale_savings:.0f}" if sale_savings else "🔥 SALE"
                     if sale_expires:
                         sale_val += f" ends {sale_expires}"
-                ship_val = "✓ FREE" if free_ship else ""
 
                 updates = [
                     (COL["stock_status"],  stock_status),
                     (COL["last_checked"],  run_time),
                     (COL["sale_info"],     sale_val),
-                    (COL["free_shipping"], ship_val),
-                    (COL["tier_summary"],  f"[Rechecked {run_time}] {stock_status}"),
+                    (COL["free_shipping"], "✓ FREE" if free_ship else ""),
                 ]
                 if new_price:
                     updates.append((COL["costco_cost"], new_price))
+                    t["cost"] = str(new_price)   # update for eBay pass below
 
-                write_row_partial(service, sheet_name, sheet_row, updates)
-                fixed += 1
-                logger.info(f"    fixed: {stock_status} | price=${new_price}")
-                time.sleep(3)
+                write_row_partial(service, sheet_name, t["sheet_row"], updates)
+                logger.info(f"    Costco OK: {stock_status} | ${new_price}")
+                t["needs_costco"] = False
+                time.sleep(2)
 
-            targets = remaining
-            if not targets:
-                break
+        # ── eBay comps pass: fill missing H/L/K/M for all qualifying rows ────
+        # Includes rows that just had Costco fixed AND pre-existing rows with blank price
+        ebay_targets = [t for t in targets if t["needs_ebay"] and not t["needs_costco"]]
+        # Also add any Costco-fixed rows that now need eBay data
+        for t in targets:
+            if not t["needs_costco"] and t["needs_ebay"] and t not in ebay_targets:
+                ebay_targets.append(t)
 
-    still_failing = len(targets)
+        logger.info(f"recheck: running eBay comps for {len(ebay_targets)} rows with missing price data...")
+
+        for t in ebay_targets:
+            title    = t["title"]
+            category = t["category"]
+            cost_s   = t["cost"]
+            row      = t["row"]
+
+            logger.info(f"  [eBay] row {t['sheet_row']}: {title[:50]}")
+
+            cat_config = categories.get(category, {})
+            fee_rate   = cat_config.get("fee_rate", 0.1325)
+            brand      = None
+            model      = None
+
+            try:
+                ebay_data = get_ebay_comps(
+                    title, category, page=page,
+                    brand=brand, model=model,
+                    ebay_category_id=cat_config.get("ebay_category_id"),
+                )
+            except Exception as e:
+                logger.warning(f"    eBay comps failed: {e}")
+                time.sleep(5)
+                continue
+
+            updates = [(COL["last_checked"], run_time)]
+
+            # Always write eBay market data regardless of whether we suggest a price
+            if ebay_data.get("sold_90d") is not None:
+                updates.append((COL["sold_90d"],   ebay_data["sold_90d"]))
+            if ebay_data.get("avg_sold_price") is not None:
+                updates.append((COL["avg_price"],  ebay_data["avg_sold_price"]))
+            if ebay_data.get("active_count") is not None:
+                updates.append((COL["comp_count"], ebay_data["active_count"]))
+
+            # Suggested price — write to H and V if not already set
+            suggested = _suggest_price(cost_s, ebay_data, fee_rate)
+            if suggested:
+                if not t["ebay_price"]:
+                    updates.append((COL["ebay_price"], suggested))
+                sugg_idx = col_to_idx(COL["suggested_price"])
+                if not safe_get(row, sugg_idx):
+                    updates.append((COL["suggested_price"], suggested))
+
+            # Update tier_summary to show new data is filled
+            sold   = ebay_data.get("sold_90d", "?")
+            avg    = ebay_data.get("avg_sold_price", "?")
+            active = ebay_data.get("active_count", "?")
+            sugg_s = f" | Sugg: ${suggested:.2f}" if suggested else ""
+            updates.append((COL["tier_summary"],
+                            f"[Rechecked {run_time}] sold90d={sold} avgeBay=${avg} active={active}{sugg_s}"))
+
+            write_row_partial(service, sheet_name, t["sheet_row"], updates)
+            fixed += 1
+            logger.info(f"    eBay OK: sold={sold} avg=${avg} sugg={suggested}")
+            time.sleep(random.uniform(3, 5))
+
+    still_fail_count = len(still_costco)
     logger.info(
-        f"recheck complete: {fixed} fixed, {still_failing} still failing. "
-        f"Run 'python agents/setup_costco_session.py' if Chrome session is stale."
+        f"recheck complete: {fixed} eBay rows filled | "
+        f"{still_fail_count} Costco rows still failing."
     )
+    if still_costco:
+        logger.warning(
+            "Still failing: " + ", ".join(t["title"][:30] for t in still_costco[:5])
+            + (" ..." if len(still_costco) > 5 else "")
+        )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
