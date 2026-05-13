@@ -53,6 +53,8 @@ from tools.tier_scorer import score_product
 from skills.research_gold import run_pass3 as gold_pass3
 from skills.research_outdoor import run_pass3 as outdoor_pass3
 from skills.research_watches import run_pass3 as watches_pass3
+from skills.research_appliances import run_pass3 as appliances_pass3
+from skills.research_pharmacy import run_pass3 as pharmacy_pass3
 from skills.scoring import score_dimension
 
 
@@ -239,13 +241,14 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
         f"  Search query used: \"{ebay_data.get('query_used', '')}\"\n\n"
         + (
             f"PRECIOUS METALS DATA:\n"
-            f"  Gold spot price: ${spot_data['spot_price']:.2f}/oz\n"
+            f"  Metal: {spot_data.get('metal', 'gold').title()}\n"
+            f"  Spot price: ${spot_data['spot_price']:.2f}/oz\n"
             f"  Product weight: {spot_data['weight_oz']:.4f} troy oz\n"
             f"  Karat/purity: {spot_data['karat']}kt\n"
             f"  Melt value: ${spot_data['melt_value']:.2f}\n"
             f"  eBay premium above melt: {spot_data['premium_pct']:+.1f}%\n"
             f"  Note: buyers pay premium for Costco trust, mint brand, and convenience — not just melt value.\n"
-            f"  IMPORTANT: Sold 90-day median may be stale (reflects older gold prices). Use median active listing price as the primary eBay price signal for gold bars.\n\n"
+            f"  IMPORTANT: Sold 90-day median may be stale. Use median active listing price as the primary eBay price signal.\n\n"
             if spot_data else ""
         )
         + f"COMMUNITY SIGNAL: {community_data.get('signal_strength', 0):.1f}/10\n"
@@ -319,14 +322,18 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
 def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float | None:
     """
     Data-backed eBay listing price suggestion.
-    Anchor: median sold price (or median active as fallback).
+    Anchor: median sold → median active → avg sold (in that priority order).
     Saturation discount: -3% when active listings > 2× sold count (crowded market).
     Margin floor: price must yield >= 10% net margin after fees.
     Returns price rounded to nearest .99, or None if data is insufficient.
     """
     MIN_MARGIN = 0.10
 
-    anchor = ebay_data.get("median_sold") or ebay_data.get("median_active")
+    anchor = (
+        ebay_data.get("median_sold")
+        or ebay_data.get("median_active")
+        or ebay_data.get("avg_sold_price")   # fallback when scraper returns avg but not median
+    )
     if not anchor:
         return None
 
@@ -342,7 +349,20 @@ def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float 
         if cost > 0:
             min_price = cost / (1 - fee_rate - MIN_MARGIN)
             if price < min_price:
+                logger.debug(
+                    f"  _suggest_ebay_price: skipping — market ${price:.2f} < floor ${min_price:.2f} "
+                    f"(cost ${cost:.2f}, fee {fee_rate:.1%}). Col H left blank."
+                )
                 return None  # market price can't cover costs — not viable, don't suggest
+            # Sanity cap: suggested price should never exceed 3× Costco cost
+            # (catches bad eBay comps from range-averaging or wrong product matches)
+            max_price = cost * 3.0
+            if price > max_price:
+                logger.warning(
+                    f"  _suggest_ebay_price: ${price:.2f} exceeds 3× cost cap (${max_price:.2f}). "
+                    f"Capping. Check eBay comps — possible wrong-product match."
+                )
+                price = max_price
     except (ValueError, TypeError):
         pass
 
@@ -355,6 +375,10 @@ def _pass3_for_category(category):
         return gold_pass3
     if category.lower() == "watches":
         return watches_pass3
+    if category.lower() == "small appliances":
+        return appliances_pass3
+    if category.lower() == "pharmacy":
+        return pharmacy_pass3
     return outdoor_pass3
 
 
@@ -373,6 +397,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     categories = config["categories"]
 
     logger.info(f"Researcher started: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    _run_start = time.time()
 
     service    = get_sheets_service()
     sheet_name = business["sheet_name"]
@@ -467,11 +492,22 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     tier1_results = []
     new_tier2 = []
 
+    # Costco session guard: halt after this many consecutive CHECK FAILED results.
+    # Costco rate-limits the scraper after ~14 product page hits in one session.
+    # At 2 consecutive fails we attempt a session refresh; at 3 we stop entirely
+    # rather than scoring 40+ products with missing data.
+    MAX_CONSECUTIVE_CHECK_FAILS = 3
+    consecutive_check_fails = 0
+    consecutive_ebay_fails  = 0
+    researched_count = 0
+
     with make_browser() as costco_page:
         for _product_idx, (sheet_row, row) in enumerate(to_research):
-            # Refresh Costco session every 20 products to prevent cookie expiry
-            if _product_idx > 0 and _product_idx % 20 == 0:
+            # Refresh Costco session every 5 products — empirically the session
+            # dies around product 5-7 if left alone (rate-limit / cookie expiry).
+            if _product_idx > 0 and _product_idx % 5 == 0:
                 refresh_session(costco_page)
+                consecutive_check_fails = 0  # reset after intentional refresh
 
             title        = safe_get(row, 2)   # col C
             category     = safe_get(row, 3)   # col D
@@ -497,6 +533,25 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             purchase_limit = costco_data.get("purchase_limit")
             if live_price and not costco_cost:
                 costco_cost = live_price
+
+            # Consecutive CHECK FAILED guard — Costco session likely dead.
+            if stock_status == "CHECK FAILED":
+                consecutive_check_fails += 1
+                if consecutive_check_fails == 2:
+                    logger.warning(
+                        f"  2 consecutive CHECK FAILED — attempting session refresh..."
+                    )
+                    refresh_session(costco_page)
+                elif consecutive_check_fails >= MAX_CONSECUTIVE_CHECK_FAILS:
+                    logger.error(
+                        f"  {MAX_CONSECUTIVE_CHECK_FAILS} consecutive CHECK FAILED results — "
+                        f"Costco session is dead. Halting research to avoid scoring products "
+                        f"with missing data. Re-run after verifying session with: "
+                        f"python tools/setup_costco_session.py"
+                    )
+                    break
+            else:
+                consecutive_check_fails = 0
 
             # Enrich stock label for Precious Metals using config purchase limits.
             # Costco shows "Limited Quantity" for all precious metals (policy label, not low stock).
@@ -524,12 +579,21 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 if w_oz is None:
                     w_oz, karat = parse_gold_weight(title)
                 if w_oz:
-                    metal = "gold"
+                    # Detect metal from title — default gold, override for silver/platinum
+                    title_lower = title.lower()
+                    if "silver" in title_lower:
+                        metal = "silver"
+                    elif "platinum" in title_lower:
+                        metal = "platinum"
+                    else:
+                        metal = "gold"
                     k = karat or 24
+                    spot_for_metal = _spot_prices.get(metal) or _spot_prices.get("gold")
                     mv = melt_value(w_oz, metal, k)
                     ebay_median = None  # filled after eBay comps
                     spot_data = {
-                        "spot_price": _spot_prices["gold"],
+                        "spot_price": spot_for_metal,
+                        "metal":      metal,
                         "weight_oz":  w_oz,
                         "karat":      k,
                         "melt_value": mv or 0,
@@ -556,18 +620,36 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
 
             time.sleep(1)
 
-            # 3b. eBay comp research (reuse CDP Chrome — same session, avoids bot detection)
-            try:
-                ebay_data = get_ebay_comps(
-                    title, category, page=costco_page,
-                    brand=brand, model=model,
-                    ebay_category_id=cat_config.get("ebay_category_id"),
-                )
-            except Exception as e:
-                logger.warning(f"  eBay research failed: {e}")
-                ebay_data = {"sold_90d": None, "avg_sold_price": None,
-                             "active_count": None, "fee_rate": fee_rate,
-                             "query_used": "", "query_strategy": "error", "note": str(e)}
+            # 3b. eBay comp research — with one retry and a consecutive-failure halt.
+            # If eBay times out or returns garbage 3 times in a row, stop rather than
+            # scoring products with no market data (produces unreliable prices/scores).
+            _ebay_empty = {"sold_90d": None, "avg_sold_price": None,
+                           "active_count": None, "fee_rate": fee_rate,
+                           "query_used": "", "query_strategy": "error"}
+            ebay_fetch_ok = False
+            for _attempt in range(2):   # try once, retry once on failure
+                try:
+                    ebay_data = get_ebay_comps(
+                        title, category, page=costco_page,
+                        brand=brand, model=model,
+                        ebay_category_id=cat_config.get("ebay_category_id"),
+                    )
+                    ebay_fetch_ok = True
+                    consecutive_ebay_fails = 0
+                    break
+                except Exception as e:
+                    logger.warning(f"  eBay research failed (attempt {_attempt + 1}/2): {e}")
+                    if _attempt == 0:
+                        time.sleep(8)   # brief pause before retry
+            if not ebay_fetch_ok:
+                ebay_data = dict(_ebay_empty, note="eBay fetch failed after retry")
+                consecutive_ebay_fails += 1
+                if consecutive_ebay_fails >= MAX_CONSECUTIVE_CHECK_FAILS:
+                    logger.error(
+                        f"  {MAX_CONSECUTIVE_CHECK_FAILS} consecutive eBay failures — "
+                        f"halting research to avoid scoring products with no market data."
+                    )
+                    break
 
             # Fill eBay premium into spot_data now that we have comps
             if spot_data and spot_data.get("melt_value"):
@@ -575,6 +657,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 if ebay_ref:
                     spot_data["premium_pct"] = spot_premium_pct(
                         ebay_ref, spot_data["weight_oz"],
+                        metal=spot_data.get("metal", "gold"),
                         karat=spot_data["karat"]
                     )
 
@@ -594,6 +677,24 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                         suggested_price = round(fallback) - 0.01
                         ebay_data["price_basis"]    = "melt×1.05"
                         ebay_data["query_strategy"] = "spot-fallback"
+                except (ValueError, TypeError):
+                    pass
+
+            # Sanity check: don't suggest a price more than 10% above actual eBay avg.
+            # When eBay comps matched the wrong product class (e.g. silver instead of gold),
+            # avg_sold_price exposes the mismatch. Cap at avg × 1.05 and flag the discrepancy.
+            avg_sold = ebay_data.get("avg_sold_price")
+            if suggested_price and avg_sold:
+                try:
+                    avg_f = float(str(avg_sold).replace("$", "").replace(",", ""))
+                    if avg_f > 0 and suggested_price > avg_f * 1.10:
+                        logger.warning(
+                            f"  Price sanity: suggested ${suggested_price:.2f} is "
+                            f"{(suggested_price/avg_f - 1)*100:.0f}% above eBay avg ${avg_f:.2f}. "
+                            f"Capping at avg × 1.05."
+                        )
+                        suggested_price = round(avg_f * 1.05) - 0.01
+                        ebay_data["price_basis"] = "ebay-avg×1.05 (capped)"
                 except (ValueError, TypeError):
                     pass
 
@@ -723,7 +824,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             if spot_data and spot_data.get("melt_value"):
                 prem = f"{spot_data['premium_pct']:+.1f}%" if spot_data.get("premium_pct") is not None else "unknown"
                 notes += (
-                    f"\nGold spot: ${spot_data['spot_price']:.2f}/oz | "
+                    f"\n{spot_data.get('metal', 'gold').title()} spot: ${spot_data['spot_price']:.2f}/oz | "
                     f"Weight: {spot_data['weight_oz']:.4f} oz | "
                     f"Melt: ${spot_data['melt_value']:.2f} | "
                     f"eBay premium above melt: {prem}"
@@ -745,6 +846,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 (COL["stock_status"],  stock_status),
                 (COL["last_checked"],  datetime.now().strftime("%Y-%m-%d %H:%M")),
                 (COL["notes"],         notes),
+                (COL["fee_rate"],      fee_rate),   # col Y — needed for =H*Y (eBay fees formula)
             ]
             if ebay_data.get("sold_90d") is not None:
                 updates.append((COL["sold_90d"],   ebay_data["sold_90d"]))
@@ -823,11 +925,13 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 tier = 2
 
             if tier == 2:
+                stale_days = cat_config.get("stale_days", 30)
+                tier2_recheck = (date.today() + timedelta(days=stale_days)).isoformat()
                 new_tier2.append({
                     "title": title, "costco_url": costco_url,
                     "category": category,
                     "scored_date": date.today().isoformat(),
-                    "recheck_date": result.get("recheck_date", ""),
+                    "recheck_date": tier2_recheck,
                     "score": weighted_score,
                     "reason": notes,
                 })
@@ -841,8 +945,9 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 })
 
             _update_category_performance(category, tier)
+            researched_count += 1
 
-            time.sleep(2)   # pause between products
+            time.sleep(random.uniform(4, 6))   # pause between products — longer gap reduces Costco rate-limit hits
 
     # ── Step 4: Update Tier 2 watchlist ──────────────────────────
     tier2_watchlist = [
@@ -900,10 +1005,10 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     # Send a brief summary so Jordan knows what ran even on quiet days
     elif to_research:
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        subject  = f"[WAT Research] {len(to_research)} scored — 0 Tier 1 — {date.today().isoformat()}"
+        subject  = f"[WAT Research] {researched_count} scored — 0 Tier 1 — {date.today().isoformat()}"
         lines = [
             f"Research run complete. No Tier 1 products found today.",
-            f"Scored: {len(to_research)} | Tier 2 (WATCH): {len(new_tier2)} | Tier 3 (PAUSED): {len(to_research) - len(tier1_results) - len(new_tier2)}",
+            f"Scored: {researched_count} | Tier 2 (WATCH): {len(new_tier2)} | Tier 3 (PAUSED): {researched_count - len(tier1_results) - len(new_tier2)}",
         ]
         if spot_fallback_count > 0:
             lines.append(
@@ -914,14 +1019,32 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
         send_alert(subject, "\n".join(lines), urgent=False)
         logger.info("Run summary sent (no Tier 1 results).")
 
+    queued = len(to_research)
+    skipped = queued - researched_count
     logger.info(
         f"Research run complete. "
         f"New products: {len(new_products)} | "
-        f"Researched: {len(to_research)} | "
-        f"Tier 1: {len(tier1_results)} | "
+        f"Queued: {queued} | Researched: {researched_count}"
+        + (f" | Skipped (session halt): {skipped}" if skipped else "") +
+        f" | Tier 1: {len(tier1_results)} | "
         f"Tier 2: {len(new_tier2)} | "
         f"Watchlist: {len(tier2_watchlist)}"
     )
+
+    # Write structured results to the Run Log tab so Jordan can verify research ran
+    from tools.run_logger import log_run_end as _log_run_end
+    tier3_count = researched_count - len(tier1_results) - len(new_tier2)
+    _log_run_end("research", _run_start, {
+        "status":       "ok",
+        "new_products": len(new_products),
+        "researched":   researched_count,
+        "tier1":        len(tier1_results),
+        "tier2":        len(new_tier2),
+        "tier3":        max(0, tier3_count),
+        "spot_gold":    _spot_prices.get("gold", ""),
+        "spot_silver":  _spot_prices.get("silver", ""),
+        "notes":        f"Queued: {queued}" + (f" | Halted early: {skipped} skipped" if skipped else ""),
+    }, service)
 
 
 if __name__ == "__main__":
