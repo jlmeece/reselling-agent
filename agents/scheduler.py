@@ -84,16 +84,17 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
     urgent_items = []
     checked = 0
 
-    # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL rows.
+    # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL/APPROVED rows.
     # This prevents a guaranteed crash on CI (GitHub Actions) where no local Chrome exists.
     has_active = any(
         safe_get(r, col_to_idx(COL["status"])) in ACTIVE_MONITOR_STATUSES
+        or safe_get(r, col_to_idx(COL["status"])) == "APPROVED"
         or (safe_get(r, col_to_idx(COL["status"])) == "READY"
             and safe_get(r, col_to_idx(COL["ebay_listing_url"])).startswith("http"))
         for r in all_data if r
     )
     if not has_active:
-        logger.info("Active monitor: no ACTIVE listings found — skipping browser launch.")
+        logger.info("Active monitor: no ACTIVE or APPROVED listings found — skipping browser launch.")
         return
 
     with make_browser() as page:
@@ -105,8 +106,11 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
             status    = safe_get(row, col_to_idx(COL["status"]))
             ebay_url  = safe_get(row, col_to_idx(COL["ebay_listing_url"]))
 
-            # Only process ACTIVE rows (or READY rows that may have an eBay URL now)
-            if status not in ACTIVE_MONITOR_STATUSES and not (status == "READY" and ebay_url.startswith("http")):
+            # Process ACTIVE rows, READY rows with eBay URL, and APPROVED rows (stock watch)
+            is_approved_check = (status == "APPROVED")
+            if (status not in ACTIVE_MONITOR_STATUSES
+                    and not (status == "READY" and ebay_url.startswith("http"))
+                    and not is_approved_check):
                 continue
 
             title       = safe_get(row, col_to_idx(COL["title"]))
@@ -131,6 +135,29 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
             image_urls   = " | ".join(costco_data["image_urls"])
             if costco_data.get("error"):
                 logger.warning(f"  Scrape error: {costco_data.get('error')}")
+
+            # APPROVED rows: only check stock — no margin/demand logic needed yet
+            if is_approved_check:
+                updates = [
+                    (COL["stock_status"], stock_status),
+                    (COL["last_checked"], run_time),
+                ]
+                if new_price:
+                    updates.append((COL["costco_cost"], new_price))
+                write_row_partial(service, sheet_name, sheet_row, updates)
+                if stock_status == "OUT OF STOCK":
+                    urgent_items.append({
+                        "title":        title,
+                        "row":          sheet_row,
+                        "category":     category,
+                        "reason":       "OOS BEFORE LISTING — item went out of stock while APPROVED",
+                        "reprice_note": "",
+                    })
+                    logger.warning(f"  APPROVED row OOS: {title[:50]}")
+                else:
+                    logger.info(f"  APPROVED stock OK: {stock_status}")
+                time.sleep(2)
+                continue
 
             # Detect price change
             price_changed = False

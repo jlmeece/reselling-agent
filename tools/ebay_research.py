@@ -28,16 +28,35 @@ _NOISE = {
 }
 _MAX_QUERY_TOKENS = 8
 
+# Listing titles that indicate a non-whole-unit sale — parts, broken, OEM stock.
+# Filtering these prevents inflated comp counts and deflated average prices.
+_JUNK_WORDS = {
+    "replacement", "parts", "part", "for parts", "testing", "salvage",
+    "oem", "broken", "cracked", "damaged", "defective", "read description",
+}
+
 
 def _build_search_urls(query, sacat=0):
-    """Build eBay sold + active search URLs for the given query and category."""
+    """
+    Build eBay sold + active search URLs with all 6 required filters:
+      New condition, Buy It Now, US Only, Free Shipping, Sold Items, Sale Items.
+    """
     q = query.replace(" ", "+")
     sold = (
         f"https://www.ebay.com/sch/i.html?_nkw={q}"
-        f"&LH_Complete=1&LH_Sold=1&_ipg=60&_sacat={sacat}"
+        f"&LH_Complete=1&LH_Sold=1"          # Sold/Completed listings
+        f"&LH_ItemCondition=1000"             # New condition only
+        f"&LH_BIN=1"                          # Buy It Now (no auctions)
+        f"&LH_PrefLoc=1"                      # US Only
+        f"&LH_FS=1"                           # Free Shipping
+        f"&_ipg=60&_sacat={sacat}"
     )
     active = (
         f"https://www.ebay.com/sch/i.html?_nkw={q}"
+        f"&LH_ItemCondition=1000"             # New condition only
+        f"&LH_BIN=1"                          # Buy It Now
+        f"&LH_PrefLoc=1"                      # US Only
+        f"&LH_FS=1"                           # Free Shipping
         f"&_ipg=60&_sacat={sacat}"
     )
     return sold, active
@@ -92,7 +111,12 @@ def _parse_price(text):
     if not vals:
         return None
     if len(vals) >= 2 and ("to" in text.lower() or "—" in text or "–" in text):
-        return round((vals[0] + vals[1]) / 2, 2)
+        lo, hi = vals[0], vals[1]
+        # Wide ranges (max > 3× min) are variant listings — use the low end only.
+        # Narrow ranges (same-product color/size variants) use the midpoint.
+        if hi > lo * 3:
+            return lo
+        return round((lo + hi) / 2, 2)
     return vals[0]
 
 
@@ -110,7 +134,7 @@ def _filter_outliers(prices):
     if not s:
         return prices
     med = statistics.median(s)
-    return [p for p in s if 0.3 * med <= p <= 3.0 * med] or s
+    return [p for p in s if 0.3 * med <= p <= 2.0 * med] or s
 
 
 def _scrape_ebay_page(page, url, label):
@@ -158,10 +182,26 @@ def _scrape_ebay_page(page, url, label):
             return count, []
 
         # Prices — eBay now uses .s-card__price
-        for el in page.query_selector_all(".s-card__price")[:60]:
-            p = _parse_price(el.inner_text())
-            if p and p > 1:
-                prices.append(p)
+        # Pair each price card with its sibling title to filter junk listings
+        cards = page.query_selector_all(".s-item")[:80]
+        junk_skipped = 0
+        for card in cards:
+            # Skip cards whose title contains a junk word
+            title_el = card.query_selector(".s-item__title")
+            if title_el:
+                title_lower = title_el.inner_text().lower()
+                if any(jw in title_lower for jw in _JUNK_WORDS):
+                    junk_skipped += 1
+                    continue
+            price_el = card.query_selector(".s-card__price")
+            if not price_el:
+                price_el = card.query_selector(".s-item__price")
+            if price_el:
+                p = _parse_price(price_el.inner_text())
+                if p and p > 1:
+                    prices.append(p)
+        if junk_skipped:
+            logger.debug(f"  eBay {label}: filtered {junk_skipped} junk listings")
 
     except PlaywrightTimeout:
         logger.debug(f"  eBay {label} timed out")

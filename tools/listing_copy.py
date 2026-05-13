@@ -13,9 +13,11 @@ import json
 import anthropic
 
 
-SYSTEM_PROMPT = """You are an expert eBay seller and SEO copywriter specializing in Costco products. \
+SYSTEM_PROMPT = """You are an expert eBay seller and SEO copywriter for the seller account JA_Liquidations. \
 You write listing copy that builds trust, ranks in eBay search, and converts browsers into buyers. \
 Every listing includes a redirect message that offers the buyer 10% off to purchase direct from the seller's website.
+
+Seller identity: JA_Liquidations — ships from Texas. Use this to build buyer confidence.
 
 Rules:
 - Never use the word "beautiful" — it is generic and kills trust
@@ -26,6 +28,8 @@ Rules:
 - HTML descriptions must use ONLY inline styles — no <style> blocks, eBay strips them
 - HTML descriptions must contain NO <a href> to external sites — eBay policy
 - HTML descriptions must contain NO <script>, <form>, <embed>, or event handlers
+- Footer line in every HTML description must read exactly:
+  "Sold by JA_Liquidations — Ships from Texas. eBay Money Back Guarantee applies to all purchases."
 
 Return ONLY a raw JSON array. No markdown fences, no explanation. Start with [ and end with ]."""
 
@@ -74,7 +78,7 @@ Follow this exact structure (fill in real product content):
     <b style="font-size:14px">Save 10% buying direct:</b>
     <p style="font-size:13px;color:#1d1d1f;margin:6px 0 0 0">{REDIRECT MESSAGE — site URL and code}</p>
   </div>
-  <p style="font-size:12px;color:#6e6e73;margin:0">Ships from authorized Costco retail. New in original packaging. \
+  <p style="font-size:12px;color:#6e6e73;margin:0">Sold by JA_Liquidations — Ships from Texas. New in original packaging. \
 eBay Money Back Guarantee applies to all purchases.</p>
 </div>
 

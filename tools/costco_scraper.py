@@ -483,6 +483,8 @@ def scrape_costco(url, page):
         "image_urls": [], "title": None,
         "brand": None, "model": None,
         "item_number": None, "purchase_limit": None, "in_stock": False,
+        "on_sale": False, "sale_savings": None, "original_price": None,
+        "sale_expires": None, "free_shipping": False,
         "error": None, "http_status": None,
     }
 
@@ -603,6 +605,24 @@ def scrape_costco(url, page):
                 result["purchase_limit"] = int(lim_m.group(1))
                 break
 
+        # Sale detection — "After $150 OFF" text below price
+        sale_m = re.search(r"after\s+\$?([\d,]+\.?\d*)\s+off", prod_text, re.IGNORECASE)
+        if sale_m:
+            result["on_sale"] = True
+            result["sale_savings"] = float(sale_m.group(1).replace(",", ""))
+            if result["price"] is not None:
+                result["original_price"] = result["price"] + result["sale_savings"]
+            # Extract expiry: "valid M/D/YY through M/D/YY" or "through MM/DD/YYYY"
+            exp_m = re.search(r"through\s+(\d{1,2}/\d{1,2}/\d{2,4})", prod_text, re.IGNORECASE)
+            if exp_m:
+                result["sale_expires"] = exp_m.group(1)
+
+        # Free shipping detection
+        if any(p in prod_text for p in [
+            "shipping & handling included", "free shipping", "shipping included"
+        ]):
+            result["free_shipping"] = True
+
         body_text = prod_text  # reuse for stock checks below
 
         def _limit_label(n):
@@ -685,6 +705,17 @@ def scrape_costco(url, page):
             result["title"] = h1.inner_text().strip()
 
         # Brand + model — best-effort, multiple fallbacks. Either may stay None.
+        # Decorate stock_status with sale / free-shipping badges
+        if result["on_sale"] or result["free_shipping"]:
+            badges = []
+            if result["on_sale"]:
+                exp = f" ends {result['sale_expires']}" if result["sale_expires"] else ""
+                badges.append(f"SALE{exp}")
+            if result["free_shipping"]:
+                badges.append("FREE SHIP")
+            base = result["stock_status"]
+            result["stock_status"] = " | ".join(badges + [base])
+
         result["brand"] = _extract_brand(page)
         result["model"] = _extract_model(page)
         if result["brand"] or result["model"]:

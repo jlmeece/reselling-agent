@@ -597,6 +597,13 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
     # Ensure Legend tab exists / refresh definitions
     _ensure_legend_tab(service, spreadsheet_id)
 
+    # Rebuild Summary tab with current sheet data
+    all_data = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet_name}'!A4:AZ1000",
+    ).execute().get("values", [])
+    refresh_summary_tab(service, sheet_name, all_data=all_data)
+
     logger.info("Dashboard setup complete.")
 
 
@@ -856,6 +863,250 @@ def update_stats_row(service, sheet_name, stats: dict):
         valueInputOption="USER_ENTERED",
         body={"values": [[text]]},
     ).execute()
+
+
+def refresh_summary_tab(service, sheet_name, all_data=None):
+    """
+    Builds or refreshes the Summary tab with live pipeline counts, category stats,
+    and focus recommendations.
+
+    all_data: list of sheet rows (A–AZ) from read_sheet. If None, reads from sheet.
+    Safe to re-run anytime — overwrites previous content.
+    """
+    import os
+    from collections import defaultdict
+
+    spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
+    meta           = _get_sheet_meta(service, spreadsheet_id)
+    existing       = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+
+    # Create Summary tab if missing (index 0 = leftmost)
+    if "Summary" not in existing:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": "Summary", "index": 0}}}]},
+        ).execute()
+        logger.info("  Created Summary tab.")
+        meta     = _get_sheet_meta(service, spreadsheet_id)
+        existing = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+
+    sum_id = existing["Summary"]
+
+    # ── Compute stats from all_data ───────────────────────────────────────────
+    pipeline = defaultdict(int)
+    category_stats = defaultdict(lambda: {"count": 0, "score_sum": 0.0, "score_count": 0,
+                                           "margin_sum": 0.0, "margin_count": 0, "t1": 0})
+    top_pending = []   # (score, title, costco_url) for focus recommendation
+    sale_count  = 0
+    ship_count  = 0
+
+    def _safe(lst, i):
+        return str(lst[i]).strip() if lst and i < len(lst) else ""
+
+    for row in (all_data or []):
+        if not row or not row[0]:
+            continue
+        status   = _safe(row, 0)   # A
+        score_s  = _safe(row, 1)   # B
+        title    = _safe(row, 2)   # C
+        category = _safe(row, 3)   # D
+        stock    = _safe(row, 5)   # F
+        ebay_s   = _safe(row, 7)   # H
+        cost_s   = _safe(row, 6)   # G
+        url      = _safe(row, 17)  # R
+
+        if not status:
+            continue
+
+        pipeline[status] += 1
+
+        try:
+            score = float(score_s)
+            cat   = category_stats[category or "Unknown"]
+            cat["count"]       += 1
+            cat["score_sum"]   += score
+            cat["score_count"] += 1
+            if score >= 7.0:
+                cat["t1"] += 1
+        except (ValueError, TypeError):
+            score = None
+
+        try:
+            ep = float(str(ebay_s).replace("$", "").replace(",", ""))
+            cp = float(str(cost_s).replace("$", "").replace(",", ""))
+            if ep > 0:
+                margin = (ep - cp - ep * 0.1325) / ep
+                cat = category_stats[category or "Unknown"]
+                cat["margin_sum"]   += margin
+                cat["margin_count"] += 1
+        except (ValueError, TypeError):
+            pass
+
+        if "SALE" in stock.upper():
+            sale_count += 1
+        if "FREE SHIP" in stock.upper():
+            ship_count += 1
+
+        if status == "PENDING" and score is not None:
+            top_pending.append((score, title, url))
+
+    top_pending.sort(reverse=True)
+
+    # ── Build row content ─────────────────────────────────────────────────────
+    rows = []
+
+    def _hdr(label):
+        rows.append([label, "", "", "", ""])
+
+    def _blank():
+        rows.append(["", "", "", "", ""])
+
+    def _row(*cells):
+        r = list(cells)
+        r += [""] * (5 - len(r))
+        rows.append(r)
+
+    # Title
+    _hdr("WAT Agent — Live Summary Dashboard")
+    _blank()
+
+    # Pipeline counts
+    _hdr("PIPELINE STATUS")
+    _row("Status", "Count", "", "", "")
+    status_order = ["PENDING", "WATCH", "APPROVED", "READY", "ACTIVE",
+                    "PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL"]
+    total = sum(pipeline.values())
+    for s in status_order:
+        if pipeline[s] > 0:
+            _row(s, pipeline[s], "", "", "")
+    _row("TOTAL", total, "", "", "")
+    _blank()
+
+    # Highlights
+    _hdr("HIGHLIGHTS")
+    _row("Products currently ON SALE at Costco", sale_count)
+    _row("Products with FREE SHIPPING from Costco", ship_count)
+    _row("Active (live on eBay)", pipeline.get("ACTIVE", 0))
+    _row("Ready to list (copy done)", pipeline.get("READY", 0))
+    _blank()
+
+    # Category breakdown
+    _hdr("CATEGORY BREAKDOWN")
+    _row("Category", "Products", "Avg Score", "T1 Count", "Avg Margin")
+    best_cat, best_margin = "", -999.0
+    for cat_name, d in sorted(category_stats.items()):
+        avg_score  = round(d["score_sum"] / d["score_count"], 2) if d["score_count"] else "—"
+        avg_margin = (
+            f"{d['margin_sum'] / d['margin_count'] * 100:.1f}%"
+            if d["margin_count"] else "—"
+        )
+        _row(cat_name, d["count"], avg_score, d["t1"], avg_margin)
+        if d["margin_count"] and d["margin_sum"] / d["margin_count"] > best_margin:
+            best_margin = d["margin_sum"] / d["margin_count"]
+            best_cat    = cat_name
+    _blank()
+
+    # Focus recommendation
+    _hdr("WHERE TO FOCUS")
+    if best_cat:
+        _row("Highest-margin category", best_cat, f"{best_margin * 100:.1f}% avg margin")
+    if top_pending:
+        top_score, top_title, top_url = top_pending[0]
+        _row("Top PENDING to approve", top_title[:60], f"Score: {top_score}", top_url)
+    if pipeline.get("READY", 0):
+        _row("Action needed", f"{pipeline['READY']} product(s) READY — export CSV and list on eBay")
+    if pipeline.get("PAUSED_OOS", 0):
+        _row("Monitor", f"{pipeline['PAUSED_OOS']} OOS — check if restocked")
+    _blank()
+
+    _row(f"Last refreshed: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+    # ── Write content ─────────────────────────────────────────────────────────
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range="'Summary'!A1",
+        valueInputOption="USER_ENTERED",
+        body={"values": rows},
+    ).execute()
+
+    # ── Format ────────────────────────────────────────────────────────────────
+    total_rows = len(rows)
+    hdr_rows   = [i for i, r in enumerate(rows) if r and r[0] and not r[1] and r[0] != ""]
+
+    requests = [
+        # Freeze row 1
+        {"updateSheetProperties": {
+            "properties": {"sheetId": sum_id, "gridProperties": {"frozenRowCount": 1}},
+            "fields": "gridProperties.frozenRowCount",
+        }},
+        # Base style
+        {"repeatCell": {
+            "range": {"sheetId": sum_id, "startRowIndex": 0, "endRowIndex": total_rows + 5,
+                       "startColumnIndex": 0, "endColumnIndex": 5},
+            "cell": {"userEnteredFormat": {
+                "textFormat": {"fontSize": 10},
+                "verticalAlignment": "MIDDLE",
+                "padding": {"top": 4, "bottom": 4, "left": 8, "right": 4},
+            }},
+            "fields": "userEnteredFormat",
+        }},
+        # Column widths
+        {"updateDimensionProperties": {
+            "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+            "properties": {"pixelSize": 220}, "fields": "pixelSize",
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+            "properties": {"pixelSize": 100}, "fields": "pixelSize",
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
+            "properties": {"pixelSize": 120}, "fields": "pixelSize",
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 3, "endIndex": 4},
+            "properties": {"pixelSize": 80}, "fields": "pixelSize",
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 4, "endIndex": 5},
+            "properties": {"pixelSize": 350}, "fields": "pixelSize",
+        }},
+    ]
+
+    # Section header rows — dark navy
+    for i, r in enumerate(rows):
+        label = r[0] if r else ""
+        is_title = (i == 0)
+        if not label or r[1]:  # skip blank or data rows
+            continue
+        if any(label == s for s in status_order + ["Status", "Category", "Products currently ON SALE at Costco",
+                                                     "Action needed", "Monitor", "Top PENDING to approve",
+                                                     "Highest-margin category"]):
+            continue  # these are data rows, not section headers
+        requests.append({"repeatCell": {
+            "range": {"sheetId": sum_id, "startRowIndex": i, "endRowIndex": i + 1,
+                       "startColumnIndex": 0, "endColumnIndex": 5},
+            "cell": {"userEnteredFormat": {
+                "backgroundColor": TITLE_BG if is_title else HDR_BG,
+                "textFormat": {
+                    "foregroundColor": HDR_FG, "bold": True,
+                    "fontSize": 13 if is_title else 10,
+                },
+                "verticalAlignment": "MIDDLE",
+            }},
+            "fields": "userEnteredFormat",
+        }})
+        requests.append({"updateDimensionProperties": {
+            "range": {"sheetId": sum_id, "dimension": "ROWS",
+                       "startIndex": i, "endIndex": i + 1},
+            "properties": {"pixelSize": 34 if is_title else 26},
+            "fields": "pixelSize",
+        }})
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id, body={"requests": requests}
+    ).execute()
+    logger.info("  Summary tab refreshed.")
 
 
 def populate_images_tab(service, sheet_name, all_data, col_map):

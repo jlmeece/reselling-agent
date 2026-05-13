@@ -531,6 +531,10 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             model          = costco_data.get("model")
             in_stock       = costco_data.get("in_stock", False)
             purchase_limit = costco_data.get("purchase_limit")
+            on_sale        = costco_data.get("on_sale", False)
+            sale_savings   = costco_data.get("sale_savings")
+            sale_expires   = costco_data.get("sale_expires")
+            free_shipping  = costco_data.get("free_shipping", False)
             if live_price and not costco_cost:
                 costco_cost = live_price
 
@@ -809,7 +813,22 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 except (ValueError, TypeError):
                     pass
             price_summary = f"Sugg: ${suggested_price:,.2f}{margin_str} | " if suggested_price else ""
-            summary_line = f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}]"
+
+            # Sale / shipping flags for the header
+            sale_tag = ""
+            if on_sale:
+                sale_tag = f"SALE -${sale_savings:.0f}" if sale_savings else "SALE"
+                if sale_expires:
+                    sale_tag += f" ends {sale_expires}"
+                sale_tag += " | "
+                # Boost weighted score by 0.5 for time-limited sale items (flip window)
+                weighted_score = round(min(10.0, weighted_score + 0.5), 2)
+            ship_tag = "FREE SHIP | " if free_shipping else ""
+
+            summary_line = (
+                f"[T{tier} | Score {weighted_score} | "
+                f"{sale_tag}{ship_tag}{price_summary}Costco: {costco_url}]"
+            )
 
             notes = (
                 f"{summary_line}\n"
@@ -829,6 +848,11 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                     f"Melt: ${spot_data['melt_value']:.2f} | "
                     f"eBay premium above melt: {prem}"
                 )
+            if on_sale and sale_savings:
+                exp_str = f", expires {sale_expires}" if sale_expires else ""
+                notes += f"\n🔥 ON SALE: ${sale_savings:.0f} off{exp_str} — time-limited flip opportunity (+0.5 score boost)"
+            if free_shipping:
+                notes += "\n📦 FREE SHIPPING from Costco — higher margin potential vs. paid-ship comps"
             if purchase_limit:
                 notes += f"\nPurchase limit: {purchase_limit}/day — list max {purchase_limit} units on eBay"
             if cart_est:
@@ -1030,6 +1054,14 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
         f"Tier 2: {len(new_tier2)} | "
         f"Watchlist: {len(tier2_watchlist)}"
     )
+
+    # Refresh Summary dashboard so Jordan sees live counts immediately after research
+    try:
+        from tools.sheet_formatter import refresh_summary_tab
+        fresh_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+        refresh_summary_tab(service, sheet_name, all_data=fresh_data)
+    except Exception as e:
+        logger.warning(f"  Summary tab refresh failed (non-fatal): {e}")
 
     # Write structured results to the Run Log tab so Jordan can verify research ran
     from tools.run_logger import log_run_end as _log_run_end
