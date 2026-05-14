@@ -344,6 +344,21 @@ def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float 
     if anchor:
         price = float(anchor)
 
+        # Sanity check: if eBay market is below 80% of Costco cost, the comps
+        # are almost certainly matching a different (cheaper) product.
+        # Flag it prominently — Jordan must verify manually.
+        if cost > 0 and price < cost * 0.80:
+            logger.warning(
+                f"  _suggest_ebay_price: eBay anchor ${price:.2f} is < 80% of cost ${cost:.2f}. "
+                f"Possible wrong-product match — flagging for manual review."
+            )
+            ebay_data["wrong_product_flag"] = True
+            ebay_data["note"] = (
+                (ebay_data.get("note") or "")
+                + f"⚠️ VERIFY: eBay avg ${price:.0f} is below 80% of cost ${cost:.0f} — "
+                "possible wrong product match. Check eBay search query manually. "
+            )
+
         sold   = ebay_data.get("sold_90d") or 0
         active = ebay_data.get("active_count") or 0
         if sold > 0 and active > sold * 2:
@@ -831,8 +846,9 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             if on_sale:
                 weighted_score = round(min(10.0, weighted_score + 0.5), 2)
 
+            verify_flag = " ⚠️VERIFY" if ebay_data.get("wrong_product_flag") else ""
             tier_summary_line = (
-                f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}]"
+                f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}{verify_flag}]"
             )
 
             # ── Col AU: full research narrative (hidden) ───────────────────────────

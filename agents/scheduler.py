@@ -645,6 +645,12 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row):
         if anchor:
             try:
                 price = float(anchor)
+                if price < cost * 0.80:
+                    logger.warning(
+                        f"  recheck _suggest_price: eBay anchor ${price:.2f} < 80% of cost ${cost:.2f}. "
+                        "Possible wrong product match — writing price but flagging."
+                    )
+                    ebay_data["wrong_product_flag"] = True
                 min_p = cost / (1 - fee_rate - MIN_MARGIN)
                 price = max(price, min_p)          # floor at break-even+margin
                 price = min(price, cost * 3.0)     # cap at 3× cost

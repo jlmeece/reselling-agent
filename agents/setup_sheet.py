@@ -52,6 +52,26 @@ def _insert_rows_at_top(service, spreadsheet_id, tab_id, count):
     ).execute()
 
 
+def _insert_columns(service, spreadsheet_id, tab_id, start_index, count):
+    """Insert `count` blank columns at start_index (0-based), shifting existing columns right."""
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={
+            "requests": [{
+                "insertDimension": {
+                    "range": {
+                        "sheetId":    tab_id,
+                        "dimension":  "COLUMNS",
+                        "startIndex": start_index,
+                        "endIndex":   start_index + count,
+                    },
+                    "inheritFromBefore": False,
+                }
+            }]
+        },
+    ).execute()
+
+
 def main():
     spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
     if not spreadsheet_id:
@@ -75,6 +95,32 @@ def main():
         logger.info(f"Inserting {DATA_START_ROW - 1} header rows at top of sheet...")
         _insert_rows_at_top(service, spreadsheet_id, tab_id, DATA_START_ROW - 1)
         logger.info("  Existing data shifted to row 4+.")
+
+    # ── Check whether SALE / FREE SHIP columns (X, Y) are actually inserted ──
+    # A true insertion means: X3="SALE" AND Z3 is blank (first hidden col, no header).
+    # If setup_dashboard was run without inserting columns first, X3="SALE" but Z3
+    # will contain old hidden-column data — that signals we still need to insert.
+    hr = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{SHEET_NAME}'!X3:Z3",
+    ).execute()
+    hr_row = (hr.get("values") or [[]])[0]
+    x3_text = str(hr_row[0]).strip() if len(hr_row) > 0 else ""
+    z3_text = str(hr_row[2]).strip() if len(hr_row) > 2 else ""
+
+    # Properly inserted: X="SALE" and Z is blank (hidden col, no header written)
+    already_inserted = (x3_text.upper() == "SALE" and z3_text == "")
+
+    if already_inserted:
+        logger.info("SALE / FREE SHIP columns already properly inserted — skipping.")
+    else:
+        logger.info(
+            f"Col X='{x3_text}', Z='{z3_text}' — columns not yet physically inserted. "
+            "Inserting 2 columns at position 23 (after W) for SALE and FREE SHIP..."
+        )
+        _insert_columns(service, spreadsheet_id, tab_id, start_index=23, count=2)
+        logger.info("  Columns inserted. Old hidden cols shifted 2 right (old-X→Z, old-Y→AA, etc.).")
+        logger.info("  Google Sheets auto-updated all formula references.")
 
     # ── Apply full dashboard formatting ───────────────────────────────────────
     setup_dashboard(service, SHEET_NAME, DATA_START_ROW)
