@@ -48,7 +48,8 @@ def _build_search_urls(query, sacat=0):
         f"&LH_ItemCondition=1000"             # New condition only
         f"&LH_BIN=1"                          # Buy It Now (no auctions)
         f"&LH_PrefLoc=1"                      # US Only
-        f"&LH_FS=1"                           # Free Shipping
+        # LH_FS removed — Free Shipping filter cuts sample size for niche products.
+        # We want ALL sold prices, not just free-ship sold prices, for accurate comps.
         f"&_ipg=60&_sacat={sacat}"
     )
     active = (
@@ -56,7 +57,7 @@ def _build_search_urls(query, sacat=0):
         f"&LH_ItemCondition=1000"             # New condition only
         f"&LH_BIN=1"                          # Buy It Now
         f"&LH_PrefLoc=1"                      # US Only
-        f"&LH_FS=1"                           # Free Shipping
+        f"&LH_FS=1"                           # Free Shipping — keep for active: shows our direct competitors
         f"&_ipg=60&_sacat={sacat}"
     )
     return sold, active

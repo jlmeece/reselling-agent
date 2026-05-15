@@ -522,6 +522,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     MAX_CONSECUTIVE_CHECK_FAILS = 3
     consecutive_check_fails = 0
     consecutive_ebay_fails  = 0
+    _ebay_fail_log          = []   # titles of products whose eBay fetch failed
     researched_count = 0
 
     with make_browser() as costco_page:
@@ -677,12 +678,13 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             if not ebay_fetch_ok:
                 ebay_data = dict(_ebay_empty, note="eBay fetch failed after retry")
                 consecutive_ebay_fails += 1
+                _ebay_fail_log.append(title[:60])
                 if consecutive_ebay_fails >= MAX_CONSECUTIVE_CHECK_FAILS:
-                    logger.error(
-                        f"  {MAX_CONSECUTIVE_CHECK_FAILS} consecutive eBay failures — "
-                        f"halting research to avoid scoring products with no market data."
+                    logger.warning(
+                        f"  {consecutive_ebay_fails} consecutive eBay failures (last: '{title[:40]}') — "
+                        f"continuing with cost-based pricing. Will not halt queue."
                     )
-                    break
+                    # Do NOT break — the queue continues and cost×1.30 fallback fills Col H
 
             # Fill eBay premium into spot_data now that we have comps
             if spot_data and spot_data.get("melt_value"):
@@ -1098,8 +1100,11 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     # Write structured results to the Run Log tab so Jordan can verify research ran
     from tools.run_logger import log_run_end as _log_run_end
     tier3_count = researched_count - len(tier1_results) - len(new_tier2)
+    ebay_fail_note = ""
+    if _ebay_fail_log:
+        ebay_fail_note = f" | eBay failed ({len(_ebay_fail_log)}): {'; '.join(_ebay_fail_log[:5])}"
     _log_run_end("research", _run_start, {
-        "status":       "ok",
+        "status":       "error" if _ebay_fail_log and len(_ebay_fail_log) == researched_count else "ok",
         "new_products": len(new_products),
         "researched":   researched_count,
         "tier1":        len(tier1_results),
@@ -1107,6 +1112,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
         "tier3":        max(0, tier3_count),
         "spot_gold":    _spot_prices.get("gold", ""),
         "spot_silver":  _spot_prices.get("silver", ""),
+        "errors":       ebay_fail_note.strip(" |") if _ebay_fail_log else "",
         "notes":        f"Queued: {queued}" + (f" | Halted early: {skipped} skipped" if skipped else ""),
     }, service)
 

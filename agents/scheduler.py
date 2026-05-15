@@ -611,13 +611,16 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
 
 # ── Mode: RECHECK (one-shot) ──────────────────────────────────────────────────
 
-def run_recheck(config, COL, service, sheet_name, start_row, end_row):
+def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=False):
     """
     Full data-fill pass for rows with missing or failed data:
       - CHECK FAILED stock status  →  re-scrape Costco
       - Blank costco_cost (G)      →  re-scrape Costco
       - Blank ebay_price (H)       →  run eBay comps, write suggested price
       - Blank avg_price (L)        →  run eBay comps, write eBay market data
+
+    force=True: re-run Costco AND eBay on ALL products regardless of current data.
+    Use this for a full sheet refresh (e.g. after column restructure).
 
     eBay comps run independently of Costco — if Costco fails, eBay data still gets
     written. G/H/L/K must all be populated for Jordan to review any product.
@@ -680,11 +683,15 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row):
 
         if not costco_url.startswith("http"):
             continue
-        if status in ("ACTIVE", "READY"):
+        if not force and status in ("ACTIVE", "READY"):
             continue
 
-        needs_costco = "CHECK FAILED" in stock or not cost
-        needs_ebay   = not ebay_price or not avg_price
+        if force:
+            needs_costco = True
+            needs_ebay   = True
+        else:
+            needs_costco = "CHECK FAILED" in stock or not cost
+            needs_ebay   = not ebay_price or not avg_price
 
         if needs_costco or needs_ebay:
             targets.append({
@@ -862,6 +869,8 @@ def main():
                         help="Limit research/discovery to one category (e.g. 'Jewelry')")
     parser.add_argument("--limit", type=int, default=None,
                         help="Limit research to N products (for testing)")
+    parser.add_argument("--force", action="store_true",
+                        help="(recheck only) Re-run Costco + eBay on ALL products, not just missing-data rows")
     args = parser.parse_args()
 
     config     = load_config()
@@ -893,7 +902,8 @@ def main():
         elif args.mode == "refresh-notes":
             run_refresh_notes(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "recheck":
-            run_recheck(config, COL, service, sheet_name, start_row, end_row)
+            run_recheck(config, COL, service, sheet_name, start_row, end_row,
+                        force=args.force)
     except Exception as e:
         _run_results["status"] = "error"
         _run_results["errors"] = traceback.format_exc()[-600:]
