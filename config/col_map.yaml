@@ -6,7 +6,7 @@
 # monitoring data next (E–Y visible), everything else hidden (Z–AU).
 #
 # Formula columns — never overwrite these with agent writes:
-#   I  (net_profit):      =H-G-AC-AD  (ebay_price - cost - fees - ship)
+#   I  (net_profit):      =H-G-AB-AC-AD  (ebay_price - eBay_fees - ship - fulfillment - cost)
 #   J  (net_margin):      =IF(H>0,I/H,0)
 #   N  (comp_saturation): =IFERROR(M/MAX(K,1),"")
 #   AB (ebay_fees):       =H*AA       (ebay_price * fee_rate)

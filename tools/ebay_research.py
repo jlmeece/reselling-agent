@@ -259,6 +259,18 @@ def _scrape_ebay_page(page, url, label):
         if junk_skipped:
             logger.debug(f"  eBay {label}: filtered {junk_skipped} junk listings")
 
+        # Nearby-result contamination guard.
+        # When eBay shows 1-3 exact matches it pads with "Results matching fewer words" —
+        # different models, different conditions, different products. The JS li-scan picks
+        # all of them up. Ratio of scraped prices >> official count = contamination.
+        # Discard: better to have no price data than wrong price data.
+        if count is not None and 0 < count <= 3 and len(prices) > count * 8:
+            logger.debug(
+                f"  eBay {label}: nearby-result contamination — "
+                f"{count} official match(es) but {len(prices)} prices scraped. Discarding."
+            )
+            prices = []
+
     except PlaywrightTimeout:
         logger.debug(f"  eBay {label} timed out")
     except Exception as e:

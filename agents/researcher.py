@@ -328,8 +328,6 @@ def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float 
     Fallback when eBay data is sparse: cost × 1.30 (30% markup floor).
     Jordan cannot review products without a price in Col H.
     """
-    MIN_MARGIN = 0.10
-
     try:
         cost = float(str(costco_cost).replace("$", "").replace(",", ""))
     except (ValueError, TypeError):
@@ -344,19 +342,18 @@ def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float 
     if anchor:
         price = float(anchor)
 
-        # Sanity check: if eBay market is below 80% of Costco cost, the comps
-        # are almost certainly matching a different (cheaper) product.
-        # Flag it prominently — Jordan must verify manually.
+        # Sanity check: if eBay market is far below Costco cost, flag for manual review.
+        # We still use the market price — Jordan decides whether to buy, not a margin floor.
         if cost > 0 and price < cost * 0.80:
             logger.warning(
                 f"  _suggest_ebay_price: eBay anchor ${price:.2f} is < 80% of cost ${cost:.2f}. "
-                f"Possible wrong-product match — flagging for manual review."
+                f"Possible wrong-product match or negative margin — flagging."
             )
             ebay_data["wrong_product_flag"] = True
             ebay_data["note"] = (
                 (ebay_data.get("note") or "")
-                + f"⚠️ VERIFY: eBay avg ${price:.0f} is below 80% of cost ${cost:.0f} — "
-                "possible wrong product match. Check eBay search query manually. "
+                + f"⚠️ VERIFY: eBay avg ${price:.0f} vs cost ${cost:.0f} — "
+                "negative margin or possible wrong product match. Check manually. "
             )
 
         sold   = ebay_data.get("sold_90d") or 0
@@ -365,14 +362,8 @@ def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float 
             price *= 0.97  # crowded market — price 3% below median
 
         if cost > 0:
-            min_price = cost / (1 - fee_rate - MIN_MARGIN)
-            if price < min_price:
-                # Market is below our floor — use cost-based floor instead
-                logger.debug(
-                    f"  _suggest_ebay_price: market ${price:.2f} < floor ${min_price:.2f}. "
-                    f"Using cost-based floor."
-                )
-                price = min_price
+            # No margin floor — market sets the price. Col I (net_profit) shows the reality.
+            # Only cap at 3× cost (clearly wrong data if above that).
             max_price = cost * 3.0
             if price > max_price:
                 logger.warning(
@@ -849,8 +840,25 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 weighted_score = round(min(10.0, weighted_score + 0.5), 2)
 
             verify_flag = " ⚠️VERIFY" if ebay_data.get("wrong_product_flag") else ""
+
+            # Velocity + monthly profit estimate — the real opportunity signal
+            sold_90d_val   = ebay_data.get("sold_90d") or 0
+            monthly_units  = round(sold_90d_val / 3, 1)
+            if suggested_price and costco_cost:
+                try:
+                    _sp = float(suggested_price)
+                    _c  = float(str(costco_cost).replace("$", "").replace(",", ""))
+                    _net = round(_sp * (1 - fee_rate) - _c, 2)
+                    _monthly_profit = round(_net * monthly_units, 0)
+                    velocity_str = f" | {monthly_units}/mo → ${_monthly_profit:,.0f}/mo"
+                except Exception:
+                    velocity_str = f" | {monthly_units}/mo"
+            else:
+                velocity_str = f" | {monthly_units}/mo" if monthly_units else ""
+
             tier_summary_line = (
-                f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}{verify_flag}]"
+                f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}"
+                f"{velocity_str}{verify_flag}]"
             )
 
             # ── Col AU: full research narrative (hidden) ───────────────────────────

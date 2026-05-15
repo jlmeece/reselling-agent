@@ -632,7 +632,6 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
     def _suggest_price(cost_s, ebay_data, fee_rate):
         """Price suggestion: median sold → median active → avg sold → cost×1.30 fallback.
         Always returns a price when cost is known — Col H must never be blank."""
-        MIN_MARGIN = 0.10
         try:
             cost = float(str(cost_s).replace("$", "").replace(",", ""))
         except (ValueError, TypeError):
@@ -651,12 +650,11 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
                 if price < cost * 0.80:
                     logger.warning(
                         f"  recheck _suggest_price: eBay anchor ${price:.2f} < 80% of cost ${cost:.2f}. "
-                        "Possible wrong product match — writing price but flagging."
+                        "Negative margin or wrong product match — writing market price, flagging."
                     )
                     ebay_data["wrong_product_flag"] = True
-                min_p = cost / (1 - fee_rate - MIN_MARGIN)
-                price = max(price, min_p)          # floor at break-even+margin
-                price = min(price, cost * 3.0)     # cap at 3× cost
+                # No margin floor — market price is the price. Col I (net_profit) shows reality.
+                price = min(price, cost * 3.0)     # cap at 3× cost (clearly bad data)
                 return round(price) - 0.01
             except (ValueError, TypeError):
                 pass
