@@ -22,9 +22,11 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 
 # Words that hurt eBay match accuracy (filler, marketing, sizing units shared across products)
 _NOISE = {
-    "costco", "kirkland", "signature", "new", "set", "piece", "pc", "pcs",
+    "costco", "kirkland", "signature", "new", "pc", "pcs",
     "with", "and", "for", "the", "of", "by", "in", "a", "an",
-    "style", "brand", "premium", "deluxe", "quality",
+    "style", "brand", "premium", "quality",
+    # "set", "piece", "deluxe" intentionally kept — they're meaningful product variant signals
+    # ("CREAMi Deluxe" ≠ "CREAMi", "Pasta Set" ≠ individual attachments)
 }
 _MAX_QUERY_TOKENS = 8
 
@@ -210,15 +212,20 @@ def _scrape_ebay_page(page, url, label):
                 if p and p > 1:
                     prices.append(p)
 
-        # Fallback 1: JavaScript DOM scan — extracts price strings from all li elements
+        # Fallback 1: JavaScript DOM scan — extracts price strings from product-listing li elements.
+        # Filters out nav/footer li's (< 50 chars) and li's with too many prices (sidebars/category pages).
+        # A single product listing has 1-3 price occurrences max (price, shipping, was/now).
         if not prices and count:
             try:
                 raw_prices = page.evaluate("""
                     () => {
                         const out = [];
                         document.querySelectorAll('li').forEach(li => {
-                            const m = (li.innerText||'').match(/\\$[\\d,]+\\.?\\d{0,2}/g);
-                            if (m) out.push(...m);
+                            const text = (li.innerText || '').trim();
+                            if (text.length < 50) return;
+                            const found = text.match(/\\$[\\d,]+\\.?\\d{0,2}/g) || [];
+                            if (found.length === 0 || found.length > 4) return;
+                            out.push(...found);
                         });
                         return out;
                     }
