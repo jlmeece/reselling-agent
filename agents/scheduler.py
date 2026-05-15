@@ -625,7 +625,7 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
     eBay comps run independently of Costco — if Costco fails, eBay data still gets
     written. G/H/L/K must all be populated for Jordan to review any product.
     """
-    import random
+    import random as random  # already used below for sleep jitter
     from tools.costco_scraper import refresh_session
     from tools.ebay_research import get_ebay_comps
 
@@ -731,7 +731,14 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
             else:
                 targets_this_pass = [t for t in targets if t["needs_costco"]]
 
-            for t in targets_this_pass:
+            for _idx_t, t in enumerate(targets_this_pass):
+                # Refresh session every 10 products to prevent Costco rate-limiting
+                # on long runs (cookies stay valid but session activity resets the timeout).
+                if _idx_t > 0 and _idx_t % 10 == 0:
+                    logger.info(f"  [Costco] session refresh after {_idx_t} products...")
+                    refresh_session(page)
+                    time.sleep(random.uniform(3, 6))
+
                 logger.info(f"  [Costco] row {t['sheet_row']}: {t['title'][:50]}")
                 costco_data  = scrape_costco(t["costco_url"], page=page)
                 stock_status = costco_data["stock_status"]

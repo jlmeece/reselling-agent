@@ -605,15 +605,71 @@ def scrape_costco(url, page):
                 result["purchase_limit"] = int(lim_m.group(1))
                 break
 
-        # Sale detection — "After $150 OFF" text below price
-        sale_m = re.search(r"after\s+\$?([\d,]+\.?\d*)\s+off", prod_text, re.IGNORECASE)
-        if sale_m:
+        # Sale detection — multiple Costco formats:
+        #   "After $150 OFF"        — instant rebate displayed below price
+        #   "Save $X" / "Save X%"   — member savings text
+        #   "Instant Savings $X"    — coupon-style
+        #   Strikethrough original price in DOM (crossed-out price element)
+        #   API price < DOM original price by >5% (caught via strikethrough check)
+        savings = None
+        exp_str = None
+
+        # Pattern 1: "After $X OFF" (most explicit)
+        m = re.search(r"after\s+\$?([\d,]+\.?\d*)\s+off", prod_text, re.IGNORECASE)
+        if m:
+            savings = float(m.group(1).replace(",", ""))
+
+        # Pattern 2: "Save $X" / "Saving $X" / "Savings of $X"
+        if savings is None:
+            m = re.search(r"\bsav(?:e|ing|ings?)\s+(?:of\s+)?\$\s*([\d,]+\.?\d*)", prod_text, re.IGNORECASE)
+            if m:
+                savings = float(m.group(1).replace(",", ""))
+
+        # Pattern 3: "Instant Savings $X" or "Instant Rebate $X"
+        if savings is None:
+            m = re.search(r"instant\s+(?:savings?|rebate)\s+\$?\s*([\d,]+\.?\d*)", prod_text, re.IGNORECASE)
+            if m:
+                savings = float(m.group(1).replace(",", ""))
+
+        # Pattern 4: "Member Only Price — was $X" or "Regular $X / Member $Y"
+        if savings is None:
+            m = re.search(r"(?:was|regular|orig(?:inal)?)\s+\$\s*([\d,]+\.?\d*)", prod_text, re.IGNORECASE)
+            if m and result["price"]:
+                orig = float(m.group(1).replace(",", ""))
+                diff = orig - result["price"]
+                if diff > 1.0:   # must be meaningful ($1+ difference)
+                    savings = round(diff, 2)
+
+        # Pattern 5: strikethrough price element in DOM (crossed-out original price)
+        if savings is None and result["price"]:
+            try:
+                strike_els = page.query_selector_all(
+                    "span[class*='strike'], span[class*='crossed'], "
+                    "span[style*='line-through'], s, del, "
+                    "[class*='original-price'], [class*='was-price'], [class*='list-price']"
+                )
+                for el in strike_els[:5]:
+                    txt = (el.inner_text() or "").strip()
+                    m2 = re.search(r"\$\s*([\d,]+\.?\d*)", txt)
+                    if m2:
+                        orig = float(m2.group(1).replace(",", ""))
+                        diff = orig - result["price"]
+                        if diff > 1.0:
+                            savings = round(diff, 2)
+                            break
+            except Exception:
+                pass
+
+        if savings and savings > 0:
             result["on_sale"] = True
-            result["sale_savings"] = float(sale_m.group(1).replace(",", ""))
+            result["sale_savings"] = savings
             if result["price"] is not None:
-                result["original_price"] = result["price"] + result["sale_savings"]
-            # Extract expiry: "valid M/D/YY through M/D/YY" or "through MM/DD/YYYY"
-            exp_m = re.search(r"through\s+(\d{1,2}/\d{1,2}/\d{2,4})", prod_text, re.IGNORECASE)
+                result["original_price"] = result["price"] + savings
+            # Extract expiry: "valid M/D/YY through M/D/YY" or "ends M/D" or "through MM/DD"
+            exp_m = re.search(
+                r"(?:through|ends?|valid\s+through)\s+(\d{1,2}/\d{1,2}/\d{2,4})",
+                prod_text, re.IGNORECASE
+            )
             if exp_m:
                 result["sale_expires"] = exp_m.group(1)
 
