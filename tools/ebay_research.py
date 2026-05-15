@@ -182,25 +182,57 @@ def _scrape_ebay_page(page, url, label):
         if count == 0:
             return count, []
 
-        # Prices — eBay now uses .s-card__price
-        # Pair each price card with its sibling title to filter junk listings
-        cards = page.query_selector_all(".s-item")[:80]
+        # Prices — try multiple selectors since eBay rotates class names frequently.
+        # Also pair each card with its title to filter junk listings.
+        _PRICE_SELECTORS = [
+            ".s-item__price",           # classic BIN/sold price
+            ".s-card__price",           # newer card layout
+            "[data-testid='price']",    # test-id attribute (stable across redesigns)
+            ".x-price-primary span",    # detail page / some listing types
+        ]
+
+        cards = page.query_selector_all(".s-item, [data-testid='srp-results'] li")[:80]
         junk_skipped = 0
         for card in cards:
-            # Skip cards whose title contains a junk word
-            title_el = card.query_selector(".s-item__title")
+            title_el = card.query_selector(".s-item__title, [data-testid='item-title']")
             if title_el:
                 title_lower = title_el.inner_text().lower()
                 if any(jw in title_lower for jw in _JUNK_WORDS):
                     junk_skipped += 1
                     continue
-            price_el = card.query_selector(".s-card__price")
-            if not price_el:
-                price_el = card.query_selector(".s-item__price")
+            price_el = None
+            for sel in _PRICE_SELECTORS:
+                price_el = card.query_selector(sel)
+                if price_el:
+                    break
             if price_el:
                 p = _parse_price(price_el.inner_text())
                 if p and p > 1:
                     prices.append(p)
+
+        # JavaScript fallback: if no prices extracted via selectors, scan DOM directly
+        if not prices and count:
+            try:
+                raw_prices = page.evaluate("""
+                    () => {
+                        const texts = [];
+                        document.querySelectorAll('li.s-item, [data-testid="srp-results"] li').forEach(li => {
+                            const t = li.innerText || '';
+                            const m = t.match(/\\$([\\d,]+\\.?\\d{0,2})/g);
+                            if (m) texts.push(...m);
+                        });
+                        return texts;
+                    }
+                """)
+                for raw in (raw_prices or []):
+                    p = _parse_price(raw)
+                    if p and p > 1:
+                        prices.append(p)
+                if prices:
+                    logger.debug(f"  eBay {label}: used JS fallback — extracted {len(prices)} prices")
+            except Exception:
+                pass
+
         if junk_skipped:
             logger.debug(f"  eBay {label}: filtered {junk_skipped} junk listings")
 
