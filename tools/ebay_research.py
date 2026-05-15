@@ -182,16 +182,16 @@ def _scrape_ebay_page(page, url, label):
         if count == 0:
             return count, []
 
-        # Prices — try multiple selectors since eBay rotates class names frequently.
-        # Also pair each card with its title to filter junk listings.
+        # Prices — try multiple selectors, then JS + body-text fallback.
         _PRICE_SELECTORS = [
-            ".s-item__price",           # classic BIN/sold price
-            ".s-card__price",           # newer card layout
-            "[data-testid='price']",    # test-id attribute (stable across redesigns)
-            ".x-price-primary span",    # detail page / some listing types
+            ".s-item__price",
+            ".s-card__price",
+            "[data-testid='price']",
+            ".x-price-primary span",
         ]
 
         cards = page.query_selector_all(".s-item, [data-testid='srp-results'] li")[:80]
+        logger.debug(f"  eBay {label}: found {len(cards)} listing cards in DOM")
         junk_skipped = 0
         for card in cards:
             title_el = card.query_selector(".s-item__title, [data-testid='item-title']")
@@ -210,18 +210,17 @@ def _scrape_ebay_page(page, url, label):
                 if p and p > 1:
                     prices.append(p)
 
-        # JavaScript fallback: if no prices extracted via selectors, scan DOM directly
+        # Fallback 1: JavaScript DOM scan — extracts price strings from all li elements
         if not prices and count:
             try:
                 raw_prices = page.evaluate("""
                     () => {
-                        const texts = [];
-                        document.querySelectorAll('li.s-item, [data-testid="srp-results"] li').forEach(li => {
-                            const t = li.innerText || '';
-                            const m = t.match(/\\$([\\d,]+\\.?\\d{0,2})/g);
-                            if (m) texts.push(...m);
+                        const out = [];
+                        document.querySelectorAll('li').forEach(li => {
+                            const m = (li.innerText||'').match(/\\$[\\d,]+\\.?\\d{0,2}/g);
+                            if (m) out.push(...m);
                         });
-                        return texts;
+                        return out;
                     }
                 """)
                 for raw in (raw_prices or []):
@@ -229,9 +228,26 @@ def _scrape_ebay_page(page, url, label):
                     if p and p > 1:
                         prices.append(p)
                 if prices:
-                    logger.debug(f"  eBay {label}: used JS fallback — extracted {len(prices)} prices")
-            except Exception:
-                pass
+                    logger.debug(f"  eBay {label}: JS li-scan found {len(prices)} prices")
+            except Exception as _je:
+                logger.debug(f"  eBay {label}: JS fallback error: {_je}")
+
+        # Fallback 2: full page body text regex — bypasses DOM structure entirely
+        if not prices and count:
+            try:
+                body_text = page.inner_text("body")
+                raw_matches = re.findall(r'\$([0-9,]+(?:\.[0-9]{1,2})?)', body_text)
+                for m in raw_matches:
+                    try:
+                        p = float(m.replace(",", ""))
+                        if p >= 1:
+                            prices.append(p)
+                    except ValueError:
+                        pass
+                if prices:
+                    logger.debug(f"  eBay {label}: body-text regex found {len(prices)} raw prices (before filter)")
+            except Exception as _be:
+                logger.debug(f"  eBay {label}: body-text fallback error: {_be}")
 
         if junk_skipped:
             logger.debug(f"  eBay {label}: filtered {junk_skipped} junk listings")
