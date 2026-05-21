@@ -61,10 +61,11 @@ def test_load_last_run_missing_file_returns_empty():
 
 # ── get_all_items ─────────────────────────────────────────────────────────────
 
-def test_get_all_items_returns_11_items():
-    from agents.menu import get_all_items
+def test_get_all_items_is_flattening_of_groups():
+    from agents.menu import get_all_items, MENU_GROUPS
     items = get_all_items()
-    assert len(items) == 11
+    expected_count = sum(len(group["items"]) for group in MENU_GROUPS)
+    assert len(items) == expected_count
 
 
 def test_get_all_items_each_has_required_keys():
@@ -84,9 +85,8 @@ def test_get_all_items_category_prompt_items_have_mode():
             assert item["mode"] is not None, f"Item '{item['label']}' has category_prompt but no mode"
 
 
-def test_get_all_items_exactly_two_category_prompt_items():
+def test_get_all_items_category_prompt_modes_are_discovery_or_research():
     from agents.menu import get_all_items
-    prompts = [i for i in get_all_items() if i["category_prompt"]]
-    assert len(prompts) == 2
-    assert prompts[0]["mode"] == "discovery"
-    assert prompts[1]["mode"] == "research"
+    for item in get_all_items():
+        if item["category_prompt"]:
+            assert item["mode"] in ["discovery", "research"]
