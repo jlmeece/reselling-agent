@@ -14,7 +14,7 @@ def test_load_categories_returns_category_names(tmp_path):
         "categories": {"Jewelry": {}, "Watches": {}, "Pharmacy": {}},
     }, sort_keys=False))
     result = load_categories(path=str(cfg))
-    assert sorted(result) == ["Jewelry", "Pharmacy", "Watches"]
+    assert result == ["Jewelry", "Watches", "Pharmacy"]
 
 
 def test_load_categories_missing_file_returns_empty():
