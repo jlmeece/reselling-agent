@@ -319,6 +319,15 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
     return parsed
 
 
+def _ship_badge(free_shipping: bool, cart_est: dict) -> str:
+    if free_shipping:
+        return "✓ FREE"
+    ship = cart_est.get("shipping")
+    if ship is not None:
+        return f"${ship:.2f} ship"
+    return ""
+
+
 def _suggest_ebay_price(costco_cost, ebay_data: dict, fee_rate: float) -> float | None:
     """
     Data-backed eBay listing price suggestion.
@@ -899,7 +908,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 sale_info_val = f"🔥 -${sale_savings:.0f}" if sale_savings else "🔥 SALE"
                 if sale_expires:
                     sale_info_val += f" ends {sale_expires}"
-            free_ship_val = "✓ FREE" if free_shipping else ""
+            free_ship_val = _ship_badge(free_shipping, cart_est)
 
             # 3f. Write to sheet
             from datetime import timedelta
