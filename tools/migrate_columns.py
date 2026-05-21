@@ -194,7 +194,8 @@ def migrate_add_total_cost_col(dry_run=False):
     print(f"Col Z currently shows: {current_z!r}. Proceeding with insert.")
 
     if dry_run:
-        print("DRY RUN — would insert dimension at col index 25 (Z) and write IFERROR formulas.")
+        print("=== DRY RUN ===")
+        print("DRY RUN — would insert dimension at col index 25 (Z), write header to Z3, and write IFERROR formulas.")
         return
 
     # ── Get tab sheetId ───────────────────────────────────────────────────────
@@ -226,6 +227,15 @@ def migrate_add_total_cost_col(dry_run=False):
         }]},
     ).execute()
     print("Column inserted at index 25 (col Z). Existing data shifted to AA+.")
+
+    # Write the header so the idempotency check works on re-run
+    service.spreadsheets().values().update(
+        spreadsheetId=sheet_id,
+        range=f"'{sheet_name}'!Z3",
+        valueInputOption="RAW",
+        body={"values": [["TOTAL COST"]]},
+    ).execute()
+    print("Header 'TOTAL COST' written to Z3.")
 
     # ── Write TOTAL COST formulas to Z4:Z1000 ────────────────────────────────
     # ship_cost is now in AD (was AC before insert). Formula: =IFERROR(G+AD, G)
