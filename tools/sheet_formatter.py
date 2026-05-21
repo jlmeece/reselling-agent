@@ -4,7 +4,8 @@ Builds the Product Tracker dashboard and supporting tabs.
 
 Layout: STATUS and TIER SCORE are columns A and B — always visible.
 Columns A–D are frozen so they stay in view while scrolling right.
-Columns Z–AU are hidden (SKU, fees, SEO copy, formulas, ad copy, image URLs, full notes).
+Columns AA–AV are hidden (SKU, fees, SEO copy, formulas, ad copy, image URLs, full notes).
+Col Z (TOTAL COST) is visible — formula =IFERROR(G+AD,G).
 
 Run via: python agents/setup_sheet.py
 Safe to re-run — clears formatting before applying fresh.
@@ -76,8 +77,9 @@ HEADER_LABELS = [
     "SUGG. PRICE",     # V  21 — agent's recommended eBay price (written once)
     "PURCH. LIMIT",    # W  22 — units/day cap (precious metals) or blank
     "SALE",            # X  23 — 🔥 -$150 ends 5/31 (blank if not on sale)
-    "FREE SHIP",       # Y  24 — ✓ FREE (blank otherwise)
-    # Z–AU hidden
+    "SHIP COST",       # Y  24 — ✓ FREE or $12.99 ship (blank if unknown)
+    "TOTAL COST",      # Z  25 — formula =IFERROR(G+AD,G) — Costco cost + shipping
+    # AA–AV hidden
 ]
 
 COLUMN_WIDTHS = {
@@ -105,16 +107,17 @@ COLUMN_WIDTHS = {
     21: 90,    # V: suggested price
     22: 110,   # W: purchase limit
     23: 130,   # X: sale badge
-    24: 80,    # Y: free shipping badge
+    24: 90,    # Y: ship cost badge (wider — "$12.99 ship" needs more room than "✓ FREE")
+    25: 110,   # Z: total cost
 }
 
-VISIBLE_COLS  = 25    # A–Y
-TOTAL_COLS    = 46    # A–AU
-HIDDEN_START  = 25    # Z onwards (index 25 = col Z)
+VISIBLE_COLS  = 26    # A–Z
+TOTAL_COLS    = 48    # A–AV
+HIDDEN_START  = 26    # AA onwards (index 26 = col AA)
 FROZEN_COLS   = 4     # A–D always visible
 
 SALE_COL_IDX  = 23    # X — orange badge when non-empty
-SHIP_COL_IDX  = 24    # Y — green badge when non-empty
+SHIP_COL_IDX  = 24    # Y — teal badge (FREE) or amber badge (paid ship)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────
@@ -587,16 +590,33 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
         }
     })
 
-    # 17d. Conditional formatting — FREE SHIP col (Y = index 24): teal bg when non-empty
+    # 17d. Conditional formatting — SHIP COST col (Y = index 24):
+    #   teal when "✓ FREE", amber when paid shipping amount shown
     ship_ref = f"$Y{data_start_row}"
+    # Rule: teal bg when cell contains FREE
     requests.append({
         "addConditionalFormatRule": {
             "rule": {
                 "ranges": [_cell_range(tab_id, data_row_idx, 1000, SHIP_COL_IDX, SHIP_COL_IDX + 1)],
                 "booleanRule": {
                     "condition": {"type": "CUSTOM_FORMULA",
-                                   "values": [{"userEnteredValue": f'={ship_ref}<>""'}]},
+                                   "values": [{"userEnteredValue": f'=ISNUMBER(SEARCH("FREE",{ship_ref}))'}]},
                     "format": {"backgroundColor": _rgb("00897B"),
+                               "textFormat": {"bold": True, "foregroundColor": _rgb("FFFFFF")}},
+                },
+            },
+            "index": 0,
+        }
+    })
+    # Rule: amber bg when cell contains "ship" (paid shipping amount)
+    requests.append({
+        "addConditionalFormatRule": {
+            "rule": {
+                "ranges": [_cell_range(tab_id, data_row_idx, 1000, SHIP_COL_IDX, SHIP_COL_IDX + 1)],
+                "booleanRule": {
+                    "condition": {"type": "CUSTOM_FORMULA",
+                                   "values": [{"userEnteredValue": f'=ISNUMBER(SEARCH("ship",{ship_ref}))'}]},
+                    "format": {"backgroundColor": _rgb("F57C00"),
                                "textFormat": {"bold": True, "foregroundColor": _rgb("FFFFFF")}},
                 },
             },
@@ -634,7 +654,7 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
     # Rebuild Summary tab with current sheet data
     all_data = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
-        range=f"'{sheet_name}'!A4:AU1000",
+        range=f"'{sheet_name}'!A4:AV1000",
     ).execute().get("values", [])
     refresh_summary_tab(service, sheet_name, all_data=all_data)
 
@@ -734,7 +754,8 @@ def _ensure_legend_tab(service, spreadsheet_id):
     _row("Col Q", "eBay LISTING — paste your live eBay URL here → triggers ACTIVE monitoring.", "", "")
     _row("Col T", "TIER SUMMARY — short one-liner: [T2 | Score 8.2 | Sugg: $899 | margin 18%].", "", "")
     _row("Col X", "SALE — 🔥 -$150 ends 5/31 badge when product is on sale at Costco. Blank otherwise.", "", "")
-    _row("Col Y", "FREE SHIP — ✓ FREE badge when Costco ships this product for free. Blank otherwise.", "", "")
+    _row("Col Y", "SHIP COST — ✓ FREE (teal) when free shipping; $12.99 ship (amber) when paid. Blank if unknown.", "", "")
+    _row("Col Z", "TOTAL COST — formula: Costco cost + shipping. All-in delivered price. Never overwrite.", "", "")
     _row("Col V", "SUGG. PRICE — agent's one-time recommended price. Do not overwrite.", "", "")
     _row("Col W", "PURCH. LIMIT — Costco daily buy limit. Precious metals: 2/day.", "", "")
 
