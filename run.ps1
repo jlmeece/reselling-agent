@@ -9,7 +9,7 @@ $agent = "agents\scheduler.py"
 
 switch ($cmd) {
 
-    # -- Refresh prices & stock for the whole sheet
+    # ── Refresh prices & stock for the whole sheet ────────────────────────────
     "sweep" {
         Write-Host "Running recheck (CHECK FAILED + missing prices only)..." -ForegroundColor Cyan
         & $py $agent --mode recheck
@@ -20,7 +20,7 @@ switch ($cmd) {
         & $py $agent --mode recheck --force
     }
 
-    # -- Research: score PENDING rows and fill in tier/price data
+    # ── Research: score PENDING rows and fill in tier/price data ─────────────
     "research" {
         if ($category) {
             Write-Host "Running research for category: $category" -ForegroundColor Cyan
@@ -31,7 +31,7 @@ switch ($cmd) {
         }
     }
 
-    # -- Discovery: find new Costco products, add as PENDING
+    # ── Discovery: find new Costco products, add as PENDING ──────────────────
     "discover" {
         if ($category) {
             Write-Host "Running discovery for category: $category" -ForegroundColor Cyan
@@ -42,46 +42,46 @@ switch ($cmd) {
         }
     }
 
-    # -- Active monitor: check ACTIVE listings for stock/price changes
+    # ── Active monitor: check ACTIVE listings for stock/price changes ─────────
     "monitor" {
         Write-Host "Running active monitor..." -ForegroundColor Cyan
         & $py $agent --mode active
     }
 
-    # -- Daily sweep: APPROVED -> READY, PAUSED_OOS recheck
+    # ── Daily sweep: APPROVED -> READY, PAUSED_OOS recheck ───────────────────
     "daily" {
         Write-Host "Running daily sweep..." -ForegroundColor Cyan
         & $py $agent --mode daily
     }
 
-    # -- Rotation: weekly digest, score all ACTIVE products
+    # ── Rotation: weekly digest, score all ACTIVE products ───────────────────
     "rotation" {
         Write-Host "Running rotation digest..." -ForegroundColor Cyan
         & $py $agent --mode rotation
     }
 
-    # -- Refresh cookies: run when Costco scrapes start returning CHECK FAILED
+    # ── Refresh cookies: run when Costco scrapes start returning CHECK FAILED ─
     "cookies" {
         Write-Host "Refreshing Costco session cookies..." -ForegroundColor Yellow
-        Write-Host "A Chrome window will open -- log into Costco, then run the export step." -ForegroundColor Gray
+        Write-Host "A Chrome window will open — log into Costco, then run the export step." -ForegroundColor Gray
         & $py tools\setup_costco_session.py
     }
 
-    # -- Sheet setup: reformat headers, column widths, conditional formatting
+    # ── Sheet setup: reformat headers, column widths, conditional formatting ──
     "setup-sheet" {
         Write-Host "Running sheet setup/formatter..." -ForegroundColor Cyan
         & $py agents\setup_sheet.py
     }
 
-    # -- Interactive menu
+    # ── Interactive menu ──────────────────────────────────────────────────────
     "menu" {
         & $py agents\menu.py
     }
 
-    # -- Help
+    # ── Help ──────────────────────────────────────────────────────────────────
     default {
         Write-Host ""
-        Write-Host "WAT Reselling Agent - Commands" -ForegroundColor White
+        Write-Host "WAT Reselling Agent — Commands" -ForegroundColor White
         Write-Host "==============================" -ForegroundColor DarkGray
         Write-Host ""
         Write-Host "DAILY USE" -ForegroundColor Yellow
@@ -97,10 +97,9 @@ switch ($cmd) {
         Write-Host ""
         Write-Host "MAINTENANCE" -ForegroundColor Yellow
         Write-Host "  .\run.ps1 daily            APPROVED->READY sweep, PAUSED_OOS recheck"
-        Write-Host "  .\run.ps1 rotation         Weekly digest - score ACTIVE products"
+        Write-Host "  .\run.ps1 rotation         Weekly digest — score ACTIVE products"
         Write-Host "  .\run.ps1 cookies          Refresh Costco session (run when scrapes fail)"
         Write-Host "  .\run.ps1 setup-sheet      Reformat sheet headers and column widths"
-        Write-Host "  .\run.ps1 menu             Interactive agent menu"
         Write-Host ""
         Write-Host "TIP: Run from the project folder:" -ForegroundColor DarkGray
         Write-Host "  cd 'C:\Users\jorda\OneDrive\Desktop\reselling-agent'" -ForegroundColor DarkGray
