@@ -57,3 +57,36 @@ def test_load_last_run_missing_mode_returns_empty(tmp_path):
 def test_load_last_run_missing_file_returns_empty():
     from agents.menu import load_last_run
     assert load_last_run("active", path="/nonexistent/path.json") == ""
+
+
+# ── get_all_items ─────────────────────────────────────────────────────────────
+
+def test_get_all_items_returns_11_items():
+    from agents.menu import get_all_items
+    items = get_all_items()
+    assert len(items) == 11
+
+
+def test_get_all_items_each_has_required_keys():
+    from agents.menu import get_all_items
+    for item in get_all_items():
+        assert "label" in item
+        assert "category_prompt" in item
+        assert "args" in item
+        # must have either mode or script
+        assert item.get("mode") is not None or item.get("script") is not None
+
+
+def test_get_all_items_category_prompt_items_have_mode():
+    from agents.menu import get_all_items
+    for item in get_all_items():
+        if item["category_prompt"]:
+            assert item["mode"] is not None, f"Item '{item['label']}' has category_prompt but no mode"
+
+
+def test_get_all_items_exactly_two_category_prompt_items():
+    from agents.menu import get_all_items
+    prompts = [i for i in get_all_items() if i["category_prompt"]]
+    assert len(prompts) == 2
+    assert prompts[0]["mode"] == "discovery"
+    assert prompts[1]["mode"] == "research"
