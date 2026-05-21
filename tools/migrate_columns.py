@@ -168,8 +168,92 @@ def migrate(dry_run=False):
     print(f"Written {len(new_rows)} rows to new layout. Migration complete.")
 
 
+def migrate_add_total_cost_col(dry_run=False):
+    """
+    One-time migration: insert a new visible column Z (TOTAL COST) in the
+    Product Tracker tab, shifting all former hidden cols (Z–AU) right by one.
+
+    Safe to re-run — checks the Z header before inserting.
+    Must run BEFORE col_map.yaml is updated (or the idempotency check still works
+    because it reads the sheet directly, not col_map).
+    """
+    service    = get_sheets_service()
+    sheet_id   = os.getenv("GOOGLE_SHEET_ID")
+    sheet_name = "Product Tracker"
+
+    # ── Idempotency check: read current col Z header (index 25) ──────────────
+    check = service.spreadsheets().values().get(
+        spreadsheetId=sheet_id,
+        range=f"'{sheet_name}'!Z3",   # row 3 is the column header row
+    ).execute()
+    current_z = (check.get("values") or [[""]])[0][0] if check.get("values") else ""
+    if current_z == "TOTAL COST":
+        print("Col Z already says 'TOTAL COST' — migration already applied. Skipping.")
+        return
+
+    print(f"Col Z currently shows: {current_z!r}. Proceeding with insert.")
+
+    if dry_run:
+        print("DRY RUN — would insert dimension at col index 25 (Z) and write IFERROR formulas.")
+        return
+
+    # ── Get tab sheetId ───────────────────────────────────────────────────────
+    meta = service.spreadsheets().get(
+        spreadsheetId=sheet_id, includeGridData=False
+    ).execute()
+    tab_id = None
+    for s in meta["sheets"]:
+        if s["properties"]["title"] == sheet_name:
+            tab_id = s["properties"]["sheetId"]
+            break
+    if tab_id is None:
+        raise ValueError(f"Tab '{sheet_name}' not found in spreadsheet.")
+
+    # ── Insert one column at index 25 (zero-based = col Z) ───────────────────
+    # Google Sheets auto-shifts all existing data and updates formula references.
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={"requests": [{
+            "insertDimension": {
+                "range": {
+                    "sheetId": tab_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": 25,
+                    "endIndex": 26,
+                },
+                "inheritFromBefore": False,
+            }
+        }]},
+    ).execute()
+    print("Column inserted at index 25 (col Z). Existing data shifted to AA+.")
+
+    # ── Write TOTAL COST formulas to Z4:Z1000 ────────────────────────────────
+    # ship_cost is now in AD (was AC before insert). Formula: =IFERROR(G+AD, G)
+    formula_rows = [["=IFERROR(G{r}+AD{r},G{r})".format(r=row)] for row in range(4, 1001)]
+    service.spreadsheets().values().update(
+        spreadsheetId=sheet_id,
+        range=f"'{sheet_name}'!Z4",
+        valueInputOption="USER_ENTERED",
+        body={"values": formula_rows},
+    ).execute()
+    print("TOTAL COST formulas written to Z4:Z1000.")
+
+    print("Migration complete. Run 'python agents/setup_sheet.py' to apply formatting.")
+
+
 if __name__ == "__main__":
-    dry = "--dry-run" in sys.argv
-    if dry:
-        print("=== DRY RUN ===")
-    migrate(dry_run=dry)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", nargs="?", default="legacy",
+                        choices=["legacy", "add-total-cost-col"],
+                        help="Migration to run")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    if args.command == "add-total-cost-col":
+        migrate_add_total_cost_col(dry_run=args.dry_run)
+    else:
+        dry = args.dry_run
+        if dry:
+            print("=== DRY RUN ===")
+        migrate(dry_run=dry)
