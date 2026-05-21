@@ -81,7 +81,7 @@ switch ($cmd) {
     # ── Help ──────────────────────────────────────────────────────────────────
     default {
         Write-Host ""
-        Write-Host "WAT Reselling Agent — Commands" -ForegroundColor White
+        Write-Host "WAT Reselling Agent - Commands" -ForegroundColor White
         Write-Host "==============================" -ForegroundColor DarkGray
         Write-Host ""
         Write-Host "DAILY USE" -ForegroundColor Yellow
@@ -97,7 +97,7 @@ switch ($cmd) {
         Write-Host ""
         Write-Host "MAINTENANCE" -ForegroundColor Yellow
         Write-Host "  .\run.ps1 daily            APPROVED->READY sweep, PAUSED_OOS recheck"
-        Write-Host "  .\run.ps1 rotation         Weekly digest — score ACTIVE products"
+        Write-Host "  .\run.ps1 rotation         Weekly digest - score ACTIVE products"
         Write-Host "  .\run.ps1 cookies          Refresh Costco session (run when scrapes fail)"
         Write-Host "  .\run.ps1 setup-sheet      Reformat sheet headers and column widths"
         Write-Host ""
