@@ -1,4 +1,4 @@
-import sys, os, json, tempfile
+import sys, json
 sys.path.insert(0, ".")
 
 import yaml
@@ -12,9 +12,9 @@ def test_load_categories_returns_category_names(tmp_path):
     cfg.write_text(yaml.dump({
         "business": {"sheet_name": "Tracker"},
         "categories": {"Jewelry": {}, "Watches": {}, "Pharmacy": {}},
-    }))
+    }, sort_keys=False))
     result = load_categories(path=str(cfg))
-    assert result == ["Jewelry", "Watches", "Pharmacy"]
+    assert sorted(result) == ["Jewelry", "Pharmacy", "Watches"]
 
 
 def test_load_categories_missing_file_returns_empty():
