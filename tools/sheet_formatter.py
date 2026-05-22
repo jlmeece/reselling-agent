@@ -700,28 +700,16 @@ STATUS_LEGEND = [
 ]
 
 
-def _ensure_legend_tab(service, spreadsheet_id):
-    meta = _get_sheet_meta(service, spreadsheet_id)
-    existing = {s["properties"]["title"] for s in meta["sheets"]}
-    if "Legend" not in existing:
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": [{"addSheet": {"properties": {"title": "Legend", "index": 2}}}]},
-        ).execute()
-        logger.info("  Created Legend tab.")
-        meta = _get_sheet_meta(service, spreadsheet_id)
-
-    legend_id = _get_tab_id(meta, "Legend")
-
-    # ── Content rows ─────────────────────────────────────────────────────────────
-    # Each section starts with a DIVIDER row (all-caps label in col A, cols B-D blank).
-    # Divider rows get dark navy background + white text in the formatting pass below.
-    # We track which row indices are dividers so we can style them.
-
+def _build_legend_rows():
+    """
+    Build the Legend tab content rows.
+    Returns (rows, divider_rows, status_rows, col_hdr_rows).
+    All indices are 0-based row positions within the returned rows list.
+    """
     rows = []
-    divider_rows  = []   # 0-based row indices that get section-divider styling
-    status_rows   = []   # (row_idx, status_name) for color coding
-    col_hdr_rows  = []   # 0-based row indices for column-header style (STATUS | MEANING …)
+    divider_rows = []
+    status_rows  = []
+    col_hdr_rows = []
 
     def _divider(label):
         divider_rows.append(len(rows))
@@ -733,24 +721,24 @@ def _ensure_legend_tab(service, spreadsheet_id):
     def _row(*cells):
         rows.append(list(cells) + [""] * (4 - len(cells)))
 
-    # ── Row 0: Main title ────────────────────────────────────────────────────────
+    # ── Row 0: Main title
     divider_rows.append(0)
     rows.append(["WAT Agent — Reference Guide", "", "", ""])
 
     _blank()
 
-    # ── STATUS DEFINITIONS ───────────────────────────────────────────────────────
+    # ── STATUS DEFINITIONS
     _divider("STATUS DEFINITIONS")
     col_hdr_rows.append(len(rows))
     _row("STATUS", "MEANING", "WHEN IT'S SET", "NEXT ACTION")
-    for status_row in STATUS_LEGEND[1:]:   # skip the original header
+    for status_row in STATUS_LEGEND[1:]:
         status_name = status_row[0]
         status_rows.append((len(rows), status_name))
         rows.append(list(status_row))
 
     _blank()
 
-    # ── TIER & COMP SCORE ────────────────────────────────────────────────────────
+    # ── TIER & COMP SCORE
     _divider("TIER SCORE  (col B)")
     _row("Tier 1  ≥ 7.0", "Strong opportunity — PENDING status. Review and approve to list.", "", "Green cell")
     _row("Tier 2  4.0–6.9", "Promising but not ready — WATCH status. Re-scored weekly automatically.", "", "Yellow cell")
@@ -765,26 +753,81 @@ def _ensure_legend_tab(service, spreadsheet_id):
 
     _blank()
 
-    # ── COLUMN REFERENCE ─────────────────────────────────────────────────────────
-    _divider("COLUMN QUICK REFERENCE")
-    _row("Col A", "STATUS — current pipeline stage. Use the dropdown to change.", "", "")
-    _row("Col B", "TIER SCORE — 0-10 composite. Green ≥7, Yellow 4-7, Red <4.", "", "")
-    _row("Col G", "COST $ — what you pay at Costco.", "", "")
-    _row("Col H", "eBay PRICE — your listing price. Agent sets once; edit freely.", "", "")
-    _row("Col I", "NET PROFIT — formula: eBay Price − Cost − Fees − Shipping.", "", "")
-    _row("Col J", "MARGIN — formula: Net Profit / eBay Price. Target ≥ 10%.", "", "")
-    _row("Col N", "COMP SCORE — active listings / 90d sold. Low = less competition.", "", "")
-    _row("Col Q", "eBay LISTING — paste your live eBay URL here → triggers ACTIVE monitoring.", "", "")
-    _row("Col T", "TIER SUMMARY — short one-liner: [T2 | Score 8.2 | Sugg: $899 | margin 18%].", "", "")
-    _row("Col X", "SALE — 🔥 -$150 ends 5/31 badge when product is on sale at Costco. Blank otherwise.", "", "")
-    _row("Col Y", "SHIP COST — ✓ FREE (teal) when free shipping; $12.99 ship (amber) when paid. Blank if unknown.", "", "")
-    _row("Col Z", "TOTAL COST — formula: Costco cost + shipping. All-in delivered price. Never overwrite.", "", "")
-    _row("Col V", "SUGG. PRICE — agent's one-time recommended price. Do not overwrite.", "", "")
-    _row("Col W", "PURCH. LIMIT — Costco daily buy limit. Precious metals: 2/day.", "", "")
+    # ── VISIBLE COLUMNS (A–Z)
+    _divider("VISIBLE COLUMNS  (A–Z)")
+    _row("", "Formula columns are maintained by the sheet — do not overwrite.", "", "")
+    col_hdr_rows.append(len(rows))
+    _row("COL", "HEADER", "WHAT IT STORES", "NOTES")
+
+    visible_cols = [
+        ("A", "STATUS",        "Current pipeline stage. Use the dropdown.",                              ""),
+        ("B", "TIER",          "0–10 composite score. Green ≥7, Yellow 4–7, Red <4.",                   ""),
+        ("C", "PRODUCT TITLE", "Product name from Costco.",                                              ""),
+        ("D", "CATEGORY",      "Category (Precious Metals, Jewelry, Watches, etc.).",                   ""),
+        ("E", "PLATFORM",      "eBay / Site / Both — set when listed.",                                  ""),
+        ("F", "STOCK",         "In Stock / Available (2/day limit) / OUT OF STOCK.",                     ""),
+        ("G", "COST $",        "What you pay at Costco.",                                                ""),
+        ("H", "eBay PRICE",    "Your eBay listing price. Agent sets once; edit freely.",                 ""),
+        ("I", "NET PROFIT",    "eBay Price − Cost − Fees − Shipping.",                                   "formula"),
+        ("J", "MARGIN",        "Net Profit / eBay Price. Target ≥ 10%.",                                 "formula"),
+        ("K", "SOLD 90d",      "eBay sold listings in the last 90 days.",                                ""),
+        ("L", "AVG eBay $",    "Average eBay sold price across comps.",                                  ""),
+        ("M", "ACTIVE",        "Active competing eBay listings count.",                                  ""),
+        ("N", "COMP SCORE",    "Active listings ÷ 90d sold. Low < 2×, Med < 10×, High ≥ 10×.",         "formula"),
+        ("O", "LAST CHECKED",  "Timestamp of last agent run for this product.",                          ""),
+        ("P", "PRICE CHG",     "Flag: Costco price moved since last check.",                             ""),
+        ("Q", "eBay LISTING",  "Paste live eBay URL here → triggers ACTIVE monitoring.",                 ""),
+        ("R", "COSTCO URL",    "Source product link on Costco.com.",                                     ""),
+        ("S", "RE-EVAL DATE",  "PAUSED items: date agent will re-research.",                             ""),
+        ("T", "TIER SUMMARY",  "Short one-liner: [T2 | Score 8.2 | Sugg: $899 | margin 18%].",          ""),
+        ("U", "UNITS SOLD",    "Units sold (manually entered or future eBay API).",                      ""),
+        ("V", "SUGG. PRICE",   "Agent's one-time recommended eBay price. Do not overwrite.",             ""),
+        ("W", "PURCH. LIMIT",  "Costco daily buy limit (precious metals: 2/day, else blank).",           ""),
+        ("X", "SALE",          "🔥 -$150 ends 5/31 badge when product is on sale at Costco.",            ""),
+        ("Y", "SHIP COST",     "✓ FREE (teal) or $12.99 ship (amber). Blank if unknown.",                ""),
+        ("Z", "TOTAL COST",    "Costco cost + shipping. All-in delivered price.",                        "formula"),
+    ]
+    for col, header, desc, notes in visible_cols:
+        _row(col, header, desc, notes)
 
     _blank()
 
-    # ── 5-STEP WORKFLOW ──────────────────────────────────────────────────────────
+    # ── HIDDEN COLUMNS (AA–AV)
+    _divider("HIDDEN COLUMNS  (AA–AV)")
+    _row("", "Agent-managed. Do not edit directly.", "", "")
+    col_hdr_rows.append(len(rows))
+    _row("COL", "KEY", "WHAT IT STORES", "")
+
+    hidden_cols = [
+        ("AA", "SKU",          "Costco product SKU."),
+        ("AB", "FEE RATE",     "eBay fee rate applied to this product (default 13.25%)."),
+        ("AC", "eBay FEES",    "formula: eBay Price × Fee Rate."),
+        ("AD", "SHIP COST $",  "Shipping cost in dollars (raw value behind the Y badge)."),
+        ("AE", "FULFILLMENT",  "Fulfillment cost if applicable."),
+        ("AF", "TAX EST.",     "formula: Costco Cost × 8.25%."),
+        ("AG", "SITE PROFIT",  "formula: eBay Price × 0.90 − Cost."),
+        ("AH", "AD BUDGET",    "formula: Net Profit × 15%."),
+        ("AI", "SEO TITLE",    "Optimized listing title for eBay / site."),
+        ("AJ", "BULLETS",      "Bullet points for eBay listing description."),
+        ("AK", "DESCRIPTION",  "Full listing description."),
+        ("AL", "REDIRECT MSG", "Message shown if product is no longer available."),
+        ("AM", "META DESC",    "SEO meta description."),
+        ("AN", "KEYWORDS",     "Search keywords for eBay / Google."),
+        ("AO", "ALT TEXT",     "Image alt text for accessibility / SEO."),
+        ("AP", "GOOGLE HL",    "Google Shopping headline."),
+        ("AQ", "GOOGLE DESC",  "Google Shopping description."),
+        ("AR", "META TEXT",    "Additional meta text."),
+        ("AS", "META HL",      "Meta headline."),
+        ("AT", "IMAGE URLS",   "Comma-separated Costco image URLs."),
+        ("AU", "PERF SCORE",   "Composite performance score (0–10) written by rotation engine."),
+        ("AV", "FULL NOTES",   "Full research narrative, eBay comps, community signals."),
+    ]
+    for col, key, desc in hidden_cols:
+        _row(col, key, desc, "")
+
+    _blank()
+
+    # ── 5-STEP WORKFLOW
     _divider("5-STEP WORKFLOW")
     _row("1  Discover",  "Agent scrapes Costco → adds new products as PENDING. Runs 7 AM daily (GitHub).")
     _row("2  Research",  "Agent scores PENDING → Tier 1 stays PENDING, Tier 2 becomes WATCH. Runs 10 AM.")
@@ -794,17 +837,35 @@ def _ensure_legend_tab(service, spreadsheet_id):
 
     _blank()
 
-    # ── VS CODE TASKS ─────────────────────────────────────────────────────────────
+    # ── VS CODE TASKS
     _divider("VS CODE TASKS   Ctrl+Shift+P → 'Tasks: Run Task'")
-    _row("WAT: Check Status",           "Quick snapshot — last runs, product counts, spot prices, next scheduled run.")
-    _row("WAT: Run Discovery",          "Scrape Costco for new products → PENDING. Also runs automatically at 7 AM.")
-    _row("WAT: Run Research",           "Score all PENDING rows (eBay comps + Claude). Also runs at 10 AM.")
-    _row("WAT: Research — Re-score Only", "Same as Research but skips discovery. ~2 min. Use after manually adding rows.")
-    _row("WAT: Run Daily Sweep",        "APPROVED→READY + PAUSED stock/margin recovery. Also runs at 9 AM.")
-    _row("WAT: Run Rotation Digest",    "Weekly: score all WATCH products, flag underperformers. Auto-runs Fridays.")
-    _row("WAT: Run Active Monitor",     "LOCAL ONLY — checks stock/price for ACTIVE listings. Needs Chrome open.")
-    _row("WAT: Setup Sheet",            "Re-apply dashboard formatting. Safe to re-run anytime sheet looks wrong.")
-    _row("WAT: Export eBay CSV",        "Generate upload CSV for READY rows → upload at eBay Seller Hub.")
+    _row("WAT: Check Status",               "Quick snapshot — last runs, product counts, spot prices, next scheduled run.")
+    _row("WAT: Run Discovery",              "Scrape Costco for new products → PENDING. Also runs automatically at 7 AM.")
+    _row("WAT: Run Research",               "Score all PENDING rows (eBay comps + Claude). Also runs at 10 AM.")
+    _row("WAT: Research — Re-score Only",   "Same as Research but skips discovery. ~2 min. Use after manually adding rows.")
+    _row("WAT: Run Daily Sweep",            "APPROVED→READY + PAUSED stock/margin recovery. Also runs at 9 AM.")
+    _row("WAT: Run Rotation Digest",        "Weekly: score all WATCH products, flag underperformers. Auto-runs Fridays.")
+    _row("WAT: Run Active Monitor",         "LOCAL ONLY — checks stock/price for ACTIVE listings. Needs Chrome open.")
+    _row("WAT: Setup Sheet",                "Re-apply dashboard formatting. Safe to re-run anytime sheet looks wrong.")
+    _row("WAT: Export eBay CSV",            "Generate upload CSV for READY rows → upload at eBay Seller Hub.")
+
+    return rows, divider_rows, status_rows, col_hdr_rows
+
+
+def _ensure_legend_tab(service, spreadsheet_id):
+    meta = _get_sheet_meta(service, spreadsheet_id)
+    existing = {s["properties"]["title"] for s in meta["sheets"]}
+    if "Legend" not in existing:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": "Legend", "index": 2}}}]},
+        ).execute()
+        logger.info("  Created Legend tab.")
+        meta = _get_sheet_meta(service, spreadsheet_id)
+
+    legend_id = _get_tab_id(meta, "Legend")
+
+    rows, divider_rows, status_rows, col_hdr_rows = _build_legend_rows()
 
     # ── Write values ─────────────────────────────────────────────────────────────
     service.spreadsheets().values().update(
@@ -834,33 +895,35 @@ def _ensure_legend_tab(service, spreadsheet_id):
             }},
             "fields": "userEnteredFormat",
         }},
-        # Column widths: label | description | detail | tag
+        # Column widths: col-letter | header/key | description | notes tag
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-            "properties": {"pixelSize": 140}, "fields": "pixelSize",
+            "properties": {"pixelSize": 80}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-            "properties": {"pixelSize": 520}, "fields": "pixelSize",
+            "properties": {"pixelSize": 140}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-            "properties": {"pixelSize": 280}, "fields": "pixelSize",
+            "properties": {"pixelSize": 380}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "COLUMNS", "startIndex": 3, "endIndex": 4},
-            "properties": {"pixelSize": 80}, "fields": "pixelSize",
+            "properties": {"pixelSize": 90}, "fields": "pixelSize",
         }},
     ]
 
     # Section dividers: dark navy bg + white bold text spanning all 4 cols
     for row_idx in divider_rows:
-        is_title = (row_idx == 0)
+        is_title   = (row_idx == 0)
+        is_hidden  = rows[row_idx][0].startswith("HIDDEN COLUMNS")
+        bg = TITLE_BG if is_title else (STATS_BG if is_hidden else HDR_BG)
         requests.append({"repeatCell": {
             "range": {"sheetId": legend_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
                        "startColumnIndex": 0, "endColumnIndex": 4},
             "cell": {"userEnteredFormat": {
-                "backgroundColor": TITLE_BG if is_title else HDR_BG,
+                "backgroundColor": bg,
                 "textFormat": {
                     "foregroundColor": HDR_FG, "bold": True,
                     "fontSize": 13 if is_title else 10,
@@ -870,7 +933,6 @@ def _ensure_legend_tab(service, spreadsheet_id):
             }},
             "fields": "userEnteredFormat",
         }})
-        # Row height: taller for dividers
         requests.append({"updateDimensionProperties": {
             "range": {"sheetId": legend_id, "dimension": "ROWS",
                        "startIndex": row_idx, "endIndex": row_idx + 1},
@@ -890,6 +952,20 @@ def _ensure_legend_tab(service, spreadsheet_id):
             }},
             "fields": "userEnteredFormat",
         }})
+
+    # Style "formula" tag cells in col D — italic muted grey
+    formula_color = _rgb("78909C")
+    for row_idx, row_data in enumerate(rows):
+        if len(row_data) > 3 and str(row_data[3]).strip().lower() == "formula":
+            requests.append({"repeatCell": {
+                "range": {"sheetId": legend_id,
+                           "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
+                           "startColumnIndex": 3, "endColumnIndex": 4},
+                "cell": {"userEnteredFormat": {
+                    "textFormat": {"italic": True, "foregroundColor": formula_color, "fontSize": 9},
+                }},
+                "fields": "userEnteredFormat(textFormat)",
+            }})
 
     # Status rows: color-code the label cell (col A) to match Product Tracker
     for row_idx, status_name in status_rows:

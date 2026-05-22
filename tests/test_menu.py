@@ -250,6 +250,47 @@ def test_run_item_omits_add_limit_when_none(monkeypatch):
 
 # ── HEADER_LABELS completeness ────────────────────────────────────────────────
 
+# ── Legend row content ────────────────────────────────────────────────────────
+
+def test_legend_rows_contain_visible_columns_section():
+    from tools.sheet_formatter import _build_legend_rows
+    rows, _, _, _ = _build_legend_rows()
+    flat = [r[0] for r in rows if r]
+    assert "VISIBLE COLUMNS  (A–Z)" in flat
+
+
+def test_legend_rows_contain_hidden_columns_section():
+    from tools.sheet_formatter import _build_legend_rows
+    rows, _, _, _ = _build_legend_rows()
+    flat = [r[0] for r in rows if r]
+    assert "HIDDEN COLUMNS  (AA–AV)" in flat
+
+
+def test_legend_rows_include_all_26_visible_col_letters():
+    from tools.sheet_formatter import _build_legend_rows
+    rows, _, _, _ = _build_legend_rows()
+    col_labels = {r[0] for r in rows if r and len(r[0]) <= 2 and r[0].isalpha() and r[0].isupper()}
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        assert letter in col_labels, f"Visible col {letter} missing from Legend rows"
+
+
+def test_legend_rows_include_all_22_hidden_col_labels():
+    from tools.sheet_formatter import _build_legend_rows
+    rows, _, _, _ = _build_legend_rows()
+    col_labels = {r[0] for r in rows if r}
+    for col in ["AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH",
+                "AI", "AJ", "AK", "AL", "AM", "AN", "AO",
+                "AP", "AQ", "AR", "AS", "AT", "AU", "AV"]:
+        assert col in col_labels, f"Hidden col {col} missing from Legend rows"
+
+
+def test_legend_rows_no_old_column_quick_reference():
+    from tools.sheet_formatter import _build_legend_rows
+    rows, _, _, _ = _build_legend_rows()
+    flat = [r[0] for r in rows if r]
+    assert "COLUMN QUICK REFERENCE" not in flat
+
+
 def test_header_labels_covers_all_48_columns():
     from tools.sheet_formatter import HEADER_LABELS, TOTAL_COLS
     assert len(HEADER_LABELS) == TOTAL_COLS, (
