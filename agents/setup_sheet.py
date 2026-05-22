@@ -96,10 +96,11 @@ def main():
         _insert_rows_at_top(service, spreadsheet_id, tab_id, DATA_START_ROW - 1)
         logger.info("  Existing data shifted to row 4+.")
 
-    # ── Check whether SALE / FREE SHIP columns (X, Y) are actually inserted ──
-    # A true insertion means: X3="SALE" AND Z3 is blank (first hidden col, no header).
-    # If setup_dashboard was run without inserting columns first, X3="SALE" but Z3
-    # will contain old hidden-column data — that signals we still need to insert.
+    # ── Check whether SALE / SHIP COST / TOTAL COST columns (X, Y, Z) are inserted ──
+    # Layout has 3 phases:
+    #   Phase 1 (original): X3="SALE", Z3=""  (Z was first hidden col)
+    #   Phase 2 (current):  X3="SALE", Z3="TOTAL COST"  (Z is now visible)
+    # Both are valid post-insert states. Only insert if X is NOT "SALE".
     hr = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
         range=f"'{SHEET_NAME}'!X3:Z3",
@@ -108,11 +109,11 @@ def main():
     x3_text = str(hr_row[0]).strip() if len(hr_row) > 0 else ""
     z3_text = str(hr_row[2]).strip() if len(hr_row) > 2 else ""
 
-    # Properly inserted: X="SALE" and Z is blank (hidden col, no header written)
-    already_inserted = (x3_text.upper() == "SALE" and z3_text == "")
+    # Properly inserted: X="SALE" and Z is either blank (old layout) or "TOTAL COST" (new layout)
+    already_inserted = (x3_text.upper() == "SALE" and z3_text.upper() in ("", "TOTAL COST"))
 
     if already_inserted:
-        logger.info("SALE / FREE SHIP columns already properly inserted — skipping.")
+        logger.info("SALE / SHIP COST columns already properly inserted — skipping.")
     else:
         logger.info(
             f"Col X='{x3_text}', Z='{z3_text}' — columns not yet physically inserted. "
