@@ -185,7 +185,7 @@ def run_rotation_check(
 ) -> dict[str, list]:
     """
     Runs rotation check across all categories.
-    Writes perf_score (col AR) and rotation note (col T) to flagged rows.
+    Writes perf_score (col AU) and rotation note (col T) to flagged rows.
     Returns {category_name: [candidates]} — only categories with candidates.
 
     Also writes perf_score for ALL active products (not just candidates) so the

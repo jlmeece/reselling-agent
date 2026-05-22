@@ -117,7 +117,7 @@ def main():
     else:
         logger.info(
             f"Col X='{x3_text}', Z='{z3_text}' — columns not yet physically inserted. "
-            "Inserting 2 columns at position 23 (after W) for SALE and FREE SHIP..."
+            "Inserting 2 columns at position 23 (after W) for SALE and SHIP COST..."
         )
         _insert_columns(service, spreadsheet_id, tab_id, start_index=23, count=2)
         logger.info("  Columns inserted. Old hidden cols shifted 2 right (old-X→Z, old-Y→AA, etc.).")

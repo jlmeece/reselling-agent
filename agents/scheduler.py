@@ -78,7 +78,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
     business = config["business"]
     categories = config["categories"]
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     urgent_items = []
@@ -297,7 +297,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     except Exception as e:
         logger.warning(f"  Spot movement check failed (non-fatal): {e}")
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
     today    = date_type.today()
 
@@ -527,7 +527,7 @@ def run_rotation(config, COL, service, sheet_name, start_row, end_row):
     """
     from tools.rotation_engine import run_rotation_check, save_rotation_log
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
     run_date = datetime.now().strftime("%Y-%m-%d")
 
     logger.info("Running rotation check across all categories...")
@@ -558,7 +558,7 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
     business  = config["business"]
     fee_rate  = business.get("default_fee_rate", 0.1325)
 
-    range_name = f"'{sheet_name}'!A{start_row}:AU{end_row}"
+    range_name = f"'{sheet_name}'!A{start_row}:AV{end_row}"
     rows = read_sheet(service, range_name)
     logger.info(f"refresh-notes: read {len(rows)} rows, scanning for old-format notes...")
 

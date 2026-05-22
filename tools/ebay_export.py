@@ -4,7 +4,7 @@ Generates an eBay Seller Hub–compatible CSV from approved/watched products in 
 
 Products must have:
   - Status = APPROVED or WATCH
-  - seo_title (col AC) filled in — indicates copy has been generated
+  - seo_title (col AI) filled in — indicates copy has been generated
 
 Upload the output CSV to eBay Seller Hub → Reports → Uploads → Upload your file.
 After upload, add product photos via eBay's bulk image uploader or individual listing editor.

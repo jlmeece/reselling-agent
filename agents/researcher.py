@@ -427,7 +427,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     start_row  = business["data_start_row"]
     end_row    = business["data_end_row"]
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
 
     # ── Step 1: Discover new products ────────────────────────────
     if skip_discovery:
@@ -451,7 +451,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             return
 
         # Reload sheet data now that new rows are added
-        all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+        all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
 
     # ── Step 2: Identify rows needing research ────────────────────
     tier2_watchlist = _load_tier2_watchlist()
@@ -870,7 +870,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 f"{velocity_str}{verify_flag}]"
             )
 
-            # ── Col AU: full research narrative (hidden) ───────────────────────────
+            # ── Col AV: full research narrative (hidden) ───────────────────────────
             full_notes = (
                 f"Tier {tier} (score {weighted_score}) | {result['recommendation']} | "
                 f"Strongest lens: {top_lens.replace('_', ' ').title()} | {demand_note}"
@@ -918,7 +918,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
                 (COL["stock_status"],  stock_status),       # col F — stock only, no badges
                 (COL["last_checked"],  datetime.now().strftime("%Y-%m-%d %H:%M")),
                 (COL["tier_summary"],  tier_summary_line),  # col T — short one-liner
-                (COL["full_notes"],    full_notes),          # col AU — full narrative (hidden)
+                (COL["full_notes"],    full_notes),          # col AV — full narrative (hidden)
                 (COL["sale_info"],     sale_info_val),       # col X — sale badge
                 (COL["free_shipping"], free_ship_val),       # col Y — free ship badge
                 (COL["fee_rate"],      fee_rate),            # col AA — needed for =H*AA (eBay fees formula)
@@ -945,7 +945,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
             elif tier == 3:
                 updates.append((COL["status"], "PAUSED_DEMAND"))
                 updates.append((COL["re_eval_date"], recheck_date_str))
-            # Cart estimate — ship_cost → col AC; tax_est → col AE (formula column, overwrite OK here)
+            # Cart estimate — ship_cost → col AD; tax_est → col AF (formula column, overwrite OK here)
             if cart_est.get("shipping") is not None:
                 updates.append((COL["ship_cost"], cart_est["shipping"]))
             if cart_est.get("tax") is not None:
@@ -1109,7 +1109,7 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
     # Refresh Summary dashboard so Jordan sees live counts immediately after research
     try:
         from tools.sheet_formatter import refresh_summary_tab
-        fresh_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+        fresh_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
         refresh_summary_tab(service, sheet_name, all_data=fresh_data)
     except Exception as e:
         logger.warning(f"  Summary tab refresh failed (non-fatal): {e}")
