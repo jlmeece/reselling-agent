@@ -90,3 +90,25 @@ def test_get_all_items_category_prompt_modes_are_discovery_or_research():
     for item in get_all_items():
         if item["category_prompt"]:
             assert item["mode"] in ["discovery", "research"]
+
+
+# ── researcher --add-limit ────────────────────────────────────────────────────
+
+def test_researcher_argparse_accepts_add_limit():
+    """--add-limit is a known arg; --help exits 0 and mentions it."""
+    import subprocess, sys
+    result = subprocess.run(
+        [sys.executable, "agents/researcher.py", "--help"],
+        capture_output=True, text=True
+    )
+    assert result.returncode == 0
+    assert "--add-limit" in result.stdout
+
+
+def test_researcher_run_researcher_accepts_add_limit_kwarg():
+    """run_researcher signature must accept add_limit without TypeError."""
+    import inspect
+    from agents.researcher import run_researcher
+    sig = inspect.signature(run_researcher)
+    assert "add_limit" in sig.parameters
+    assert sig.parameters["add_limit"].default is None

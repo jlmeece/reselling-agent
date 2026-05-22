@@ -407,9 +407,10 @@ def _pass3_for_category(category):
 
 # ── Main research loop ────────────────────────────────────────────
 
-def run_researcher(limit=None, category_filter=None, discover_only=False, skip_discovery=False):
+def run_researcher(limit=None, add_limit=None, category_filter=None, discover_only=False, skip_discovery=False):
     """
     limit:            max products to score this run (None = all PENDING)
+    add_limit:        max new products to add to sheet during discovery (None = all)
     category_filter:  only research this category (e.g. 'Jewelry')
     discover_only:    add new products to sheet but skip scoring
     skip_discovery:   skip Costco scraping, go straight to researching PENDING rows
@@ -441,6 +442,10 @@ def run_researcher(limit=None, category_filter=None, discover_only=False, skip_d
 
         new_products = [p for p in discovered if p["url"] not in existing_urls]
         logger.info(f"  {len(discovered)} found, {len(new_products)} are new.")
+
+        if add_limit and len(new_products) > add_limit:
+            logger.info(f"  Capping at {add_limit} new products (found {len(new_products)}).")
+            new_products = new_products[:add_limit]
 
         # Add new products to sheet as PENDING (single batch API call)
         if new_products:
@@ -1139,6 +1144,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Costco product researcher")
     parser.add_argument("--limit", type=int, default=None,
                         help="Max products to research per run (default: all)")
+    parser.add_argument("--add-limit", type=int, default=None,
+                        help="Max new products to add to sheet during discovery")
     parser.add_argument("--category", type=str, default=None,
                         help="Only research this category (e.g. 'Jewelry')")
     parser.add_argument("--discover-only", action="store_true",
@@ -1146,6 +1153,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip-discovery", action="store_true",
                         help="Skip Costco discovery, go straight to researching PENDING rows")
     args = parser.parse_args()
-    run_researcher(limit=args.limit, category_filter=args.category,
+    run_researcher(limit=args.limit, add_limit=args.add_limit,
+                   category_filter=args.category,
                    discover_only=args.discover_only,
                    skip_discovery=args.skip_discovery)
