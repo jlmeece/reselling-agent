@@ -112,3 +112,14 @@ def test_researcher_run_researcher_accepts_add_limit_kwarg():
     sig = inspect.signature(run_researcher)
     assert "add_limit" in sig.parameters
     assert sig.parameters["add_limit"].default is None
+
+
+def test_researcher_add_limit_rejects_zero_and_negative():
+    """--add-limit 0 and --add-limit -1 should exit non-zero."""
+    import subprocess, sys
+    for bad_val in ["0", "-1"]:
+        result = subprocess.run(
+            [sys.executable, "agents/researcher.py", "--add-limit", bad_val, "--help"],
+            capture_output=True, text=True
+        )
+        assert result.returncode != 0, f"--add-limit {bad_val} should be rejected"

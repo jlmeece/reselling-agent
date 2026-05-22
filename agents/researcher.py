@@ -443,7 +443,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
         new_products = [p for p in discovered if p["url"] not in existing_urls]
         logger.info(f"  {len(discovered)} found, {len(new_products)} are new.")
 
-        if add_limit and len(new_products) > add_limit:
+        if add_limit is not None and len(new_products) > add_limit:
             logger.info(f"  Capping at {add_limit} new products (found {len(new_products)}).")
             new_products = new_products[:add_limit]
 
@@ -1144,7 +1144,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Costco product researcher")
     parser.add_argument("--limit", type=int, default=None,
                         help="Max products to research per run (default: all)")
-    parser.add_argument("--add-limit", type=int, default=None,
+    def _positive_int(value):
+        n = int(value)
+        if n <= 0:
+            raise argparse.ArgumentTypeError(f"--add-limit must be a positive integer, got {value!r}")
+        return n
+    parser.add_argument("--add-limit", type=_positive_int, default=None,
                         help="Max new products to add to sheet during discovery")
     parser.add_argument("--category", type=str, default=None,
                         help="Only research this category (e.g. 'Jewelry')")
