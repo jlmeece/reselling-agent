@@ -513,7 +513,7 @@ def run_discovery(config, COL, service, sheet_name, start_row, end_row, category
     cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "researcher.py"), "--discover-only"]
     if category:
         cmd += ["--category", category]
-    if add_limit:
+    if add_limit is not None:
         cmd += ["--add-limit", str(add_limit)]
     result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
