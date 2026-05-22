@@ -31,8 +31,8 @@ MENU_GROUPS = [
     {
         "label": "RESEARCH",
         "items": [
-            {"label": "Discover new products — all categories",   "mode": "discovery", "category_prompt": False, "args": []},
-            {"label": "Discover new products — pick category",    "mode": "discovery", "category_prompt": True,  "args": []},
+            {"label": "Discover new products — all categories",   "mode": "discovery", "category_prompt": False, "args": [], "limit_prompt": True},
+            {"label": "Discover new products — pick category",    "mode": "discovery", "category_prompt": True,  "args": [], "limit_prompt": True},
             {"label": "Score PENDING rows — all categories",      "mode": "research",  "category_prompt": False, "args": []},
             {"label": "Score PENDING rows — pick category",       "mode": "research",  "category_prompt": True,  "args": []},
         ],
@@ -133,7 +133,22 @@ def prompt_category(categories):
         print("Invalid choice — try again.")
 
 
-def run_item(item, category=None):
+def prompt_limit():
+    """Returns a positive int (items to add) or None (no limit)."""
+    while True:
+        raw = input("How many new items to add? (Enter for all): ").strip()
+        if not raw:
+            return None
+        try:
+            n = int(raw)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+        print("Enter a positive number or press Enter to add all.")
+
+
+def run_item(item, category=None, add_limit=None):
     """Invoke the subprocess for the selected menu item."""
     if item.get("script"):
         cmd = [sys.executable, item["script"]]
@@ -141,6 +156,8 @@ def run_item(item, category=None):
         cmd = [sys.executable, SCHEDULER, "--mode", item["mode"]] + item.get("args", [])
         if category:
             cmd += ["--category", category]
+        if add_limit is not None:
+            cmd += ["--add-limit", str(add_limit)]
     print()
     print(f"{Fore.CYAN}Running: {' '.join(cmd)}{Style.RESET_ALL}")
     print()
@@ -174,7 +191,10 @@ def main():
             category = prompt_category(categories)
             if category is None:
                 continue
-        run_item(item, category=category)
+        add_limit = None
+        if item.get("limit_prompt"):
+            add_limit = prompt_limit()
+        run_item(item, category=category, add_limit=add_limit)
 
 
 if __name__ == "__main__":

@@ -171,3 +171,78 @@ def test_scheduler_argparse_accepts_add_limit():
     )
     assert result.returncode == 0
     assert "--add-limit" in result.stdout
+
+
+# ── prompt_limit ─────────────────────────────────────────────────────────────
+
+def test_prompt_limit_returns_int_on_valid_input(monkeypatch):
+    from agents.menu import prompt_limit
+    monkeypatch.setattr("builtins.input", lambda _: "10")
+    assert prompt_limit() == 10
+
+
+def test_prompt_limit_returns_none_on_blank(monkeypatch):
+    from agents.menu import prompt_limit
+    monkeypatch.setattr("builtins.input", lambda _: "")
+    assert prompt_limit() is None
+
+
+def test_prompt_limit_retries_on_invalid_then_accepts(monkeypatch):
+    from agents.menu import prompt_limit
+    responses = iter(["abc", "0", "-3", "5"])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    assert prompt_limit() == 5
+
+
+# ── limit_prompt field on discovery items ────────────────────────────────────
+
+def test_discovery_items_have_limit_prompt(monkeypatch):
+    from agents.menu import get_all_items
+    discovery_items = [i for i in get_all_items() if i.get("mode") == "discovery"]
+    assert len(discovery_items) == 2, "Expected exactly 2 discovery items"
+    for item in discovery_items:
+        assert item.get("limit_prompt") is True, f"Item '{item['label']}' missing limit_prompt"
+
+
+def test_non_discovery_items_have_no_limit_prompt():
+    from agents.menu import get_all_items
+    non_discovery = [i for i in get_all_items() if i.get("mode") != "discovery"]
+    for item in non_discovery:
+        assert not item.get("limit_prompt"), f"Item '{item['label']}' should not have limit_prompt"
+
+
+# ── run_item passes add_limit ─────────────────────────────────────────────────
+
+def test_run_item_appends_add_limit_to_command(monkeypatch):
+    import subprocess
+    captured = []
+
+    class FakeResult:
+        returncode = 0
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: captured.append(cmd) or FakeResult())
+    monkeypatch.setattr("builtins.input", lambda _: "")  # dismiss "Press Enter" prompt
+
+    from agents.menu import run_item
+    item = {"mode": "discovery", "args": [], "label": "Discover"}
+    run_item(item, add_limit=7)
+
+    assert "--add-limit" in captured[0]
+    assert "7" in captured[0]
+
+
+def test_run_item_omits_add_limit_when_none(monkeypatch):
+    import subprocess
+    captured = []
+
+    class FakeResult:
+        returncode = 0
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: captured.append(cmd) or FakeResult())
+    monkeypatch.setattr("builtins.input", lambda _: "")
+
+    from agents.menu import run_item
+    item = {"mode": "discovery", "args": [], "label": "Discover"}
+    run_item(item, add_limit=None)
+
+    assert "--add-limit" not in captured[0]
