@@ -123,3 +123,51 @@ def test_researcher_add_limit_rejects_zero_and_negative():
             capture_output=True, text=True
         )
         assert result.returncode != 0, f"--add-limit {bad_val} should be rejected"
+
+
+# ── scheduler run_discovery add_limit ────────────────────────────────────────
+
+def test_run_discovery_passes_add_limit_to_subprocess(monkeypatch):
+    """run_discovery includes --add-limit N in the subprocess command when set."""
+    import subprocess as sp
+    captured = []
+
+    class FakeResult:
+        returncode = 0
+
+    monkeypatch.setattr(sp, "run", lambda cmd, **kw: captured.append(cmd) or FakeResult())
+
+    from agents.scheduler import run_discovery
+    run_discovery({}, {}, None, "Sheet", 4, 1000, category="Jewelry", add_limit=10)
+
+    assert len(captured) == 1
+    cmd = captured[0]
+    assert "--add-limit" in cmd
+    assert "10" in cmd
+
+
+def test_run_discovery_omits_add_limit_when_none(monkeypatch):
+    """run_discovery does not include --add-limit when add_limit is None."""
+    import subprocess as sp
+    captured = []
+
+    class FakeResult:
+        returncode = 0
+
+    monkeypatch.setattr(sp, "run", lambda cmd, **kw: captured.append(cmd) or FakeResult())
+
+    from agents.scheduler import run_discovery
+    run_discovery({}, {}, None, "Sheet", 4, 1000)
+
+    assert "--add-limit" not in captured[0]
+
+
+def test_scheduler_argparse_accepts_add_limit():
+    """scheduler.py --help exits 0 and lists --add-limit."""
+    import subprocess, sys
+    result = subprocess.run(
+        [sys.executable, "agents/scheduler.py", "--help"],
+        capture_output=True, text=True
+    )
+    assert result.returncode == 0
+    assert "--add-limit" in result.stdout

@@ -501,17 +501,20 @@ def run_research(config, COL, service, sheet_name, start_row, end_row, category=
 
 # ── Mode: DISCOVERY (1x/day) ──────────────────────────────────────────────────
 
-def run_discovery(config, COL, service, sheet_name, start_row, end_row, category=None):
+def run_discovery(config, COL, service, sheet_name, start_row, end_row, category=None, add_limit=None):
     """
     Finds new Costco products and adds them as PENDING.
     Delegates to researcher.py --discover-only.
     Pass category to limit discovery to a single category.
+    Pass add_limit to cap the number of new products added to the sheet.
     """
     logger.info("Discovery mode — running discover-only pass")
     import subprocess, sys
     cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "researcher.py"), "--discover-only"]
     if category:
         cmd += ["--category", category]
+    if add_limit:
+        cmd += ["--add-limit", str(add_limit)]
     result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
         logger.error(f"researcher.py --discover-only exited with code {result.returncode}")
@@ -876,6 +879,8 @@ def main():
                         help="Limit research to N products (for testing)")
     parser.add_argument("--force", action="store_true",
                         help="(recheck only) Re-run Costco + eBay on ALL products, not just missing-data rows")
+    parser.add_argument("--add-limit", type=int, default=None,
+                        help="Max new products to add to sheet during discovery")
     args = parser.parse_args()
 
     config     = load_config()
@@ -901,7 +906,7 @@ def main():
                          category=args.category)
         elif args.mode == "discovery":
             run_discovery(config, COL, service, sheet_name, start_row, end_row,
-                          category=args.category)
+                          category=args.category, add_limit=args.add_limit)
         elif args.mode == "rotation":
             run_rotation(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "refresh-notes":
