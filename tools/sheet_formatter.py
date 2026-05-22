@@ -496,7 +496,7 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
             "properties": {"pixelSize": width}, "fields": "pixelSize",
         }})
 
-    # 11. Hide columns Z–AU (index 25–46)
+    # 11. Hide columns AA–AV (index 26–47)
     requests.append({"updateDimensionProperties": {
         "range": {"sheetId": tab_id, "dimension": "COLUMNS",
                   "startIndex": HIDDEN_START, "endIndex": TOTAL_COLS},
@@ -997,7 +997,7 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
         cost_s   = _safe(row, 6)   # G
         url      = _safe(row, 17)  # R
         sale_val = _safe(row, 23)  # X — dedicated SALE col
-        ship_val = _safe(row, 24)  # Y — dedicated FREE SHIP col
+        ship_val = _safe(row, 24)  # Y — ship cost badge
 
         if not status:
             continue
@@ -1028,7 +1028,7 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
 
         if sale_val:
             sale_count += 1
-        if ship_val:
+        if "FREE" in ship_val:
             ship_count += 1
 
         if status == "PENDING" and score is not None:
