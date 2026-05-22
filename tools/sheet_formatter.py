@@ -53,6 +53,7 @@ COMP_HIGH_BG = _rgb("FFAB91")   # orange  — > 10×
 # ── Column config ───────────────────────────────────────────────────────────────
 
 HEADER_LABELS = [
+    # A–Z  (visible, indices 0–25)
     "STATUS",          # A  0
     "TIER",            # B  1
     "PRODUCT TITLE",   # C  2
@@ -79,7 +80,29 @@ HEADER_LABELS = [
     "SALE",            # X  23 — 🔥 -$150 ends 5/31 (blank if not on sale)
     "SHIP COST",       # Y  24 — ✓ FREE or $12.99 ship (blank if unknown)
     "TOTAL COST",      # Z  25 — formula =IFERROR(G+AD,G) — Costco cost + shipping
-    # AA–AV hidden
+    # AA–AV  (hidden, indices 26–47)
+    "SKU",             # AA 26
+    "FEE RATE",        # AB 27
+    "eBay FEES",       # AC 28
+    "SHIP COST $",     # AD 29
+    "FULFILLMENT",     # AE 30
+    "TAX EST.",        # AF 31
+    "SITE PROFIT",     # AG 32
+    "AD BUDGET",       # AH 33
+    "SEO TITLE",       # AI 34
+    "BULLETS",         # AJ 35
+    "DESCRIPTION",     # AK 36
+    "REDIRECT MSG",    # AL 37
+    "META DESC",       # AM 38
+    "KEYWORDS",        # AN 39
+    "ALT TEXT",        # AO 40
+    "GOOGLE HL",       # AP 41
+    "GOOGLE DESC",     # AQ 42
+    "META TEXT",       # AR 43
+    "META HL",         # AS 44
+    "IMAGE URLS",      # AT 45
+    "PERF SCORE",      # AU 46
+    "FULL NOTES",      # AV 47
 ]
 
 COLUMN_WIDTHS = {

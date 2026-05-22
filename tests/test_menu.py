@@ -246,3 +246,37 @@ def test_run_item_omits_add_limit_when_none(monkeypatch):
     run_item(item, add_limit=None)
 
     assert "--add-limit" not in captured[0]
+
+
+# ── HEADER_LABELS completeness ────────────────────────────────────────────────
+
+def test_header_labels_covers_all_48_columns():
+    from tools.sheet_formatter import HEADER_LABELS, TOTAL_COLS
+    assert len(HEADER_LABELS) == TOTAL_COLS, (
+        f"Expected {TOTAL_COLS} labels, got {len(HEADER_LABELS)}"
+    )
+
+
+def test_header_labels_visible_cols_unchanged():
+    """First 26 labels (A–Z) must stay exactly as they are."""
+    from tools.sheet_formatter import HEADER_LABELS
+    expected_visible = [
+        "STATUS", "TIER", "PRODUCT TITLE", "CATEGORY", "PLATFORM", "STOCK",
+        "COST $", "eBay PRICE", "NET PROFIT", "MARGIN", "SOLD 90d", "AVG eBay $",
+        "ACTIVE", "COMP SCORE", "LAST CHECKED", "PRICE CHG", "eBay LISTING",
+        "COSTCO URL", "RE-EVAL DATE", "TIER SUMMARY", "UNITS SOLD", "SUGG. PRICE",
+        "PURCH. LIMIT", "SALE", "SHIP COST", "TOTAL COST",
+    ]
+    assert HEADER_LABELS[:26] == expected_visible
+
+
+def test_header_labels_hidden_cols_present():
+    """Spot-check key hidden col labels by position."""
+    from tools.sheet_formatter import HEADER_LABELS
+    # AA=26, AB=27, AD=29, AT=45, AU=46, AV=47
+    assert HEADER_LABELS[26] == "SKU"
+    assert HEADER_LABELS[27] == "FEE RATE"
+    assert HEADER_LABELS[29] == "SHIP COST $"
+    assert HEADER_LABELS[45] == "IMAGE URLS"
+    assert HEADER_LABELS[46] == "PERF SCORE"
+    assert HEADER_LABELS[47] == "FULL NOTES"
