@@ -1,6 +1,6 @@
 # WAT Reselling Agent - Quick Commands
 # Usage: .\run.ps1 <command>
-# Run from the project folder: cd "C:\Users\jorda\OneDrive\Desktop\reselling-agent"
+# Run from the project folder: cd "C:\Users\jorda\projects\reselling-agent"
 
 param([string]$cmd = "help", [string]$category = "")
 
@@ -110,7 +110,7 @@ switch ($cmd) {
         Write-Host "  .\run.ps1 menu             Launch interactive menu"
         Write-Host ""
         Write-Host "TIP: Run from the project folder:" -ForegroundColor DarkGray
-        Write-Host "  cd 'C:\Users\jorda\OneDrive\Desktop\reselling-agent'" -ForegroundColor DarkGray
+        Write-Host "  cd 'C:\Users\jorda\projects\reselling-agent'" -ForegroundColor DarkGray
         Write-Host ""
     }
 }
