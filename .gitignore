@@ -9,6 +9,9 @@ data/costco_cookies.json
 # Temporary processing files
 .tmp/
 
+# Local Claude Code settings (machine-specific paths)
+.claude/settings.local.json
+
 # Python artifacts
 __pycache__/
 *.pyc

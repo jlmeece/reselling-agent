@@ -1,0 +1,27 @@
+{
+  "slug": "henredon-annalise-6-piece-outdoor-patio-modular-sectional",
+  "title": "Henredon Annalise 6-piece Outdoor Patio Modular Sectional",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/henredon-annalise-6-piece-outdoor-patio-modular-sectional/4000399806",
+  "brand": "Henredon",
+  "model": "1934028",
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": "Henredon",
+      "model": "1934028",
+      "date": "2026-05-22",
+      "signal_strength": 0.06,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 1,
+        "reddit:r/frugal": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/malelivingspace/comments/1t3vxz2/thomasville_tisdale_modular_sectional_6piece_dark/",
+        "https://reddit.com/r/HomeImprovement/comments/1st0crp/concrete_patio_touching_stucco_solutions/"
+      ]
+    }
+  ]
+}

@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/25mm-comfort-fit-high-polish-round-wedding-band/4000322712",
   "brand": null,
-  "model": null,
+  "model": "2222314",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -12,6 +12,25 @@
       "model": null,
       "date": "2026-05-10",
       "signal_strength": 0.19,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 15
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t8xv0q/wts_even_more_new_stuff_iron_man_gold_lucky/",
+        "https://reddit.com/r/Pmsforsale/comments/1t8v639/wts_bunch_of_gold_cc_morgans_world_silver_us_junk/",
+        "https://reddit.com/r/Pmsforsale/comments/1t7r5xz/wts_1oz2021_beskarasesmilunar_dragon_libertad/",
+        "https://reddit.com/r/Pmsforsale/comments/1t7oxnq/wts_110_age_and_more_small_gold_silver_palladium/",
+        "https://reddit.com/r/Pmsforsale/comments/1t6zf4q/wts_more_gold_and_silver_lunars_from_all_over_the/"
+      ]
+    },
+    {
+      "brand": null,
+      "model": "2222314",
+      "date": "2026-05-10",
+      "signal_strength": 0.23,
       "by_source": {
         "reddit:r/Silverbugs": 0,
         "reddit:r/Gold": 0,

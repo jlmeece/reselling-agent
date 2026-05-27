@@ -3,7 +3,7 @@
 
 business:
   discount_code: "SAVE10"
-  batch_size: 5                    # products per Claude API call
+  batch_size: 3                    # products per Claude API call (3 × ~2500 tokens fits in 8192 max_tokens)
   price_change_threshold: 0.50     # USD — flag if price moves more than this
   min_margin_threshold: 0.10       # 10% — below this triggers PAUSED_MARGIN
   min_demand_score: 5              # below this adds a warning note
@@ -211,15 +211,103 @@ categories:
         - "{title} review"
     stale_days: 30
 
+  # ── Vitamins, supplements, OTC health ───────────────────────────────────────
   Pharmacy:
     fee_rate: 0.1325
     site_url: "coming-soon.com/pharmacy"
+    max_active: 20
+    max_discovery: 50
+    capacity_headroom: 3
+    rotation_threshold: 4.0
+    velocity_target: 3
     research_skill: "skills/research_pharmacy.py"
-    seasonal_peak_months: [8, 9, 10, 11]
-    notes: "Future category — not yet active"
-    discovery_urls: []
-    community_sources: []
+    seasonal_peak_months: [1, 8, 9, 10, 11]  # New Year health resolutions + cold/flu season
+    notes: >
+      Kirkland Signature vitamins and supplements sell well on eBay — buyers know KS quality.
+      Always normalize to price-per-unit vs eBay comps (Costco packs are larger).
+      Avoid: weight loss claims, testosterone boosters, exotic proprietary blends (eBay policy risk).
+      Fulfillment: lightweight poly mailer. High margin-to-weight ratio.
+
+    ebay_category_id: "11897"               # Vitamins & Dietary Supplements
+    ebay_item_specifics:
+      "C:Brand": ""                         # e.g. Kirkland Signature, Nature Made
+      "C:Type": ""                          # e.g. Fish Oil, Vitamin D, Probiotics
+      "C:Formulation": ""                   # e.g. Softgels, Capsules, Tablets
+      "C:Unit Count": ""                    # e.g. 500 Count
+
+    discovery_urls:
+      - "https://www.costco.com/vitamins-supplements.html"
+      - "https://www.costco.com/CatalogSearch?keyword=kirkland+vitamins"
+      - "https://www.costco.com/CatalogSearch?keyword=kirkland+fish+oil"
+      - "https://www.costco.com/CatalogSearch?keyword=kirkland+supplements"
+
+    community_sources:
+      reddit:
+        - r/Costco
+        - r/Supplements
+        - r/frugal
+        - r/vitamins
+        - r/flipping
+      forums: []
+      youtube_query_templates:
+        - "kirkland {product} review"
+        - "costco vitamins worth it"
+        - "{title} review"
+      web_terms:
+        - "{title} review"
+        - "kirkland {product} vs {brand}"
+        - "costco {product} worth it"
     stale_days: 30
+
+  # ── Blenders, stand mixers, air fryers, etc. ─────────────────────────────────
+  Small Appliances:
+    fee_rate: 0.1255
+    site_url: "coming-soon.com/appliances"
+    max_active: 20
+    max_discovery: 50
+    capacity_headroom: 3
+    rotation_threshold: 4.0
+    velocity_target: 2
+    research_skill: "skills/research_appliances.py"
+    seasonal_peak_months: [5, 6, 11, 12]  # wedding/moving season (May-Jun) + holiday (Nov-Dec)
+    notes: >
+      Costco bundles extra attachments not sold separately — quantify bundle delta vs eBay base comps.
+      Brand tiers: Vitamix/KitchenAid/Breville (strong resale) vs Ninja/Cuisinart/Instant Pot (commodity).
+      Always search eBay by exact model number first. Costco Concierge 2-year warranty is a selling point.
+      Ship standard residential (UPS/FedEx). Check product weight — skip anything over 40 lbs.
+
+    ebay_category_id: "20625"               # Small Kitchen Appliances
+    ebay_item_specifics:
+      "C:Brand": ""                         # e.g. Vitamix, KitchenAid, Ninja
+      "C:Type": ""                          # e.g. Blender, Stand Mixer, Air Fryer
+      "C:Model": ""                         # exact model number
+      "C:Color": ""
+
+    discovery_urls:
+      - "https://www.costco.com/small-kitchen-appliances.html"
+      - "https://www.costco.com/CatalogSearch?keyword=vitamix"
+      - "https://www.costco.com/CatalogSearch?keyword=kitchenaid+stand+mixer"
+      - "https://www.costco.com/CatalogSearch?keyword=air+fryer"
+      - "https://www.costco.com/CatalogSearch?keyword=ninja+blender"
+      - "https://www.costco.com/CatalogSearch?keyword=instant+pot"
+
+    community_sources:
+      reddit:
+        - r/Costco
+        - r/BuyItForLife
+        - r/frugal
+        - r/KitchenConfidential
+        - r/flipping
+      forums: []
+      youtube_query_templates:
+        - "{brand} {model} review"
+        - "costco {brand} bundle worth it"
+        - "{title} unboxing review"
+      web_terms:
+        - "{title} review"
+        - "{brand} {model} vs"
+        - "costco {brand} deal worth it"
+    stale_days: 21
 
   Toys:
     fee_rate: 0.1325

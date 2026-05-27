@@ -1,0 +1,25 @@
+{
+  "slug": "polywood-long-beach-modern-adirondack-chair",
+  "title": "POLYWOOD Long Beach Modern Adirondack Chair",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/polywood-long-beach-modern-adirondack-chair/4000195616",
+  "brand": "Polywood",
+  "model": "2764127",
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": "Polywood",
+      "model": "2764127",
+      "date": "2026-05-22",
+      "signal_strength": 0.03,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1szps0a/looked_at_way_too_many_styles_and_ended_up_going/"
+      ]
+    }
+  ]
+}

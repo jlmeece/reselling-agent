@@ -2,7 +2,8 @@
   "forum:bullionstacker.com": {
     "base_url": "https://www.bullionstacker.com",
     "categories": [
-      "Jewelry"
+      "Jewelry",
+      "Precious Metals"
     ],
     "consecutive_misses": 10,
     "demoted_reason": "freshness<0.1 for 3 consecutive runs; retired after 10 dry runs",
@@ -38,7 +39,8 @@
   "forum:forums.kitco.com": {
     "base_url": "https://forums.kitco.com",
     "categories": [
-      "Jewelry"
+      "Jewelry",
+      "Precious Metals"
     ],
     "consecutive_misses": 10,
     "demoted_reason": "freshness<0.1 for 3 consecutive runs; retired after 10 dry runs",
@@ -72,11 +74,29 @@
     "weight": 1.5,
     "yields": 0
   },
+  "reddit:r/BuyItForLife": {
+    "categories": [
+      "Small Appliances"
+    ],
+    "consecutive_misses": 2,
+    "freshness_avg": 0.44297279532245515,
+    "hit_rate": 0.5272508070321426,
+    "intent_rate": 0.3109807883690464,
+    "last_run": "2026-05-13",
+    "runs": 36,
+    "runs_since_yield": 2,
+    "status": "active",
+    "type": "reddit",
+    "weight": 0.268,
+    "yields": 20
+  },
   "reddit:r/Costco": {
     "categories": [
       "Jewelry",
       "Outdoor Furniture",
-      "Watches"
+      "Watches",
+      "Precious Metals",
+      "Small Appliances"
     ],
     "consecutive_misses": 10,
     "demoted_reason": "freshness<0.1 for 7 consecutive runs; retired after 10 dry runs",
@@ -91,37 +111,70 @@
     "weight": 0.062,
     "yields": 11
   },
-  "reddit:r/Gold": {
+  "reddit:r/CostcoGold": {
     "categories": [
-      "Jewelry"
+      "Precious Metals"
     ],
-    "consecutive_misses": 3,
-    "freshness_avg": 0.4451315877015379,
-    "hit_rate": 0.4810686728225783,
-    "intent_rate": 0.11578918205153566,
-    "last_run": "2026-05-10",
-    "runs": 110,
-    "runs_since_yield": 3,
+    "consecutive_misses": 0,
+    "freshness_avg": 0.0,
+    "hit_rate": 1.0,
+    "intent_rate": 0.0,
+    "last_run": "2026-05-12",
+    "runs": 44,
+    "runs_since_yield": 0,
     "status": "active",
     "type": "reddit",
-    "weight": 0.217,
-    "yields": 90
+    "weight": 0.15,
+    "yields": 44
+  },
+  "reddit:r/Gold": {
+    "categories": [
+      "Jewelry",
+      "Precious Metals"
+    ],
+    "consecutive_misses": 0,
+    "freshness_avg": 0.7837980057543541,
+    "hit_rate": 0.8306122372787627,
+    "intent_rate": 0.07948114894387628,
+    "last_run": "2026-05-12",
+    "runs": 161,
+    "runs_since_yield": 0,
+    "status": "active",
+    "type": "reddit",
+    "weight": 0.404,
+    "yields": 126
   },
   "reddit:r/HomeImprovement": {
     "categories": [
       "Outdoor Furniture"
     ],
-    "consecutive_misses": 0,
-    "freshness_avg": 0.7459432300000002,
-    "hit_rate": 1.0,
-    "intent_rate": 0.51424255,
-    "last_run": "2026-05-09",
-    "runs": 15,
-    "runs_since_yield": 0,
+    "consecutive_misses": 2,
+    "freshness_avg": 0.6379641096306296,
+    "hit_rate": 0.7387103253519002,
+    "intent_rate": 0.09488520148009391,
+    "last_run": "2026-05-23",
+    "runs": 34,
+    "runs_since_yield": 2,
     "status": "active",
     "type": "reddit",
-    "weight": 0.622,
-    "yields": 15
+    "weight": 0.334,
+    "yields": 30
+  },
+  "reddit:r/KitchenConfidential": {
+    "categories": [
+      "Small Appliances"
+    ],
+    "consecutive_misses": 3,
+    "freshness_avg": 0.2678229796467298,
+    "hit_rate": 0.3235625536237694,
+    "intent_rate": 0.09226386242201236,
+    "last_run": "2026-05-13",
+    "runs": 36,
+    "runs_since_yield": 3,
+    "status": "active",
+    "type": "reddit",
+    "weight": 0.14,
+    "yields": 9
   },
   "reddit:r/PatioFurniture": {
     "categories": [
@@ -142,39 +195,42 @@
   },
   "reddit:r/Pmsforsale": {
     "categories": [
-      "Jewelry"
+      "Jewelry",
+      "Precious Metals"
     ],
     "consecutive_misses": 0,
-    "freshness_avg": 0.41977090714986626,
-    "hit_rate": 0.4416704635950042,
-    "intent_rate": 0.0074249225138107765,
-    "last_run": "2026-05-10",
-    "runs": 110,
+    "freshness_avg": 0.8876793956608587,
+    "hit_rate": 0.8877809745128108,
+    "intent_rate": 0.02370246146714216,
+    "last_run": "2026-05-12",
+    "runs": 161,
     "runs_since_yield": 0,
     "status": "active",
     "type": "reddit",
-    "weight": 0.182,
-    "yields": 69
+    "weight": 0.435,
+    "yields": 107
   },
   "reddit:r/Silverbugs": {
     "categories": [
-      "Jewelry"
+      "Jewelry",
+      "Precious Metals"
     ],
-    "consecutive_misses": 4,
-    "freshness_avg": 0.3032129363122913,
-    "hit_rate": 0.375129944041217,
-    "intent_rate": 0.042628862941942056,
-    "last_run": "2026-05-10",
-    "runs": 110,
-    "runs_since_yield": 4,
+    "consecutive_misses": 0,
+    "freshness_avg": 0.7237203737971194,
+    "hit_rate": 0.7781650635869288,
+    "intent_rate": 0.1955587235446568,
+    "last_run": "2026-05-12",
+    "runs": 161,
+    "runs_since_yield": 0,
     "status": "active",
     "type": "reddit",
-    "weight": 0.15,
-    "yields": 64
+    "weight": 0.407,
+    "yields": 93
   },
   "reddit:r/WallStreetSilver": {
     "categories": [
-      "Jewelry"
+      "Jewelry",
+      "Precious Metals"
     ],
     "consecutive_misses": 11,
     "demoted_reason": "freshness<0.1 for 10 consecutive runs; retired after 10 dry runs",
@@ -240,7 +296,9 @@
   },
   "reddit:r/flipping": {
     "categories": [
-      "Jewelry"
+      "Jewelry",
+      "Precious Metals",
+      "Small Appliances"
     ],
     "consecutive_misses": 15,
     "demoted_reason": "freshness<0.1 for 14 consecutive runs; retired after 10 dry runs",
@@ -257,19 +315,21 @@
   },
   "reddit:r/frugal": {
     "categories": [
-      "Outdoor Furniture"
+      "Outdoor Furniture",
+      "Small Appliances"
     ],
-    "consecutive_misses": 5,
-    "freshness_avg": 0.59049,
-    "hit_rate": 0.59049,
-    "intent_rate": 0.0,
-    "last_run": "2026-05-09",
-    "runs": 15,
-    "runs_since_yield": 5,
-    "status": "active",
+    "consecutive_misses": 10,
+    "demoted_reason": "freshness<0.1 for 5 consecutive runs; retired after 10 dry runs",
+    "freshness_avg": 0.05797699776220357,
+    "hit_rate": 0.07428038869256166,
+    "intent_rate": 0.05233476330273605,
+    "last_run": "2026-05-22",
+    "runs": 58,
+    "runs_since_yield": 10,
+    "status": "retired",
     "type": "reddit",
-    "weight": 0.254,
-    "yields": 1
+    "weight": 0.063,
+    "yields": 8
   },
   "reddit:r/frugalmalefashion": {
     "categories": [
@@ -308,17 +368,17 @@
     "categories": [
       "Outdoor Furniture"
     ],
-    "consecutive_misses": 0,
-    "freshness_avg": 0.6314409999999999,
-    "hit_rate": 0.6314409999999999,
-    "intent_rate": 0.0,
-    "last_run": "2026-05-09",
-    "runs": 15,
-    "runs_since_yield": 0,
+    "consecutive_misses": 9,
+    "freshness_avg": 0.19138684578090925,
+    "hit_rate": 0.20587548100238445,
+    "intent_rate": 0.20736688608551748,
+    "last_run": "2026-05-23",
+    "runs": 34,
+    "runs_since_yield": 9,
     "status": "active",
     "type": "reddit",
-    "weight": 0.275,
-    "yields": 2
+    "weight": 0.116,
+    "yields": 7
   },
   "reddit:r/patio": {
     "categories": [

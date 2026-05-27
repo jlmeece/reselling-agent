@@ -1,0 +1,26 @@
+{
+  "slug": "kitchenaid-electric-suite",
+  "title": "KitchenAid Electric Suite",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/kitchenaid-electric-suite/4201008996",
+  "brand": "KitchenAid",
+  "model": "V200181",
+  "first_researched": "2026-05-13",
+  "research_runs": [
+    {
+      "brand": "KitchenAid",
+      "model": "V200181",
+      "date": "2026-05-13",
+      "signal_strength": 0.01,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/KitchenConfidential/comments/1t7x2pu/mortar_and_pestle_alternatives/"
+      ]
+    }
+  ]
+}

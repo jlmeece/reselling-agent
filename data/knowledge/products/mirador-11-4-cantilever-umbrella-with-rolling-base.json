@@ -1,0 +1,25 @@
+{
+  "slug": "mirador-11-4-cantilever-umbrella-with-rolling-base",
+  "title": "Mirador 11.4\u2019 Cantilever Umbrella with Rolling Base",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/mirador-114-cantilever-umbrella-with-rolling-base/4000403609",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-22",
+      "signal_strength": 0.02,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1syxwx9/why_my_patio_umbrella_kept_tipping_it_wasnt_just/"
+      ]
+    }
+  ]
+}

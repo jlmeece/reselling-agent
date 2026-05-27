@@ -1,0 +1,28 @@
+{
+  "slug": "t-fal-clipso-8-quart-stainless-steel-stovetop-pressure-cooker",
+  "title": "T-fal Clipso 8-quart Stainless Steel Stovetop Pressure Cooker",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/t-fal-clipso-8-quart-stainless-steel-stovetop-pressure-cooker/4000403715",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.04,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "Stainless steel pressure cooker"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1sxfu2e/stainless_steel_pressure_cooker/"
+      ]
+    }
+  ]
+}

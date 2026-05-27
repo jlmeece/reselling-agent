@@ -1,0 +1,33 @@
+{
+  "slug": "blue-sapphire-and-diamond-14kt-white-gold-ring",
+  "title": "Blue Sapphire and Diamond 14kt White Gold Ring",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/blue-sapphire-and-diamond-14kt-white-gold-ring/4000290593",
+  "brand": null,
+  "model": "1856170",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1856170",
+      "date": "2026-05-10",
+      "signal_strength": 0.15,
+      "by_source": {
+        "reddit:r/Silverbugs": 2,
+        "reddit:r/Gold": 6,
+        "reddit:r/Pmsforsale": 7
+      },
+      "intent_phrases_seen": [
+        "found these rings",
+        "Is this Germany ring real gold? Doesnt stick to a magnet. Lots of pictures."
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1swo135/found_these_rings/",
+        "https://reddit.com/r/Gold/comments/1sqdqrg/is_this_germany_ring_real_gold_doesnt_stick_to_a/",
+        "https://reddit.com/r/Pmsforsale/comments/1t9eyxq/wts_gold_and_silver_below_spot_premium_slabbed/",
+        "https://reddit.com/r/Pmsforsale/comments/1t7ql03/wts_a_wide_variety_of_fractional_gold_1_gram_25/",
+        "https://reddit.com/r/Gold/comments/1t6l8kj/question_about_selling_jewelry/"
+      ]
+    }
+  ]
+}

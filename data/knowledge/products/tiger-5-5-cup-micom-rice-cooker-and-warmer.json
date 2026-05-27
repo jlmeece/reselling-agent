@@ -1,0 +1,29 @@
+{
+  "slug": "tiger-5-5-cup-micom-rice-cooker-and-warmer",
+  "title": "Tiger 5.5-Cup Micom Rice Cooker and Warmer",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/tiger-55-cup-micom-rice-cooker-and-warmer/4000391766",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.06,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 1,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "After 11 years, my trusty Aroma ARC-616SB rice cooker burned out. What should I "
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1snpv0s/after_11_years_my_trusty_aroma_arc616sb_rice/",
+        "https://reddit.com/r/Frugal/comments/1tb60wm/slow_cooker_meal_that_is_cheap_and_healthy/"
+      ]
+    }
+  ]
+}

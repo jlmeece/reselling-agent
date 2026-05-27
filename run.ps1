@@ -67,6 +67,12 @@ switch ($cmd) {
         & $py tools\setup_costco_session.py
     }
 
+    # -- eBay export: generate Seller Hub CSV from READY products ---------------
+    "export" {
+        Write-Host "Generating eBay Seller Hub CSV from READY products..." -ForegroundColor Cyan
+        & $py tools\ebay_export.py
+    }
+
     # -- Sheet setup: reformat headers, column widths, conditional formatting -
     "setup-sheet" {
         Write-Host "Running sheet setup/formatter..." -ForegroundColor Cyan
@@ -99,7 +105,8 @@ switch ($cmd) {
         Write-Host "  .\run.ps1 daily            APPROVED->READY sweep, PAUSED_OOS recheck"
         Write-Host "  .\run.ps1 rotation         Weekly digest - score ACTIVE products"
         Write-Host "  .\run.ps1 cookies          Refresh Costco session (run when scrapes fail)"
-        Write-Host "  .\run.ps1 setup-sheet      Reformat sheet headers and column widths"
+        Write-Host "  .\run.ps1 export           Generate eBay Seller Hub CSV from READY products
+  .\run.ps1 setup-sheet      Reformat sheet headers and column widths"
         Write-Host "  .\run.ps1 menu             Launch interactive menu"
         Write-Host ""
         Write-Host "TIP: Run from the project folder:" -ForegroundColor DarkGray

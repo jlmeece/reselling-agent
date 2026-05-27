@@ -1,0 +1,30 @@
+{
+  "slug": "round-brilliant-0-25-ctw-vs2-clarity-i-color-diamond-band",
+  "title": "Round Brilliant 0.25 ctw VS2 Clarity, I Color Diamond Band",
+  "category": "Jewelry",
+  "costco_url": "https://www.costco.com/p/-/round-brilliant-025-ctw-vs2-clarity-i-color-diamond-band/100812595",
+  "brand": null,
+  "model": "1608765",
+  "first_researched": "2026-05-10",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": "1608765",
+      "date": "2026-05-10",
+      "signal_strength": 0.24,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 15
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1t8v639/wts_bunch_of_gold_cc_morgans_world_silver_us_junk/",
+        "https://reddit.com/r/Pmsforsale/comments/1t8sp55/wts_large_and_small_silver_lots_really_fun_mix_of/",
+        "https://reddit.com/r/Pmsforsale/comments/1t89wz0/wts_libertads_prospectors_zombucks_fractionals/",
+        "https://reddit.com/r/Pmsforsale/comments/1t7ql03/wts_a_wide_variety_of_fractional_gold_1_gram_25/",
+        "https://reddit.com/r/Silverbugs/comments/1t6rvys/new_10oz_coin_at_costco_today/"
+      ]
+    }
+  ]
+}

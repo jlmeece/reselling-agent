@@ -1,0 +1,32 @@
+{
+  "slug": "kitchenaid-cotton-classics-kitchen-towels-8-piece-set",
+  "title": "KitchenAid Cotton Classics Kitchen Towels, 8-piece Set",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/kitchenaid-cotton-classics-kitchen-towels-8-piece-set/4000229297",
+  "brand": "KitchenAid",
+  "model": "1785419",
+  "first_researched": "2026-05-13",
+  "research_runs": [
+    {
+      "brand": "KitchenAid",
+      "model": "1785419",
+      "date": "2026-05-13",
+      "signal_strength": 0.08,
+      "by_source": {
+        "reddit:r/BuyItForLife": 3,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 2
+      },
+      "intent_phrases_seen": [
+        "Sheets/Bedding/Linens!!"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1sxiq1m/sheetsbeddinglinens/",
+        "https://reddit.com/r/BuyItForLife/comments/1t9qaak/wedding_registry_bath_sheets/",
+        "https://reddit.com/r/KitchenConfidential/comments/1t4pk7y/how_bad_is_it_to_use_a_chef_knife_to_get_stuff/",
+        "https://reddit.com/r/KitchenConfidential/comments/1t0ue8v/kitchen_rationing_towels/",
+        "https://reddit.com/r/BuyItForLife/comments/1sp7k6l/on_the_3rd_replacement_oven_is_lg_just_a_bad_brand/"
+      ]
+    }
+  ]
+}

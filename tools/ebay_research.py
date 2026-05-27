@@ -260,11 +260,12 @@ def _scrape_ebay_page(page, url, label):
             logger.debug(f"  eBay {label}: filtered {junk_skipped} junk listings")
 
         # Nearby-result contamination guard.
-        # When eBay shows 1-3 exact matches it pads with "Results matching fewer words" —
+        # When eBay finds few exact matches it pads with "Results matching fewer words" —
         # different models, different conditions, different products. The JS li-scan picks
         # all of them up. Ratio of scraped prices >> official count = contamination.
         # Discard: better to have no price data than wrong price data.
-        if count is not None and 0 < count <= 3 and len(prices) > count * 8:
+        # Threshold: count<=10 catches cases like 4 official results + 85 scraped prices (21:1 ratio).
+        if count is not None and 0 < count <= 10 and len(prices) > count * 8:
             logger.debug(
                 f"  eBay {label}: nearby-result contamination — "
                 f"{count} official match(es) but {len(prices)} prices scraped. Discarding."

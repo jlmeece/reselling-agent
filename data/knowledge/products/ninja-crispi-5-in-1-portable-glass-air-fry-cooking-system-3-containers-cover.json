@@ -1,0 +1,32 @@
+{
+  "slug": "ninja-crispi-5-in-1-portable-glass-air-fry-cooking-system-3-containers-cover",
+  "title": "Ninja Crispi 5-in-1 Portable Glass Air Fry Cooking System, 3 Containers & Cover",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/ninja-crispi-5-in-1-portable-glass-air-fry-cooking-system-3-containers--cover/4000376434",
+  "brand": "Ninja",
+  "model": "1898552",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Ninja",
+      "model": "1898552",
+      "date": "2026-05-12",
+      "signal_strength": 0.18,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 3
+      },
+      "intent_phrases_seen": [
+        "Helix Mattress Review (From a Big Guy, its worth the investment for a bed in a b",
+        "Gastronomicom - Honest Review (long read)"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1t8o8os/helix_mattress_review_from_a_big_guy_its_worth/",
+        "https://reddit.com/r/KitchenConfidential/comments/1sk5on6/gastronomicom_honest_review_long_read/",
+        "https://reddit.com/r/KitchenConfidential/comments/1t6ankj/my_moms_secret_country_ribs_recipe/",
+        "https://reddit.com/r/KitchenConfidential/comments/1szzzgu/burgers_and_handheld_being_separate/"
+      ]
+    }
+  ]
+}

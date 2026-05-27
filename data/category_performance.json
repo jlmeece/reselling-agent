@@ -1,11 +1,11 @@
 {
   "Jewelry": {
     "tier1_count": 0,
-    "tier2_count": 14,
-    "tier3_count": 89,
-    "total_researched": 103,
+    "tier2_count": 16,
+    "tier3_count": 94,
+    "total_researched": 110,
     "last_updated": "2026-05-10",
-    "performance_score": 0.041
+    "performance_score": 0.044
   },
   "Watches": {
     "tier1_count": 0,
@@ -17,18 +17,18 @@
   },
   "Outdoor Furniture": {
     "tier1_count": 0,
-    "tier2_count": 2,
-    "tier3_count": 9,
-    "total_researched": 11,
-    "last_updated": "2026-05-09",
-    "performance_score": 0.055
+    "tier2_count": 4,
+    "tier3_count": 24,
+    "total_researched": 28,
+    "last_updated": "2026-05-23",
+    "performance_score": 0.043
   },
   "Pharmacy": {
     "tier1_count": 0,
     "tier2_count": 0,
     "tier3_count": 0,
     "total_researched": 0,
-    "last_updated": "2026-05-08",
+    "last_updated": "2026-05-12",
     "performance_score": 0.5
   },
   "Toys": {
@@ -38,5 +38,21 @@
     "total_researched": 0,
     "last_updated": "2026-05-08",
     "performance_score": 0.5
+  },
+  "Precious Metals": {
+    "tier1_count": 0,
+    "tier2_count": 35,
+    "tier3_count": 9,
+    "total_researched": 44,
+    "last_updated": "2026-05-12",
+    "performance_score": 0.239
+  },
+  "Small Appliances": {
+    "tier1_count": 0,
+    "tier2_count": 6,
+    "tier3_count": 29,
+    "total_researched": 35,
+    "last_updated": "2026-05-13",
+    "performance_score": 0.051
   }
 }

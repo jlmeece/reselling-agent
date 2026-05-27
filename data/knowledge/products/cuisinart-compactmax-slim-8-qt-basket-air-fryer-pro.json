@@ -1,0 +1,28 @@
+{
+  "slug": "cuisinart-compactmax-slim-8-qt-basket-air-fryer-pro",
+  "title": "Cuisinart CompactMax Slim 8-Qt Basket Air Fryer Pro",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/cuisinart-compactmax-slim-8-qt-basket-air-fryer-pro/4000412539",
+  "brand": "Cuisinart",
+  "model": "1965284",
+  "first_researched": "2026-05-13",
+  "research_runs": [
+    {
+      "brand": "Cuisinart",
+      "model": "1965284",
+      "date": "2026-05-13",
+      "signal_strength": 0.05,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "Looking For A Genuine Top-Tier Air Purifier For 3 Rooms Of My Apartment"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1tatagi/looking_for_a_genuine_toptier_air_purifier_for_3/"
+      ]
+    }
+  ]
+}

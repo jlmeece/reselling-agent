@@ -1,0 +1,37 @@
+{
+  "slug": "ninja-creami-deluxe-11-in-1-ice-cream-and-frozen-treat-maker",
+  "title": "Ninja CREAMi Deluxe 11-in-1 Ice Cream and Frozen Treat Maker",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/ninja-creami-deluxe-11-in-1-ice-cream-and-frozen-treat-maker/4000213642",
+  "brand": "Ninja",
+  "model": "3603480",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Ninja",
+      "model": "3603480",
+      "date": "2026-05-12",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

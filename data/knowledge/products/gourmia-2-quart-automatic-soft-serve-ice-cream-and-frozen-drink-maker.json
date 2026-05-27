@@ -1,0 +1,24 @@
+{
+  "slug": "gourmia-2-quart-automatic-soft-serve-ice-cream-and-frozen-drink-maker",
+  "title": "Gourmia 2 Quart Automatic Soft Serve Ice Cream and Frozen Drink Maker",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/gourmia-2-quart-automatic-soft-serve-ice-cream-and-frozen-drink-maker/4000337927",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

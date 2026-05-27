@@ -1,0 +1,30 @@
+{
+  "slug": "nutribullet-pro-900-personal-blender-matte-white",
+  "title": "nutribullet Pro 900 Personal Blender, Matte White",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/nutribullet-pro-900-personal-blender-matte-white/4000449520",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.09,
+      "by_source": {
+        "reddit:r/BuyItForLife": 3,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "Looking for decent quality small blender"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1t3ffhh/looking_for_decent_quality_small_blender/",
+        "https://reddit.com/r/BuyItForLife/comments/1sovpbf/our_zwelling_electric_kettle_was_just_recalled_it/",
+        "https://reddit.com/r/BuyItForLife/comments/1skmpdf/request_nutribullet_900_pro_experience_loud_sound/"
+      ]
+    }
+  ]
+}

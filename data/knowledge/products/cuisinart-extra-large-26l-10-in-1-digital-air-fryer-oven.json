@@ -1,0 +1,26 @@
+{
+  "slug": "cuisinart-extra-large-26l-10-in-1-digital-air-fryer-oven",
+  "title": "Cuisinart Extra-Large 26L 10-in-1 Digital Air Fryer Oven",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/cuisinart-extra-large-26l-10-in-1-digital-air-fryer-oven/4000398962",
+  "brand": "Cuisinart",
+  "model": "1965335",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Cuisinart",
+      "model": "1965335",
+      "date": "2026-05-12",
+      "signal_strength": 0.01,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/frugal": 1,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Frugal/comments/1spmn6e/homemade_granola_bars_save_me_each_month/"
+      ]
+    }
+  ]
+}

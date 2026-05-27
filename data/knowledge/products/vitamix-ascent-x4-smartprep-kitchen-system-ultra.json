@@ -1,0 +1,28 @@
+{
+  "slug": "vitamix-ascent-x4-smartprep-kitchen-system-ultra",
+  "title": "Vitamix Ascent X4 SmartPrep Kitchen System Ultra",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/vitamix-ascent-x4-smartprep-kitchen-system-ultra/4000438848",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.04,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "Is a Vitamix really the best blender? I have conflicting evidence."
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1t3le4g/is_a_vitamix_really_the_best_blender_i_have/"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "slug": "thomasville-rala-4-piece-outdoor-patio-seating-set",
+  "title": "Thomasville Rala 4-piece Outdoor Patio Seating Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/thomasville-rala-4-piece-outdoor-patio-seating-set/4000309050",
+  "brand": "Thomasville",
+  "model": "1807260",
+  "first_researched": "2026-05-23",
+  "research_runs": [
+    {
+      "brand": "Thomasville",
+      "model": "1807260",
+      "date": "2026-05-23",
+      "signal_strength": 0.06,
+      "by_source": {
+        "reddit:r/HomeImprovement": 2,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1ti7t1e/l_shaped_outdoor_kitchens_look_great_but_they/",
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/"
+      ]
+    }
+  ]
+}

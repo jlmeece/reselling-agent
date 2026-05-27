@@ -72,6 +72,70 @@ def _insert_columns(service, spreadsheet_id, tab_id, start_index, count):
     ).execute()
 
 
+def _col_idx(col: str) -> int:
+    """Column letter(s) → 0-based index. 'A'=0, 'Z'=25, 'AA'=26, 'AI'=34, etc."""
+    col, idx = col.upper(), 0
+    for c in col:
+        idx = idx * 26 + (ord(c) - ord('A') + 1)
+    return idx - 1
+
+
+def _write_formula_columns(service, spreadsheet_id, tab_id, data_start_row, num_rows=300):
+    """
+    Seeds formula columns I, J, N, Z, AC, AF, AG, AH for every data row.
+
+    Uses spreadsheets().batchUpdate with userEnteredValue.formulaValue — this writes
+    a true formula regardless of cell format. values().batchUpdate with USER_ENTERED
+    silently stores formulas as text when a cell or column is in 'Plain text' format.
+    Always overwrites: formulas are idempotent and re-running is safe.
+    """
+    # (formula_fn, number_format) — format clears Plain-text so formulaValue evaluates
+    _PCT  = {"type": "PERCENT", "pattern": "0%"}
+    _USD  = {"type": "NUMBER",  "pattern": "$#,##0.00"}
+    _NUM  = {"type": "NUMBER",  "pattern": "0.0"}
+
+    formulas = {
+        "I":  (lambda r: f'=IF(H{r}<>"",H{r}-G{r}-AC{r}-AD{r}-AE{r},"")', _USD),
+        "J":  (lambda r: f'=IF(H{r}>0,I{r}/H{r},"")',                       _PCT),
+        "N":  (lambda r: f'=IFERROR(M{r}/MAX(K{r},1),"")',                   _NUM),
+        "Z":  (lambda r: f'=IFERROR(G{r}+AD{r},G{r})',                       _USD),
+        "AC": (lambda r: f'=IF(H{r}<>"",H{r}*AB{r},"")',                     _USD),
+        "AF": (lambda r: f'=IF(G{r}<>"",G{r}*0.0825,"")',                    _USD),
+        "AG": (lambda r: f'=IF(H{r}<>"",H{r}*0.90-G{r},"")',                 _USD),
+        "AH": (lambda r: f'=IF(I{r}<>"",I{r}*0.15,"")',                      _USD),
+    }
+
+    requests = []
+    for col_letter, (fn, fmt) in formulas.items():
+        col_index = _col_idx(col_letter)
+        requests.append({
+            "updateCells": {
+                "range": {
+                    "sheetId":          tab_id,
+                    "startRowIndex":    data_start_row - 1,           # 0-based, inclusive
+                    "endRowIndex":      data_start_row - 1 + num_rows, # 0-based, exclusive
+                    "startColumnIndex": col_index,
+                    "endColumnIndex":   col_index + 1,
+                },
+                "rows": [
+                    {"values": [{
+                        "userEnteredValue": {"formulaValue": fn(row)},
+                        "userEnteredFormat": {"numberFormat": fmt},
+                    }]}
+                    for row in range(data_start_row, data_start_row + num_rows)
+                ],
+                "fields": "userEnteredValue,userEnteredFormat.numberFormat",
+            }
+        })
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": requests},
+    ).execute()
+
+    logger.info(f"Formula columns seeded: {', '.join(formulas.keys())} ({num_rows} rows each).")
+
+
 def main():
     spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
     if not spreadsheet_id:
@@ -125,6 +189,12 @@ def main():
 
     # ── Apply full dashboard formatting ───────────────────────────────────────
     setup_dashboard(service, SHEET_NAME, DATA_START_ROW)
+
+    # ── Seed formula columns (I, J, N, Z, AC, AF, AG, AH) ────────────────────
+    # These are never written by the agent — they must exist as Sheet formulas.
+    # Re-running this is safe: only blank cells are touched.
+    _write_formula_columns(service, spreadsheet_id, tab_id, DATA_START_ROW)
+
     logger.success("Dashboard is ready. Open Google Sheets to review.")
 
 

@@ -1,0 +1,92 @@
+{
+  "slug": "1-oz-pamp-lady-of-justice-silver-bar-20-count",
+  "title": "1 oz PAMP Lady of Justice Silver Bar, 20-count",
+  "category": "Precious Metals",
+  "costco_url": "https://www.costco.com/p/-/1-oz-pamp-lady-of-justice-silver-bar-20-count/4000439075",
+  "brand": "PAMP",
+  "model": "2047020",
+  "first_researched": "2026-05-11",
+  "research_runs": [
+    {
+      "brand": "PAMP",
+      "model": "2047020",
+      "date": "2026-05-11",
+      "signal_strength": 1.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 15,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/CostcoGold": 25
+      },
+      "intent_phrases_seen": [
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Looking for information on this",
+        "Silver Shot",
+        "Never buy from MoneyMetals. Shorting you silver Stackers",
+        "Gold in germany",
+        "Great britain gold",
+        "[WTS] Ikes, Vatican gold and a lot of silver"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1taaqq4/wts_ikes_vatican_gold_and_a_lot_of_silver/",
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Silverbugs/comments/1t622c6/looking_for_information_on_this/",
+        "https://reddit.com/r/Silverbugs/comments/1t41p2r/silver_shot/",
+        "https://reddit.com/r/Gold/comments/1t4f8dx/gold_in_germany/"
+      ]
+    },
+    {
+      "brand": "PAMP",
+      "model": "2047020",
+      "date": "2026-05-12",
+      "signal_strength": 1.29,
+      "by_source": {
+        "reddit:r/Silverbugs": 15,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/CostcoGold": 25
+      },
+      "intent_phrases_seen": [
+        "Any Unique 1 Ounce Silver Recommendations?",
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Looking for information on this",
+        "Gold in germany",
+        "Great britain gold",
+        "What coins should I buy?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Silverbugs/comments/1takh6j/any_unique_1_ounce_silver_recommendations/",
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Silverbugs/comments/1t622c6/looking_for_information_on_this/",
+        "https://reddit.com/r/Gold/comments/1t4f8dx/gold_in_germany/",
+        "https://reddit.com/r/Gold/comments/1sxuwuq/great_britain_gold/"
+      ]
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 1.46,
+      "by_source": {
+        "reddit:r/Silverbugs": 15,
+        "reddit:r/Gold": 15,
+        "reddit:r/Pmsforsale": 15,
+        "reddit:r/CostcoGold": 25
+      },
+      "intent_phrases_seen": [
+        "Any Unique 1 Ounce Silver Recommendations?",
+        "Be vigilant when buying PMs from places and people unknown.",
+        "Looking for information on this",
+        "Gold in germany",
+        "Great britain gold"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Silverbugs/comments/1takh6j/any_unique_1_ounce_silver_recommendations/",
+        "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/",
+        "https://reddit.com/r/Silverbugs/comments/1t622c6/looking_for_information_on_this/",
+        "https://reddit.com/r/Gold/comments/1t4f8dx/gold_in_germany/",
+        "https://reddit.com/r/Gold/comments/1sxuwuq/great_britain_gold/"
+      ]
+    }
+  ]
+}

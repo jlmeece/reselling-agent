@@ -1,0 +1,29 @@
+{
+  "slug": "vitamix-ascent-x4-blender-black-stainless-metal-finish",
+  "title": "Vitamix Ascent X4 Blender - Black Stainless Metal Finish",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/vitamix-ascent-x4-blender---black-stainless-metal-finish/4000385102",
+  "brand": "Vitamix",
+  "model": "1965742",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Vitamix",
+      "model": "1965742",
+      "date": "2026-05-12",
+      "signal_strength": 0.05,
+      "by_source": {
+        "reddit:r/BuyItForLife": 2,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "non-plastic nutribullet cups?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1ssgcc1/nonplastic_nutribullet_cups/",
+        "https://reddit.com/r/BuyItForLife/comments/1sv07vn/bought_it_for_life_zippo_matte_black_with_celtic/"
+      ]
+    }
+  ]
+}

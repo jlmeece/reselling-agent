@@ -1,0 +1,28 @@
+{
+  "slug": "ninja-professional-blender-with-auto-iq",
+  "title": "Ninja Professional Blender with Auto IQ",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/ninja-professional-blender-with-auto-iq/4000262482",
+  "brand": "Ninja",
+  "model": "5883930",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Ninja",
+      "model": "5883930",
+      "date": "2026-05-12",
+      "signal_strength": 0.07,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "Looking for decent quality small blender"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1t3ffhh/looking_for_decent_quality_small_blender/"
+      ]
+    }
+  ]
+}

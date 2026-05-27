@@ -1,4 +1,214 @@
 {
+  "https://reddit.com": {
+    "first_seen": "2026-05-10",
+    "hits": 1100,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/CostcoGold"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sj31qn/stainless_steel_vitamix_container/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1skmpdf/request_nutribullet_900_pro_experience_loud_sound/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1snpv0s/after_11_years_my_trusty_aroma_arc616sb_rice/": {
+    "first_seen": "2026-05-12",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1so2ogg/dreo_vs_levoit_fan/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sovpbf/our_zwelling_electric_kettle_was_just_recalled_it/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sp7k6l/on_the_3rd_replacement_oven_is_lg_just_a_bad_brand/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sqwvrn/looking_for_the_best_laptop_for_video_editing/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sqygc5/queen_heated_blanket_single_control/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1ssgcc1/nonplastic_nutribullet_cups/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 2,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sux7z5/what_are_good_stand_mixers_on_the_market_worth/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sv07vn/bought_it_for_life_zippo_matte_black_with_celtic/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1svkdjx/is_the_zwilling_blender_good/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1swv8wa/just_found_this_older_clockradiobuzzer_combo/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sxfu2e/stainless_steel_pressure_cooker/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1sxiq1m/sheetsbeddinglinens/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1syql4c/vitamix_vx1_review_and_features_how_long_does_it/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t01px2/my_first_and_only_smart_phone_is_dead/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t2enqp/any_recommendations_for_an_air_con_unit_in_the_uk/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t3ffhh/looking_for_decent_quality_small_blender/": {
+    "first_seen": "2026-05-12",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t3le4g/is_a_vitamix_really_the_best_blender_i_have/": {
+    "first_seen": "2026-05-12",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t4xuu4/is_there_a_coffee_maker_for_me/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t6haa1/bifl_induction_cooktop_for_a_neoluddite/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t7bjub/whats_a_good_commercial_mixer_for_baking_a_lot/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t8o8os/helix_mattress_review_from_a_big_guy_its_worth/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t8s4vg/request_which_bamix_immersion_blender_stick/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t9qaak/wedding_registry_bath_sheets/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1t9vil3/which_magsafe_products_have_you_used_that_you/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1tap8hk/air_fryer_that_is_going_to_last_awhile/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/BuyItForLife"
+  },
+  "https://reddit.com/r/BuyItForLife/comments/1tatagi/looking_for_a_genuine_toptier_air_purifier_for_3/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/BuyItForLife"
+  },
   "https://reddit.com/r/Costco/comments/1sr5hcc/henderson_annalise_6_piece_outdoor_modular/": {
     "first_seen": "2026-05-09",
     "hits": 4,
@@ -48,11 +258,74 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/flipping"
   },
+  "https://reddit.com/r/Frugal/comments/1spmn6e/homemade_granola_bars_save_me_each_month/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1sq5nxh/experience_with_heated_drying_rack/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1sqcl1i/whats_the_word_for_meal_prep_thats_not_single/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1sr0y6x/i_feel_guilty_for_buying_anything_new/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1stf1gi/10_servings_of_hot_and_sour_soup_made_quick_with/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1stf9ob/best_things_to_cook_in_a_pressure_cooker_ideas/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1suw44e/moneysaving_tip_for_class_of_2026_buy_grad/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1suzkvp/good_old_fashioned_rice_n_beans_yum/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/frugal"
+  },
   "https://reddit.com/r/Frugal/comments/1t8uhfy/finally_pulling_my_head_out_of_the_sand_at_38_and/": {
     "first_seen": "2026-05-09",
     "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-09",
+    "source_id": "reddit:r/frugal"
+  },
+  "https://reddit.com/r/Frugal/comments/1tb60wm/slow_cooker_meal_that_is_cheap_and_healthy/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/frugal"
   },
   "https://reddit.com/r/Gold/comments/1sgtil5/advice_on_next_steps_fractional_gold_eagles/": {
@@ -74,6 +347,13 @@
     "hits": 43,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sifk4b/london_mint_quarter_sovereign_is_it_legit/": {
+    "first_seen": "2026-05-11",
+    "hits": 4,
+    "intent_hits": 4,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1sill9a/can_yall_tell_me_if_theres_anything_valuable_in/": {
@@ -188,6 +468,20 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
+  "https://reddit.com/r/Gold/comments/1somfgs/parrot_duit_restrike_from_the_royal_dutch_mint/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1spddki/my_only_gold_coin/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
   "https://reddit.com/r/Gold/comments/1spxh7y/costco_5g_pendant_experience/": {
     "first_seen": "2026-05-10",
     "hits": 9,
@@ -197,9 +491,16 @@
   },
   "https://reddit.com/r/Gold/comments/1sqdqrg/is_this_germany_ring_real_gold_doesnt_stick_to_a/": {
     "first_seen": "2026-05-10",
-    "hits": 4,
-    "intent_hits": 4,
+    "hits": 6,
+    "intent_hits": 6,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sqn7z2/started_2019_updated_2026/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1sqndh7/got_this_bracelet_from_costco_with_only_a_65/": {
@@ -230,11 +531,39 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
+  "https://reddit.com/r/Gold/comments/1srwgmv/why_are_some_bullion_permanently_unavailable_on/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
   "https://reddit.com/r/Gold/comments/1ss1xbf/is_it_a_bad_idea_to_layer_10k_gold_chains_with/": {
     "first_seen": "2026-05-10",
     "hits": 5,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1ss4sis/when_to_my_lcs_and_they_gave_me_the_wrong_size/": {
+    "first_seen": "2026-05-11",
+    "hits": 12,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1ssh5au/weekly_buy/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1ssnd74/what_coins_should_i_buy/": {
+    "first_seen": "2026-05-11",
+    "hits": 7,
+    "intent_hits": 7,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1ssu75x/buying_gold_jewellery_at_spot/": {
@@ -244,11 +573,32 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
+  "https://reddit.com/r/Gold/comments/1ssvgwh/jp_morgan_put_out_their_gold_outlook_and_its/": {
+    "first_seen": "2026-05-11",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
   "https://reddit.com/r/Gold/comments/1st4lky/how_much_legit_gold_weight_in_this/": {
     "first_seen": "2026-05-10",
     "hits": 9,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sto66f/so_if_gold_absolutely_skyrockets_how_do_you_plan/": {
+    "first_seen": "2026-05-11",
+    "hits": 9,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sttenb/update_the_stack_has_grown/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1sttzc7/got_this_in_a_jewelry_haul_on_whatnot_for_50/": {
@@ -260,9 +610,9 @@
   },
   "https://reddit.com/r/Gold/comments/1su8pcy/best_gold_calc_i_used/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 7,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1svgpw0/is_this_worth_it_at_this_price_point/": {
@@ -286,11 +636,39 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
+  "https://reddit.com/r/Gold/comments/1swfo5f/how_did_i_do_on_my_first_silver_to_gold_trade/": {
+    "first_seen": "2026-05-11",
+    "hits": 15,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1swl14i/ahh_come_on_stacking_was_always_so_wholesome/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
   "https://reddit.com/r/Gold/comments/1swo135/found_these_rings/": {
     "first_seen": "2026-05-10",
-    "hits": 4,
-    "intent_hits": 4,
+    "hits": 6,
+    "intent_hits": 6,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sx4lvr/found_this_while_cleaning/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sx61es/buying_physical_goldsilver_longterm_to_preserve/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1sx84y4/lost_a_gold_bracelet_in_the_house/": {
@@ -321,6 +699,13 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
+  "https://reddit.com/r/Gold/comments/1sxuwuq/great_britain_gold/": {
+    "first_seen": "2026-05-11",
+    "hits": 15,
+    "intent_hits": 15,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
   "https://reddit.com/r/Gold/comments/1sxwr6i/should_i_sell_my_916_gold_pendant/": {
     "first_seen": "2026-05-10",
     "hits": 4,
@@ -330,16 +715,37 @@
   },
   "https://reddit.com/r/Gold/comments/1sy3ntk/stacking_since_march/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 7,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sy3wyf/1990_gold/": {
+    "first_seen": "2026-05-11",
+    "hits": 9,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1sy7obb/todays_trade_35_oz_of_silver_for_10/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1syfeir/my_3_tiny_bullion_coins_only_the_value_of_the/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 6,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1syp6dl/new_additions_from_yesterday/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 16,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1sz13sy/gold_jewelry_for_investment/": {
@@ -365,7 +771,7 @@
   },
   "https://reddit.com/r/Gold/comments/1szcie5/this_is_a_good_price/": {
     "first_seen": "2026-05-10",
-    "hits": 77,
+    "hits": 78,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
@@ -393,9 +799,9 @@
   },
   "https://reddit.com/r/Gold/comments/1t06593/gold_bars_in_south_africa_spotlight_on_rand/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 9,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t08f10/is_it_worth_it/": {
@@ -405,11 +811,32 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
+  "https://reddit.com/r/Gold/comments/1t0a1ls/treated_myself_to_an_american_dream_combo_at/": {
+    "first_seen": "2026-05-11",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1t0gaer/who_is_buying_on_the_7th/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
   "https://reddit.com/r/Gold/comments/1t0ipa2/why_10k_gold_chains_are_mostly_copper_and_why/": {
     "first_seen": "2026-05-10",
     "hits": 5,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1t0l5eg/my_stack_as_a_20_year_old/": {
+    "first_seen": "2026-05-11",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t1efmf/the_making_of_a_gold_bangle/": {
@@ -428,16 +855,16 @@
   },
   "https://reddit.com/r/Gold/comments/1t23mc4/lets_see_your_pamp_collections/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 10,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t23s8p/buying_first_time_need_advice/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 12,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t2eur1/found_this_at_a_laundromat/": {
@@ -456,9 +883,9 @@
   },
   "https://reddit.com/r/Gold/comments/1t2iuvs/gold_silver_at_spot_alert/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 16,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t2pdka/whats_your_favorite_gold_piece_that_you_have/": {
@@ -466,6 +893,13 @@
     "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-08",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1t2zhny/buying_my_very_first_piece_of_gold_tomorrow/": {
+    "first_seen": "2026-05-11",
+    "hits": 15,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t35101/double_curb_link_9999/": {
@@ -477,16 +911,16 @@
   },
   "https://reddit.com/r/Gold/comments/1t359mh/experience_with_png_jewellers_plaza_lakshmi_road/": {
     "first_seen": "2026-05-10",
-    "hits": 8,
+    "hits": 10,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t3n2oi/is_this_worth_picking_up_its_200/": {
     "first_seen": "2026-05-08",
-    "hits": 2,
+    "hits": 8,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t3q4xr/hoping_they_are_real/": {
@@ -512,9 +946,9 @@
   },
   "https://reddit.com/r/Gold/comments/1t44nqy/as_a_buy_and_bury_what_would_you_do/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 16,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t484c6/purchasing_a_new_testing_machine_should_i_pick/": {
@@ -522,6 +956,20 @@
     "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1t4f8dx/gold_in_germany/": {
+    "first_seen": "2026-05-11",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1t4wtae/spot_sale_time/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t4y51t/why_are_bars_and_coins_so_expensive_and_why_do/": {
@@ -547,7 +995,7 @@
   },
   "https://reddit.com/r/Gold/comments/1t5sqbf/bought_a_ring_advertised_as_silver/": {
     "first_seen": "2026-05-08",
-    "hits": 7,
+    "hits": 9,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
@@ -631,9 +1079,16 @@
   },
   "https://reddit.com/r/Gold/comments/1t6l8kj/question_about_selling_jewelry/": {
     "first_seen": "2026-05-08",
-    "hits": 58,
+    "hits": 60,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1t6l9va/vintage_harrington_1_oz_9999_fine_gold_cast_bar/": {
+    "first_seen": "2026-05-11",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Gold"
   },
   "https://reddit.com/r/Gold/comments/1t731od/wheeling_and_dealing/": {
@@ -734,6 +1189,20 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Gold"
   },
+  "https://reddit.com/r/Gold/comments/1tatd10/exposing_the_corrupt_cops_behind_the_perth_royal/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
+  "https://reddit.com/r/Gold/comments/1tbafqq/1_gram_bars/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Gold"
+  },
   "https://reddit.com/r/HomeImprovement/comments/1sjroej/raccoons_and_squirrels_keep_chewing_holes_in_my/": {
     "first_seen": "2026-05-09",
     "hits": 3,
@@ -769,6 +1238,13 @@
     "last_visited": "2026-05-09",
     "source_id": "reddit:r/HomeImprovement"
   },
+  "https://reddit.com/r/HomeImprovement/comments/1st0crp/concrete_patio_touching_stucco_solutions/": {
+    "first_seen": "2026-05-22",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-22",
+    "source_id": "reddit:r/HomeImprovement"
+  },
   "https://reddit.com/r/HomeImprovement/comments/1st1iev/how_can_i_tell_if_its_safe_to_hang_a_bench_from/": {
     "first_seen": "2026-05-09",
     "hits": 4,
@@ -778,9 +1254,9 @@
   },
   "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/": {
     "first_seen": "2026-05-09",
-    "hits": 6,
+    "hits": 14,
     "intent_hits": 0,
-    "last_visited": "2026-05-09",
+    "last_visited": "2026-05-23",
     "source_id": "reddit:r/HomeImprovement"
   },
   "https://reddit.com/r/HomeImprovement/comments/1sxwvqx/waterproofing_a_fieldstone_foundation/": {
@@ -790,16 +1266,142 @@
     "last_visited": "2026-05-09",
     "source_id": "reddit:r/HomeImprovement"
   },
+  "https://reddit.com/r/HomeImprovement/comments/1syxwx9/why_my_patio_umbrella_kept_tipping_it_wasnt_just/": {
+    "first_seen": "2026-05-22",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-22",
+    "source_id": "reddit:r/HomeImprovement"
+  },
+  "https://reddit.com/r/HomeImprovement/comments/1szps0a/looked_at_way_too_many_styles_and_ended_up_going/": {
+    "first_seen": "2026-05-22",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-22",
+    "source_id": "reddit:r/HomeImprovement"
+  },
   "https://reddit.com/r/HomeImprovement/comments/1t1t08e/side_mount_bracket_for_angled_shade_sail_pole/": {
     "first_seen": "2026-05-09",
-    "hits": 2,
-    "intent_hits": 2,
-    "last_visited": "2026-05-09",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-22",
     "source_id": "reddit:r/HomeImprovement"
+  },
+  "https://reddit.com/r/HomeImprovement/comments/1tbh7to/replacing_patio_shed_door/": {
+    "first_seen": "2026-05-22",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-22",
+    "source_id": "reddit:r/HomeImprovement"
+  },
+  "https://reddit.com/r/HomeImprovement/comments/1thtbge/spent_3_months_researching_impact_windows/": {
+    "first_seen": "2026-05-22",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-23",
+    "source_id": "reddit:r/HomeImprovement"
+  },
+  "https://reddit.com/r/HomeImprovement/comments/1ti7t1e/l_shaped_outdoor_kitchens_look_great_but_they/": {
+    "first_seen": "2026-05-22",
+    "hits": 7,
+    "intent_hits": 0,
+    "last_visited": "2026-05-23",
+    "source_id": "reddit:r/HomeImprovement"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1sk5on6/gastronomicom_honest_review_long_read/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1soauhd/inhouse_black_garlic_apples/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1stgqaw/quit_a_highend_bakery_production_job/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1su5h0d/nightmare_turned_daydream/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1suizn1/whole_pig_help/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1suzdjq/how_do_i_get_the_chef_to_want_to_train_me/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1sy4g4v/what_chefs_want_i_doubt_it/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1szzzgu/burgers_and_handheld_being_separate/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1t0ue8v/kitchen_rationing_towels/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1t4pk7y/how_bad_is_it_to_use_a_chef_knife_to_get_stuff/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1t5r8p9/sous_vide_large_quantity_of_chicken/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1t6ankj/my_moms_secret_country_ribs_recipe/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/KitchenConfidential"
+  },
+  "https://reddit.com/r/KitchenConfidential/comments/1t7x2pu/mortar_and_pestle_alternatives/": {
+    "first_seen": "2026-05-13",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-13",
+    "source_id": "reddit:r/KitchenConfidential"
   },
   "https://reddit.com/r/Pmsforsale/comments/1sh0y0e/wts_why_is_it_going_down_meme_pour_last_call/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -834,9 +1436,9 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1simw49/wts_gold_and_platinum_ounces_below_spot_with_free/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 9,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1sinolk/wts_s_and_some_premium_goodness_silver_gold_and/": {
@@ -862,7 +1464,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1sje0y2/wtstiffany_kirk_sons_reed_barton_more_premium_and/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -890,14 +1492,14 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1slkm87/wts_sweet_shiny_springboks_krugerrands_take_the/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 9,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1slmfs9/wts_wttmassive_400ozt_extravaganza_pretty_much/": {
     "first_seen": "2026-05-10",
-    "hits": 2,
+    "hits": 3,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -911,7 +1513,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1slsqbi/wts_oops_all_silver_collectibles_lots_of_new/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -946,9 +1548,9 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1so4zd9/wts_highend_gold_silver_100oz_pamp_bar_gold/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 9,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1soiox4/wts_eagles_maples_libertads_rounds_bars/": {
@@ -988,7 +1590,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1speer3/wts_wide_variety_of_silver_silver_eagles_1_over/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1086,9 +1688,9 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1sr9v8b/wts_gold_silver_at_spot/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 9,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1srewhs/wtswtt_ss_tilawa_shipwreck_1117_ozt/": {
@@ -1100,7 +1702,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1srf5u0/wts_1883o_morgan_ngc_ms63_vam36a_hot50_ex_gene_l/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1128,7 +1730,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1ssyhx7/wts_slabbed_morgans_peace_dollars_cc_morgans_a/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1143,6 +1745,13 @@
   "https://reddit.com/r/Pmsforsale/comments/1st2af4/wts_plat_1g_silver_pebble_engelhards_many/": {
     "first_seen": "2026-05-10",
     "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1st5v43/wts_gold_pamp_lucky_cat_and_micro_fractional_gold/": {
+    "first_seen": "2026-05-10",
+    "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1189,6 +1798,13 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
   },
+  "https://reddit.com/r/Pmsforsale/comments/1sumz4q/wts_run_of_gsa_cc_morgans_soft_pack_gsa_numi_gold/": {
+    "first_seen": "2026-05-10",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Pmsforsale"
+  },
   "https://reddit.com/r/Pmsforsale/comments/1suw9l8/wts_lots_of_110_age_palladium_oz_14_and_1g_gold/": {
     "first_seen": "2026-05-10",
     "hits": 3,
@@ -1212,8 +1828,15 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1svw8d0/wts_some_gold_below_spot/": {
     "first_seen": "2026-05-10",
+    "hits": 9,
+    "intent_hits": 9,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1swdtiq/wts_naughty_eagles_lunar_gold_libertads_cheap/": {
+    "first_seen": "2026-05-10",
     "hits": 1,
-    "intent_hits": 1,
+    "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
   },
@@ -1261,7 +1884,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1sxkw29/wts_monday_sale_morgans_peace_dollars_carson/": {
     "first_seen": "2026-05-10",
-    "hits": 3,
+    "hits": 4,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1429,7 +2052,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t2n579/wts_gsa_cc_morgans_commemorative_dollars_halves/": {
     "first_seen": "2026-05-10",
-    "hits": 2,
+    "hits": 4,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1471,7 +2094,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t32xg7/wts_may_the_4th_be_with_youtomorrow_handpoured/": {
     "first_seen": "2026-05-10",
-    "hits": 3,
+    "hits": 4,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1506,7 +2129,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t3x1kl/wts_palladium_lots_of_110_gold_age_krug_phil_roo/": {
     "first_seen": "2026-05-10",
-    "hits": 2,
+    "hits": 3,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1527,7 +2150,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t411ba/wts_1oz2021_beskarasesmilunar_dragon_libertad/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1555,7 +2178,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t4t57p/wts_20_gold_in_rattlers_ancient_sweden_gold_coin/": {
     "first_seen": "2026-05-10",
-    "hits": 3,
+    "hits": 5,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1590,7 +2213,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t4yua4/wts_lots_of_silver_and_gold_gold_nuggets_at_less/": {
     "first_seen": "2026-05-10",
-    "hits": 27,
+    "hits": 28,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1625,14 +2248,14 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t5e1aa/wts_silver_gold_and_copper/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t5esc5/wts_small_bit_of_fractional_gold_and_plenty_of/": {
     "first_seen": "2026-05-10",
-    "hits": 2,
+    "hits": 3,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1667,7 +2290,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t5s8p5/wts_american_silver_eagles_legendary_warriors/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1681,7 +2304,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t5u5y8/wts_110_age_110_brit_1g_pamps_pamp_rosa_100x1g/": {
     "first_seen": "2026-05-10",
-    "hits": 2,
+    "hits": 3,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1695,7 +2318,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t5w789/wts_1oz2021_beskarasesmilunar_dragon_libertad/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1709,7 +2332,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t5ycbw/wts_spring_sale_mixed_prem_lot_ase_lot_ase/": {
     "first_seen": "2026-05-10",
-    "hits": 3,
+    "hits": 4,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1758,7 +2381,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t6vizj/wts_us_silver_coins_for_9095_of_melt_pre33_gold/": {
     "first_seen": "2026-05-10",
-    "hits": 4,
+    "hits": 6,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1786,7 +2409,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t6zf4q/wts_more_gold_and_silver_lunars_from_all_over_the/": {
     "first_seen": "2026-05-10",
-    "hits": 7,
+    "hits": 8,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1856,14 +2479,14 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7l9at/wts_1_oz_gold_bars_100_oz_silver_bar_and_ase_tube/": {
     "first_seen": "2026-05-10",
-    "hits": 2,
+    "hits": 10,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7lvdp/wts_inventory_clear_out_world_silver/": {
     "first_seen": "2026-05-08",
-    "hits": 6,
+    "hits": 7,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1905,7 +2528,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7oxnq/wts_110_age_and_more_small_gold_silver_palladium/": {
     "first_seen": "2026-05-08",
-    "hits": 5,
+    "hits": 6,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1947,7 +2570,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7ql03/wts_a_wide_variety_of_fractional_gold_1_gram_25/": {
     "first_seen": "2026-05-08",
-    "hits": 9,
+    "hits": 11,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -1961,7 +2584,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7r5xz/wts_1oz2021_beskarasesmilunar_dragon_libertad/": {
     "first_seen": "2026-05-08",
-    "hits": 2,
+    "hits": 3,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -2031,16 +2654,16 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7sx2l/wts_vintage_silver_110_gold_and_copper_engelhard/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-11",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7tagb/wts_libertads_and_12oz_bu_canadians_near_spot/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 3,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t7tiro/wts_silver_below_spot_mexican_cinco_pesos_buffalo/": {
@@ -2069,6 +2692,27 @@
     "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t894nk/wts_premium_silver_deals_aztec_calendar_rounds/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t89wz0/wts_libertads_prospectors_zombucks_fractionals/": {
+    "first_seen": "2026-05-10",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t8cmkc/wts_wl_design_sunshine_mint_generics_1979_una_onza/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8dls5/wts_antique_english_tea_set_antique_irish_tray/": {
@@ -2101,9 +2745,16 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8nh1y/wts_coming_back_with_a_vengeance_with_brand_new/": {
     "first_seen": "2026-05-10",
-    "hits": 4,
+    "hits": 5,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t8p3r3/wts_first_time_seller_sale_valcambi_credit_suisse/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8r1kz/wtb_saturday_fight_night/": {
@@ -2129,9 +2780,9 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8sp55/wts_large_and_small_silver_lots_really_fun_mix_of/": {
     "first_seen": "2026-05-10",
-    "hits": 6,
+    "hits": 10,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8sptg/wts_slightly_above_spot_at_spot_and_below_spot/": {
@@ -2157,9 +2808,9 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8tb5g/wts_libertads_sweet_toner_100g_valcambi_combibar/": {
     "first_seen": "2026-05-10",
-    "hits": 2,
+    "hits": 3,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-11",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8tlo8/wtswtt_3x_2025_libertads_other_premium_silver/": {
@@ -2185,7 +2836,7 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8v639/wts_bunch_of_gold_cc_morgans_world_silver_us_junk/": {
     "first_seen": "2026-05-10",
-    "hits": 8,
+    "hits": 10,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Pmsforsale"
@@ -2199,9 +2850,9 @@
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8xv0q/wts_even_more_new_stuff_iron_man_gold_lucky/": {
     "first_seen": "2026-05-10",
-    "hits": 8,
+    "hits": 13,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Pmsforsale/comments/1t8y1wm/wts_soo_much_silver_mexican_libertads_and_us/": {
@@ -2209,6 +2860,587 @@
     "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t93ps4/wts_a_few_things_to_treat_yourself_while_treating/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t99ejf/wts_s_queens_beast_completer_vintage_swiss_of/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t99sl1/wts_sunday_silver_sales_beskarkrugkinesisgeneric/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 1,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9ekt1/wts_22_oz_2_grams_of_silver_with_sunshine_minting/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9eyu7/wts_pandas_eagles_morgans_reagans_star_wars/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9eyxq/wts_gold_and_silver_below_spot_premium_slabbed/": {
+    "first_seen": "2026-05-10",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9hgkf/wts_sunday_mega_sale_come_and_get_your_gold_and/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9hiec/wts_all_silver_below_spot_1_oz_fine_silver_silver/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9iwus/wts_free_silver_with_above_150_purchase_below/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9iy7k/wts_key_date_britannia_liberia_millennium_1987/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9ko3v/wts_slab_sale_morgans_peace_dollars_bullion_some/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9kygj/wts_10oz_silver_coin_british_royal_coat_of_arms/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9lxpg/wts_premium_silver_krugerrand_britannia_wildlife/": {
+    "first_seen": "2026-05-11",
+    "hits": 12,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1t9n85k/wts_art_bars_ase_age_onzas_britannia_germania/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta5m9e/wts_silver_under_spot_generic_rounds_phils_silver/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta6pv2/wts_monday_morning_spring_cleaning_sale_a/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta6ypq/wts_silver_rounds_and_90_under_spot_geiger_bars/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta75e0/wts_american_eagle_liberty_1oz_silver/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta76l6/wts_sealed_maple_tubes_at_spot_britannia_bar_well/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta78ma/wts_these_daeals_are_way_below_spot_silver_wtt/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta7p2i/wts_premium_gold_and_silver_perth_mint_lunar/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta8375/wts_new_seller_sale_ngc_graded_gold_graded_ases/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta83g2/wts_below_spot_40_hallf_dolars_and_other_premium/": {
+    "first_seen": "2026-05-11",
+    "hits": 8,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta85bz/wts_sunshine_walking_liberty_rounds_tube_of_20/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1ta8t4c/wts_agoro_disney_silver_casino_tokens_ases_and/": {
+    "first_seen": "2026-05-11",
+    "hits": 8,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1taaguf/wts_pamp_1oz_silver_rounds_new_in_tubes_1oz_gold/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1taaqq4/wts_ikes_vatican_gold_and_a_lot_of_silver/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 2,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tab8h7/wts_ases_maples_under_melt_large_lot_of_mexican/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tab9v8/wts_ases_brits_maples_and_more_below_spot/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tabaa4/wts_spot_is_up_and_so_are_my_prices/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tabkjq/wts_a_plethora_of_1oz_silver_rounds_unicorns/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tabsh1/wts_silver_bars_get_em_while_were_still_low/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tac9z7/wts_spot_is_up_and_so_are_my_prices/": {
+    "first_seen": "2026-05-11",
+    "hits": 7,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tacmhu/wts_silver_swans_and_maples_at_spot/": {
+    "first_seen": "2026-05-11",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tae926/wts_da_xiong12s_100th_sale_giveaway_scottsdale/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1taguga/wts_last_chance_to_get_in_before_90_7oz_lot_with/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tajw5b/wts_goldsilver_ratio_under_55_the_wise_would_say/": {
+    "first_seen": "2026-05-12",
+    "hits": 10,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tajzq5/wts_ases_proof_ases_maples_libertad_hand_pours/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 5,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tam8tj/wts_ases_somalia_elephants_25_gold_indian_pcgs/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tam95w/wts_silver_under_spot_ases_maples_generics/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tamg2d/wts_a_little_silver_and_gold/": {
+    "first_seen": "2026-05-12",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tami4k/wts_some_scrap_gold_and_junk_silver_coins_below/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tampe1/wts_10_oz_silver_pamp_lady_of_liberty_spot_free/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tan1zi/wts_premium_silver_below_spot_geiger_pamp_in/": {
+    "first_seen": "2026-05-12",
+    "hits": 7,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tan87g/wts_gold_karat_bar_card_perth_gold_silver_eagles/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tanjsv/wts_monday_night_precious_metals_mayhem/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tanm1y/wtt_mixed_lot_of_silver_for_your_110_gold/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tao8my/wts_2024_kind_of_libertad_full_set_bu_and_proof/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1taogfg/wtswtt_first_time_seller_rare_and_premium_agau/": {
+    "first_seen": "2026-05-12",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tap0ei/wts_90_priced_to_sell_morgans_barber_dimes_slqs/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tapfnn/wts_110_oz_14_oz_and_1_oz_gold_coins_1_oz_ag/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1taphno/wts_silver_way_under_spot_englehard_sunshine/": {
+    "first_seen": "2026-05-12",
+    "hits": 7,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1taq5iw/wts_help_me_build_my_flair_perth_rcm_phil/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tar45a/wts_a_little_bit_of_everything/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1taxzij/wts_pre33_110_golds_ase_10_oz_bars_star_wars/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb1m97/wts_10_oz_silver_flag_bar_for_805_shipped/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb30rf/wts_silver_libertads_19821986_1987_maple_leaf/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb44lb/wts_almost_everything_below_spot/": {
+    "first_seen": "2026-05-12",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb6ubo/wts_assorted_silver_limited_releases_plus/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb7bdu/wts_tuesday_sale_below_melt_silver/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb7r73/wts_australia_perth_year_of_the_dragon_collection/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb8t78/wts_below_spot_deals_for_casino_silver_strikes/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb92q1/wts_slackerstackers_first_sale_buy_my_englehard/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tb9y52/wts_500_flair_sale_ase_5oz_bars_10oz_rounds_well/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbaacy/wts_a_little_premium_silver_low_premium/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbab44/wts_cheap_cheap_cheap_norse_gods_series_cheap/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbaf8s/wts_the_stack_must_flow_eagles_spot_deals_neat/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbavaf/wts_gold_holos_unique_silver_collectibles_niue/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbd5aw/wts_mega_sale_come_and_get_your_gold_and_silver/": {
+    "first_seen": "2026-05-12",
+    "hits": 9,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbdgpn/wts_silver_lot_read_description/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbdqc9/wts_morgans_w_ogh_brits_panda_90_half_dollars/": {
+    "first_seen": "2026-05-12",
+    "hits": 4,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbe5me/wts_trio_of_uncommon_silver_rounds/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbeu4b/wts_newbie_spot_shipped_lots_key_date_britannia/": {
+    "first_seen": "2026-05-12",
+    "hits": 9,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbf0c3/wts_lots_of_new_2016_gold_slq_14oz_1851_and_1899/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbg9xa/wts_1_ounce_lady_fortuna_platinum_bar_2021_st/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbgxve/wts_1_and_2_oz_generic_rounds_below_spot/": {
+    "first_seen": "2026-05-12",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbgzp7/wtt_fractional_gold_for_larger_gold_999/": {
+    "first_seen": "2026-05-12",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbiqkr/wts_way_below_spot_generic_silver_rounds/": {
+    "first_seen": "2026-05-12",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbj9zv/wts_wtt_100_ounce_silver_bar/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbja39/wts_silver_bars_2x_10ozt_1_x_5ozt/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbjl48/wts_clearout_sale_if_not_here_then_feebay_below/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbjqe5/wts_gold_110_age_pamp_rosas_1g_pamps_10g_argor/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Pmsforsale"
+  },
+  "https://reddit.com/r/Pmsforsale/comments/1tbjqg1/wts_below_spot_2023_silver_britannia_tube_of_25/": {
+    "first_seen": "2026-05-12",
+    "hits": 4,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Pmsforsale"
   },
   "https://reddit.com/r/Silverbugs/comments/1sh1a0t/gold_gilded_1991_walking_lady_silver_pendant/": {
@@ -2225,11 +3457,25 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1skzc3z/heavy_mail_day/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1spc2on/state_of_the_stack/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1sq1uad/worth_anything_over_spot/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 7,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1sq90ob/new_to_collecting_thoughts/": {
@@ -2239,11 +3485,25 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1sqe0n3/fake_fake_fake/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1sqsnxe/2012_1kg_proof_coloured_dragon_perth_mint/": {
     "first_seen": "2026-05-10",
     "hits": 20,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1srlyzz/new_member_passionate_about_world_silver_coins/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1ss6hs8/tell_me_im_dumb/": {
@@ -2288,6 +3548,13 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1surqo2/where_to_get_1oz_maples_in_the_uk/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 6,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1suuec1/scottsdale_engelhard/": {
     "first_seen": "2026-05-08",
     "hits": 2,
@@ -2300,6 +3567,13 @@
     "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1svob7t/ordered_some_bars/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1svwhav/my_silver_collection/": {
@@ -2360,7 +3634,7 @@
   },
   "https://reddit.com/r/Silverbugs/comments/1sy3s1o/last_10_days_over_18oz_of_silver/": {
     "first_seen": "2026-05-10",
-    "hits": 13,
+    "hits": 15,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
@@ -2372,6 +3646,13 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1sykhum/oh_canada/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1syulck/ebay_live_is_gambling_and_im_a_little_addicted/": {
     "first_seen": "2026-05-08",
     "hits": 1,
@@ -2379,11 +3660,25 @@
     "last_visited": "2026-05-08",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1szv7fe/my_silver_is_apparently_on_a_spiritual_retreat/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t08ijl/is_it_worth_it/": {
     "first_seen": "2026-05-10",
     "hits": 28,
     "intent_hits": 28,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t0eiik/doubled_my_beginner_silver_holdings_in_one_fell/": {
+    "first_seen": "2026-05-11",
+    "hits": 4,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t0lxwf/the_bison/": {
@@ -2400,9 +3695,23 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1t13d0t/sunshine_minting_vs_sunshine_mining/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t1so42/worth_it/": {
+    "first_seen": "2026-05-11",
+    "hits": 4,
+    "intent_hits": 4,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t1t3fz/silver_in_glass/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 2,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
@@ -2416,9 +3725,9 @@
   },
   "https://reddit.com/r/Silverbugs/comments/1t2p9hu/6_months_in_and_the_addiction_is_real/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
-    "intent_hits": 1,
-    "last_visited": "2026-05-08",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t2zadh/worth_it/": {
@@ -2426,6 +3735,20 @@
     "hits": 2,
     "intent_hits": 2,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t336gv/to_da_moon/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t3hn34/counterfeiters_on_ebay/": {
+    "first_seen": "2026-05-11",
+    "hits": 8,
+    "intent_hits": 8,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t3lcxd/change_my_mind_junk_silver_is_basically_stuck_20/": {
@@ -2437,9 +3760,9 @@
   },
   "https://reddit.com/r/Silverbugs/comments/1t3n9sp/never_buy_from_moneymetals_shorting_you_silver/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
-    "intent_hits": 1,
-    "last_visited": "2026-05-08",
+    "hits": 4,
+    "intent_hits": 4,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t3o7mp/question_trading_silver_at_lcs/": {
@@ -2470,6 +3793,13 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1t3wmrz/what_do_you_think_about_this/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t41l3y/dont_buy_from_bullion_shark/": {
     "first_seen": "2026-05-08",
     "hits": 1,
@@ -2479,9 +3809,51 @@
   },
   "https://reddit.com/r/Silverbugs/comments/1t41p2r/silver_shot/": {
     "first_seen": "2026-05-08",
+    "hits": 4,
+    "intent_hits": 4,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t45c6a/silverbacks_goldbacks/": {
+    "first_seen": "2026-05-11",
     "hits": 1,
-    "intent_hits": 1,
-    "last_visited": "2026-05-08",
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t4ke5q/jm_bullion_doing_the_customers_dirty/": {
+    "first_seen": "2026-05-11",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-11",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t4khni/rarities_10_oz_with_assay/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t4s0jb/follow_up_of_random_year_1oz_maples_privy_order/": {
+    "first_seen": "2026-05-11",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t4xaxn/is_this_stackable/": {
+    "first_seen": "2026-05-11",
+    "hits": 3,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t528r4/lucky_bounce/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t52r7g/not_taking_sterling_silver_ware/": {
@@ -2491,6 +3863,13 @@
     "last_visited": "2026-05-08",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1t55s3q/and_so_it_begins/": {
+    "first_seen": "2026-05-11",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t5c9n3/2026_congratulations_set_features_lowmintage/": {
     "first_seen": "2026-05-08",
     "hits": 1,
@@ -2498,11 +3877,32 @@
     "last_visited": "2026-05-08",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1t5g9ax/beginner_help/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 2,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t5h2ef/18_pieces_of_towle_and_reed_barton_knives_with/": {
     "first_seen": "2026-05-08",
     "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-08",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t5kq5q/its_even_more_beautiful_than_i_imagined/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t5mjc6/is_this_usually_available/": {
+    "first_seen": "2026-05-11",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t5olhb/weekly_pickup/": {
@@ -2514,9 +3914,9 @@
   },
   "https://reddit.com/r/Silverbugs/comments/1t5pbxa/new_to_silver/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
+    "hits": 6,
     "intent_hits": 0,
-    "last_visited": "2026-05-08",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t5r3u8/vintage_silver_gold_ad/": {
@@ -2533,6 +3933,13 @@
     "last_visited": "2026-05-08",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1t622c6/looking_for_information_on_this/": {
+    "first_seen": "2026-05-11",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t67vev/available_again_at_0730_may_7_2026/": {
     "first_seen": "2026-05-08",
     "hits": 1,
@@ -2540,11 +3947,18 @@
     "last_visited": "2026-05-08",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1t6cdr2/2015_50_britannia/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 6,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t6duow/state_of_the_stack_two_months_in_god_help_me/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 4,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t6kice/best_kind_of_silver_medium/": {
@@ -2556,23 +3970,23 @@
   },
   "https://reddit.com/r/Silverbugs/comments/1t6rvys/new_10oz_coin_at_costco_today/": {
     "first_seen": "2026-05-08",
-    "hits": 50,
+    "hits": 67,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t794b4/good_buy/": {
     "first_seen": "2026-05-08",
-    "hits": 1,
-    "intent_hits": 1,
-    "last_visited": "2026-05-08",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/": {
     "first_seen": "2026-05-08",
-    "hits": 30,
-    "intent_hits": 30,
-    "last_visited": "2026-05-10",
+    "hits": 35,
+    "intent_hits": 35,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t7hc76/could_this_be_silver/": {
@@ -2603,11 +4017,25 @@
     "last_visited": "2026-05-08",
     "source_id": "reddit:r/Silverbugs"
   },
+  "https://reddit.com/r/Silverbugs/comments/1t812n3/short_term_goal_reached_500oz_here_i_come_wish_i/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
   "https://reddit.com/r/Silverbugs/comments/1t868m4/spent_245_today_at_the_flea_market_spread_between/": {
     "first_seen": "2026-05-10",
     "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-10",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t86hjv/374k_silver_heist_while_owners_slept_4300_oz/": {
+    "first_seen": "2026-05-11",
+    "hits": 5,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Silverbugs/comments/1t87g09/i_need_your_opinion_on_something/": {
@@ -2619,9 +4047,44 @@
   },
   "https://reddit.com/r/Silverbugs/comments/1t8hse1/addicting/": {
     "first_seen": "2026-05-10",
-    "hits": 1,
+    "hits": 4,
     "intent_hits": 0,
-    "last_visited": "2026-05-10",
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1t9alow/st_george_and_dragon_1_oz_silver_coins/": {
+    "first_seen": "2026-05-11",
+    "hits": 6,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1tadp7s/police_department_selling_fake_silver_bars_on/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1takh6j/any_unique_1_ounce_silver_recommendations/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 2,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1tal6nf/ase_type_set_progress/": {
+    "first_seen": "2026-05-12",
+    "hits": 2,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
+    "source_id": "reddit:r/Silverbugs"
+  },
+  "https://reddit.com/r/Silverbugs/comments/1tanl8k/i_want_to_sell_part_of_my_collection_to_start_a/": {
+    "first_seen": "2026-05-12",
+    "hits": 4,
+    "intent_hits": 0,
+    "last_visited": "2026-05-12",
     "source_id": "reddit:r/Silverbugs"
   },
   "https://reddit.com/r/Wallstreetsilver/comments/1sjr7pz/silver_a_global_game_of_musical_chairs/": {
@@ -3345,11 +4808,18 @@
     "last_visited": "2026-05-10",
     "source_id": "reddit:r/Watches"
   },
+  "https://reddit.com/r/malelivingspace/comments/1t3vxz2/thomasville_tisdale_modular_sectional_6piece_dark/": {
+    "first_seen": "2026-05-22",
+    "hits": 1,
+    "intent_hits": 0,
+    "last_visited": "2026-05-22",
+    "source_id": "reddit:r/malelivingspace"
+  },
   "https://reddit.com/r/malelivingspace/comments/1t6uy3x/is_having_a_corkboard_in_my_room_too_childish/": {
     "first_seen": "2026-05-09",
-    "hits": 2,
+    "hits": 3,
     "intent_hits": 0,
-    "last_visited": "2026-05-09",
+    "last_visited": "2026-05-22",
     "source_id": "reddit:r/malelivingspace"
   },
   "https://reddit.com/r/malelivingspace/comments/1t8t5wm/how_would_you_do_the_layout_for_the_living_room/": {
@@ -3357,6 +4827,13 @@
     "hits": 1,
     "intent_hits": 0,
     "last_visited": "2026-05-09",
+    "source_id": "reddit:r/malelivingspace"
+  },
+  "https://reddit.com/r/malelivingspace/comments/1tgpu0t/how_does_this_living_room_setupfurniture_layout/": {
+    "first_seen": "2026-05-22",
+    "hits": 3,
+    "intent_hits": 3,
+    "last_visited": "2026-05-22",
     "source_id": "reddit:r/malelivingspace"
   },
   "https://www.youtube.com/watch?v=-4qoigR-XbA": {

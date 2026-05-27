@@ -1,0 +1,26 @@
+{
+  "slug": "cuisinart-brew-central-plus-14-cup-programmable-coffee-maker",
+  "title": "Cuisinart Brew Central Plus 14-Cup Programmable Coffee Maker",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/cuisinart-brew-central-plus-14-cup-programmable-coffee-maker/4000372303",
+  "brand": "Cuisinart",
+  "model": "7565000",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Cuisinart",
+      "model": "7565000",
+      "date": "2026-05-12",
+      "signal_strength": 0.03,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1t4xuu4/is_there_a_coffee_maker_for_me/"
+      ]
+    }
+  ]
+}

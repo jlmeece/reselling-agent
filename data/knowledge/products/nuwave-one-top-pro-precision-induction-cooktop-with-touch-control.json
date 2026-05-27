@@ -1,0 +1,32 @@
+{
+  "slug": "nuwave-one-top-pro-precision-induction-cooktop-with-touch-control",
+  "title": "Nuwave One Top Pro Precision Induction Cooktop with Touch Control",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/nuwave-one-top-pro-precision-induction-cooktop-with-touch-control/4000412053",
+  "brand": "NuWave",
+  "model": "1987017",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "NuWave",
+      "model": "1987017",
+      "date": "2026-05-12",
+      "signal_strength": 0.19,
+      "by_source": {
+        "reddit:r/BuyItForLife": 5,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 2
+      },
+      "intent_phrases_seen": [
+        "Looking for the best laptop for video editing MOST recommended in 2026"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1sqwvrn/looking_for_the_best_laptop_for_video_editing/",
+        "https://reddit.com/r/BuyItForLife/comments/1t8s4vg/request_which_bamix_immersion_blender_stick/",
+        "https://reddit.com/r/BuyItForLife/comments/1t6haa1/bifl_induction_cooktop_for_a_neoluddite/",
+        "https://reddit.com/r/BuyItForLife/comments/1swv8wa/just_found_this_older_clockradiobuzzer_combo/",
+        "https://reddit.com/r/KitchenConfidential/comments/1stgqaw/quit_a_highend_bakery_production_job/"
+      ]
+    }
+  ]
+}

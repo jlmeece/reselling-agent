@@ -1,0 +1,29 @@
+{
+  "slug": "agio-formia-3-piece-outdoor-patio-seating-set",
+  "title": "Agio Formia 3-piece Outdoor Patio Seating Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/agio-formia-3-piece-outdoor-patio-seating-set/4000293113",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-22",
+      "signal_strength": 0.12,
+      "by_source": {
+        "reddit:r/HomeImprovement": 2,
+        "reddit:r/malelivingspace": 1
+      },
+      "intent_phrases_seen": [
+        "How does this living room setup/furniture layout look?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/malelivingspace/comments/1tgpu0t/how_does_this_living_room_setupfurniture_layout/",
+        "https://reddit.com/r/HomeImprovement/comments/1ti7t1e/l_shaped_outdoor_kitchens_look_great_but_they/",
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/"
+      ]
+    }
+  ]
+}

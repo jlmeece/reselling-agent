@@ -1,0 +1,26 @@
+{
+  "slug": "cuisinart-5-in-1-digital-griddler",
+  "title": "Cuisinart 5-in-1 Digital Griddler",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/cuisinart-5-in-1-digital-griddler/4000413090",
+  "brand": "Cuisinart",
+  "model": "1987038",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Cuisinart",
+      "model": "1987038",
+      "date": "2026-05-12",
+      "signal_strength": 0.03,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/KitchenConfidential/comments/1sy4g4v/what_chefs_want_i_doubt_it/"
+      ]
+    }
+  ]
+}

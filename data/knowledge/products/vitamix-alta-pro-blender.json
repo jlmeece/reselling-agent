@@ -1,0 +1,36 @@
+{
+  "slug": "vitamix-alta-pro-blender",
+  "title": "Vitamix Alta Pro Blender",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/vitamix-alta-pro-blender/4000377835",
+  "brand": "Vitamix",
+  "model": "3561883",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Vitamix",
+      "model": "3561883",
+      "date": "2026-05-12",
+      "signal_strength": 0.16,
+      "by_source": {
+        "reddit:r/BuyItForLife": 7,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 1
+      },
+      "intent_phrases_seen": [
+        "Is a Vitamix really the best blender? I have conflicting evidence.",
+        "Looking for decent quality small blender",
+        "Vitamix VX1 review and features, how long does it really last with heavy daily u",
+        "Is the Zwilling blender good?",
+        "non-plastic nutribullet cups?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1t3le4g/is_a_vitamix_really_the_best_blender_i_have/",
+        "https://reddit.com/r/BuyItForLife/comments/1t3ffhh/looking_for_decent_quality_small_blender/",
+        "https://reddit.com/r/BuyItForLife/comments/1syql4c/vitamix_vx1_review_and_features_how_long_does_it/",
+        "https://reddit.com/r/BuyItForLife/comments/1svkdjx/is_the_zwilling_blender_good/",
+        "https://reddit.com/r/BuyItForLife/comments/1ssgcc1/nonplastic_nutribullet_cups/"
+      ]
+    }
+  ]
+}

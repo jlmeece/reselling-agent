@@ -1,0 +1,31 @@
+{
+  "slug": "t-fal-dual-window-infrared-air-fryer-7-3qt-dual-heating",
+  "title": "T-fal Dual Window Infrared Air Fryer 7.3QT, Dual Heating",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/t-fal-dual-window-infrared-air-fryer-73qt-dual-heating/4000430818",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.09,
+      "by_source": {
+        "reddit:r/BuyItForLife": 3,
+        "reddit:r/frugal": 1,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "Experience with heated drying rack?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Frugal/comments/1sq5nxh/experience_with_heated_drying_rack/",
+        "https://reddit.com/r/BuyItForLife/comments/1tap8hk/air_fryer_that_is_going_to_last_awhile/",
+        "https://reddit.com/r/BuyItForLife/comments/1t2enqp/any_recommendations_for_an_air_con_unit_in_the_uk/",
+        "https://reddit.com/r/BuyItForLife/comments/1sqygc5/queen_heated_blanket_single_control/"
+      ]
+    }
+  ]
+}

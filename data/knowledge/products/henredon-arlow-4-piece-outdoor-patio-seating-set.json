@@ -1,0 +1,27 @@
+{
+  "slug": "henredon-arlow-4-piece-outdoor-patio-seating-set",
+  "title": "Henredon Arlow 4-piece Outdoor Patio Seating Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/henredon-arlow-4-piece-outdoor-patio-seating-set/4000417223",
+  "brand": "Henredon",
+  "model": "1933982",
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": "Henredon",
+      "model": "1933982",
+      "date": "2026-05-22",
+      "signal_strength": 0.09,
+      "by_source": {
+        "reddit:r/HomeImprovement": 2,
+        "reddit:r/malelivingspace": 0,
+        "reddit:r/frugal": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1ti7t1e/l_shaped_outdoor_kitchens_look_great_but_they/",
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/"
+      ]
+    }
+  ]
+}

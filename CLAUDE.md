@@ -1,73 +1,68 @@
-# Agent Instructions
+# Reselling Agent — Project Instructions
 
-You're working inside the **WAT framework** (Workflows, Agents, Tools). This architecture separates concerns so that probabilistic AI handles reasoning while deterministic code handles execution. That separation is what makes this system reliable.
+Extends the global WAT framework at `C:\Users\jorda\.claude\CLAUDE.md`. Read that first.
 
-## The WAT Architecture
+---
 
-**Layer 1: Workflows (The Instructions)**
-- Markdown SOPs stored in `workflows/`
-- Each workflow defines the objective, required inputs, which tools to use, expected outputs, and how to handle edge cases
-- Written in plain language, the same way you'd brief someone on your team
+## Project Context
 
-**Layer 2: Agents (The Decision-Maker)**
-- This is your role. You're responsible for intelligent coordination.
-- Read the relevant workflow, run tools in the correct sequence, handle failures gracefully, and ask clarifying questions when needed
-- You connect intent to execution without trying to do everything yourself
-- Example: If you need to pull data from a website, don't attempt it directly. Read `workflows/scrape_website.md`, figure out the required inputs, then execute `tools/scrape_single_site.py`
+Costco→eBay reselling automation. Source products from Costco, research and score them, generate eBay listings, and monitor active sales.
 
-**Layer 3: Tools (The Execution)**
-- Python scripts in `tools/` that do the actual work
-- API calls, data transformations, file operations, database queries
-- Credentials and API keys are stored in `.env`
-- These scripts are consistent, testable, and fast
+**Orchestration (Phase 2+):** Hermes Agent running on Hostinger VPS handles scheduling and Telegram-based control. GitHub Actions remains as a fallback.
 
-**Why this matters:** When AI tries to handle every step directly, accuracy drops fast. If each step is 90% accurate, you're down to 59% success after just five steps. By offloading execution to deterministic scripts, you stay focused on orchestration and decision-making where you excel.
+---
 
-## How to Operate
+## Run Modes
 
-**1. Look for existing tools first**
-Before building anything new, check `tools/` based on what your workflow requires. Only create new scripts when nothing exists for that task.
+| Mode | Command | What it does |
+|------|---------|-------------|
+| `discovery` | `python agents/scheduler.py --mode discovery` | Find new Costco products, add as PENDING |
+| `research` | `python agents/scheduler.py --mode research` | Score PENDING rows, fill tier/price/comps |
+| `daily` | `python agents/scheduler.py --mode daily` | APPROVED→READY, PAUSED_OOS recheck |
+| `active` | `python agents/scheduler.py --mode active` | Check ACTIVE listings for stock/price changes |
+| `rotation` | `python agents/scheduler.py --mode rotation` | Weekly digest — score all ACTIVE products |
+| `export` | `python tools/ebay_export.py` | Generate Seller Hub CSV from READY products |
 
-**2. Learn and adapt when things fail**
-When you hit an error:
-- Read the full error message and trace
-- Fix the script and retest (if it uses paid API calls or credits, check with me before running again)
-- Document what you learned in the workflow (rate limits, timing quirks, unexpected behavior)
-- Example: You get rate-limited on an API, so you dig into the docs, discover a batch endpoint, refactor the tool to use it, verify it works, then update the workflow so this never happens again
+**Note:** `active` mode requires a real Chrome session (Costco cookies). Run locally only — not compatible with CI.
 
-**3. Keep workflows current**
-Workflows should evolve as you learn. When you find better methods, discover constraints, or encounter recurring issues, update the workflow. That said, don't create or overwrite workflows without asking unless I explicitly tell you to. These are your instructions and need to be preserved and refined, not tossed after one use.
+---
 
-## The Self-Improvement Loop
+## Key Files
 
-Every failure is a chance to make the system stronger:
-1. Identify what broke
-2. Fix the tool
-3. Verify the fix works
-4. Update the workflow with the new approach
-5. Move on with a more robust system
+- `agents/scheduler.py` — entry point for all modes
+- `agents/researcher.py` — full research loop: discover → scrape → score → copy
+- `tools/costco_scraper.py` — Playwright CDP scraper with session refresh
+- `tools/ebay_research.py` — eBay comp search (model-aware, `_sacat` scoped)
+- `tools/spot_price.py` — live gold/silver/platinum via Yahoo Finance (1hr cache)
+- `tools/listing_copy.py` — Claude-powered listing copy generation
+- `tools/ebay_export.py` — generates Seller Hub CSV for READY products
+- `config/categories.yaml` — fee rates, discovery URLs, eBay category IDs, purchase limits
+- `config/col_map.yaml` — Google Sheet column map (A–AV, 48 cols)
+- `skills/scoring.py` — category-specific scoring (extends shared base_scoring)
+- `deploy/` — VPS deployment (Docker Compose, Hermes skills, .env.template)
 
-This loop is how the framework improves over time.
+---
 
-## File Structure
+## Google Sheet
 
-**What goes where:**
-- **Deliverables**: Final outputs go to cloud services (Google Sheets, Slides, etc.) where I can access them directly
-- **Intermediates**: Temporary processing files that can be regenerated
+- **Sheet ID:** `1KXxULBBp4dmZb1OMGYPkf_YIE1HFd4byQCsAb-_tSic`
+- **Tab:** Product Tracker, data rows 4–500
+- **Run Log tab** is the source of truth for GitHub Actions run history (not `data/run_history.json`)
 
-**Directory layout:**
-```
-.tmp/           # Temporary files (scraped data, intermediate exports). Regenerated as needed.
-tools/          # Python scripts for deterministic execution
-workflows/      # Markdown SOPs defining what to do and how
-.env            # API keys and environment variables (NEVER store secrets anywhere else)
-credentials.json, token.json  # Google OAuth (gitignored)
-```
+---
 
-**Core principle:** Local files are just for processing. Anything I need to see or use lives in cloud services. Everything in `.tmp/` is disposable.
+## Categories
 
-## Bottom Line
+- **Precious Metals** — gold/silver bars and coins. Spot-price scoring. eBay cat 3229. Priority.
+- **Jewelry** — fashion rings, necklaces, earrings, bracelets. Markup scoring. eBay cat 67.
+- **Outdoor Furniture** — future
+- **Watches** — future
 
-You sit between what I want (workflows) and what actually gets done (tools). Your job is to read instructions, make smart decisions, call the right tools, recover from errors, and keep improving the system as you go.
+---
 
-Stay pragmatic. Stay reliable. Keep learning.
+## Constraints & Known Issues
+
+- Costco scraper blocks after ~14 product pages — session refresh runs every 20 products
+- YouTube API quota exhausts daily — Reddit/DDG fallback handles it automatically
+- Active monitor must run locally (Chrome CDP) — GitHub Actions guard prevents crash
+- `data/run_history.json` is local only — cloud runs write to Sheet Run Log tab instead

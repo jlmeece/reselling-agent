@@ -1,0 +1,30 @@
+{
+  "slug": "kitchenaid-smart-single-wall-oven-with-assisted-cooking-modes",
+  "title": "KitchenAid Smart Single Wall Oven with Assisted Cooking Modes",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/kitchenaid-smart-single-wall-oven-with-assisted-cooking-modes/4000413081",
+  "brand": "KitchenAid",
+  "model": "2001670",
+  "first_researched": "2026-05-13",
+  "research_runs": [
+    {
+      "brand": "KitchenAid",
+      "model": "2001670",
+      "date": "2026-05-13",
+      "signal_strength": 0.05,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 1,
+        "reddit:r/KitchenConfidential": 1
+      },
+      "intent_phrases_seen": [
+        "Sous vide large quantity of chicken"
+      ],
+      "top_links": [
+        "https://reddit.com/r/KitchenConfidential/comments/1t5r8p9/sous_vide_large_quantity_of_chicken/",
+        "https://reddit.com/r/BuyItForLife/comments/1t01px2/my_first_and_only_smart_phone_is_dead/",
+        "https://reddit.com/r/Frugal/comments/1sr0y6x/i_feel_guilty_for_buying_anything_new/"
+      ]
+    }
+  ]
+}

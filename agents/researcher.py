@@ -324,6 +324,8 @@ def _ship_badge(free_shipping: bool, cart_est: dict) -> str:
         return "✓ FREE"
     ship = cart_est.get("shipping")
     if ship is not None:
+        if ship <= 0:
+            return "✓ FREE"
         return f"${ship:.2f} ship"
     return ""
 
@@ -1013,7 +1015,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     "scored_date": date.today().isoformat(),
                     "recheck_date": tier2_recheck,
                     "score": weighted_score,
-                    "reason": notes,
+                    "reason": full_notes,
                 })
             elif tier == 3:
                 _append_tier3({
@@ -1021,7 +1023,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     "category": category,
                     "scored_date": date.today().isoformat(),
                     "score": weighted_score,
-                    "reason": notes,
+                    "reason": full_notes,
                 })
 
             _update_category_performance(category, tier)

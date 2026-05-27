@@ -1,0 +1,25 @@
+{
+  "slug": "sunvilla-pine-knoll-cushion-outdoor-patio-swing",
+  "title": "SunVilla Pine Knoll Cushion Outdoor Patio Swing",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/sunvilla-pine-knoll-cushion-outdoor-patio-swing/4000405055",
+  "brand": "SunVilla",
+  "model": "1807161",
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": "SunVilla",
+      "model": "1807161",
+      "date": "2026-05-22",
+      "signal_strength": 0.03,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1tbh7to/replacing_patio_shed_door/"
+      ]
+    }
+  ]
+}

@@ -496,7 +496,7 @@ def run_research(config, COL, service, sheet_name, start_row, end_row, category=
         cmd += ["--category", category]
     result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
-        logger.error(f"researcher.py exited with code {result.returncode}")
+        raise RuntimeError(f"researcher.py exited with code {result.returncode}")
 
 
 # ── Mode: DISCOVERY (1x/day) ──────────────────────────────────────────────────

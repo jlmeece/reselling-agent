@@ -1,0 +1,29 @@
+{
+  "slug": "kitchenaid-5-piece-pasta-deluxe-set",
+  "title": "KitchenAid 5-piece Pasta Deluxe Set",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/kitchenaid-5-piece-pasta-deluxe-set/4000395312",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-12",
+      "signal_strength": 0.05,
+      "by_source": {
+        "reddit:r/BuyItForLife": 1,
+        "reddit:r/frugal": 2,
+        "reddit:r/KitchenConfidential": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/KitchenConfidential/comments/1suzdjq/how_do_i_get_the_chef_to_want_to_train_me/",
+        "https://reddit.com/r/Frugal/comments/1suw44e/moneysaving_tip_for_class_of_2026_buy_grad/",
+        "https://reddit.com/r/Frugal/comments/1sr0y6x/i_feel_guilty_for_buying_anything_new/",
+        "https://reddit.com/r/BuyItForLife/comments/1sp7k6l/on_the_3rd_replacement_oven_is_lg_just_a_bad_brand/"
+      ]
+    }
+  ]
+}

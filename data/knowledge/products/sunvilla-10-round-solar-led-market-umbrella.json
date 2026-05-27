@@ -1,0 +1,39 @@
+{
+  "slug": "sunvilla-10-round-solar-led-market-umbrella",
+  "title": "Sunvilla 10' Round Solar LED Market Umbrella",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/sunvilla-10-round-solar-led-market-umbrella/4000215292",
+  "brand": "SunVilla",
+  "model": "1807266",
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-22",
+      "signal_strength": 0.03,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1thtbge/spent_3_months_researching_impact_windows/"
+      ]
+    },
+    {
+      "brand": "SunVilla",
+      "model": "1807266",
+      "date": "2026-05-23",
+      "signal_strength": 0.04,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1thtbge/spent_3_months_researching_impact_windows/"
+      ]
+    }
+  ]
+}

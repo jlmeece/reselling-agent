@@ -1,0 +1,32 @@
+{
+  "slug": "aroma-professional-20-cup-cooked-rice-cooker-and-slow-cooker",
+  "title": "AROMA Professional 20-Cup Cooked Rice Cooker and Slow Cooker",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/aroma-professional-20-cup-cooked-rice-cooker-and-slow-cooker/4201000388",
+  "brand": "Aroma Professional",
+  "model": "2046921",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "Aroma Professional",
+      "model": "2046921",
+      "date": "2026-05-12",
+      "signal_strength": 0.12,
+      "by_source": {
+        "reddit:r/BuyItForLife": 2,
+        "reddit:r/frugal": 4,
+        "reddit:r/KitchenConfidential": 1
+      },
+      "intent_phrases_seen": [
+        "After 11 years, my trusty Aroma ARC-616SB rice cooker burned out. What should I "
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1snpv0s/after_11_years_my_trusty_aroma_arc616sb_rice/",
+        "https://reddit.com/r/Frugal/comments/1tb60wm/slow_cooker_meal_that_is_cheap_and_healthy/",
+        "https://reddit.com/r/BuyItForLife/comments/1t9vil3/which_magsafe_products_have_you_used_that_you/",
+        "https://reddit.com/r/KitchenConfidential/comments/1suizn1/whole_pig_help/",
+        "https://reddit.com/r/Frugal/comments/1stf9ob/best_things_to_cook_in_a_pressure_cooker_ideas/"
+      ]
+    }
+  ]
+}

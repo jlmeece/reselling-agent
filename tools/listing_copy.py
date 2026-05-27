@@ -140,7 +140,7 @@ def generate_listing_copy(products_batch):
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=3000,
+        max_tokens=8192,
         system=[{
             "type": "text",
             "text": SYSTEM_PROMPT,

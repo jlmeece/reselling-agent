@@ -52,6 +52,24 @@
         "https://reddit.com/r/malelivingspace/comments/1t6uy3x/is_having_a_corkboard_in_my_room_too_childish/",
         "https://reddit.com/r/Costco/comments/1suylio/baked_conger_jerky_has_anyone_tried/"
       ]
+    },
+    {
+      "brand": "Coolaroo",
+      "model": "1731368",
+      "date": "2026-05-22",
+      "signal_strength": 0.09,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 1,
+        "reddit:r/frugal": 0
+      },
+      "intent_phrases_seen": [
+        "Side mount bracket for angled shade sail pole?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1t1t08e/side_mount_bracket_for_angled_shade_sail_pole/",
+        "https://reddit.com/r/malelivingspace/comments/1t6uy3x/is_having_a_corkboard_in_my_room_too_childish/"
+      ]
     }
   ]
 }

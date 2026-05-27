@@ -39,23 +39,24 @@ from tools.sheet_writer import get_sheets_service, read_sheet
 
 
 # ── Column indices (0-based, matching A=0) ───────────────────────────────────
-# Matches col_map.yaml layout
+# Source of truth: config/col_map.yaml — update there first, then here.
+# Current visible range A–Z (indices 0–25), hidden AA–AV (indices 26–47).
 _COL = {
     "status":       0,   # A
     "demand_score": 1,   # B
     "title":        2,   # C
     "category":     3,   # D
     "ebay_price":   7,   # H
-    "notes":        19,  # T
-    "sku":          21,  # V  (was U=20, shifted +1 for units_sold at U)
+    "notes":        47,  # AV — full research narrative; contains purchase_limit / brand hints
+    "sku":          26,  # AA
     "costco_url":   17,  # R
     "ebay_url":     16,  # Q
-    "image_urls":   40,  # AO (was AN=39, shifted +1)
-    "seo_title":    29,  # AD (was AC=28, shifted +1)
-    "bullets":      30,  # AE (was AD=29, shifted +1)
-    "description":  31,  # AF (was AE=30, shifted +1)
-    "redirect_msg": 32,  # AG (was AF=31, shifted +1)
-    "keywords":     34,  # AI (was AH=33, shifted +1)
+    "image_urls":   45,  # AT
+    "seo_title":    34,  # AI
+    "bullets":      35,  # AJ
+    "description":  36,  # AK
+    "redirect_msg": 37,  # AL
+    "keywords":     39,  # AN
 }
 
 _EXPORT_STATUSES = {"READY"}

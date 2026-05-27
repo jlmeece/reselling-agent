@@ -1,0 +1,25 @@
+{
+  "slug": "allspace-5-piece-modular-outdoor-patio-set",
+  "title": "Allspace 5-piece Modular Outdoor Patio Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/allspace-5-piece-modular-outdoor-patio-set/100695519",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-05-22",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-22",
+      "signal_strength": 0.02,
+      "by_source": {
+        "reddit:r/HomeImprovement": 1,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/"
+      ]
+    }
+  ]
+}

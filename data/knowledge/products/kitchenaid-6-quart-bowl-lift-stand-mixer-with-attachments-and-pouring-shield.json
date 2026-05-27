@@ -1,0 +1,29 @@
+{
+  "slug": "kitchenaid-6-quart-bowl-lift-stand-mixer-with-attachments-and-pouring-shield",
+  "title": "KitchenAid 6 Quart Bowl-Lift Stand Mixer with Attachments and Pouring Shield",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/kitchenaid-6-quart-bowl-lift-stand-mixer-with-attachments-and-pouring-shield/4000142124",
+  "brand": "KitchenAid",
+  "model": "2303478",
+  "first_researched": "2026-05-12",
+  "research_runs": [
+    {
+      "brand": "KitchenAid",
+      "model": "2303478",
+      "date": "2026-05-12",
+      "signal_strength": 0.23,
+      "by_source": {
+        "reddit:r/BuyItForLife": 2,
+        "reddit:r/frugal": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [
+        "What\u2019s a good commercial mixer for baking a lot?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/BuyItForLife/comments/1t7bjub/whats_a_good_commercial_mixer_for_baking_a_lot/",
+        "https://reddit.com/r/BuyItForLife/comments/1sux7z5/what_are_good_stand_mixers_on_the_market_worth/"
+      ]
+    }
+  ]
+}
