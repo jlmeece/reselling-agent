@@ -14,10 +14,12 @@ Run in cloud: GitHub Actions handles scheduling (.github/workflows/run_agent.yml
 """
 
 import argparse
+import json
 import os
 import sys
 import time
 import traceback
+import urllib.request
 import yaml
 from datetime import datetime
 from dotenv import load_dotenv
@@ -855,6 +857,62 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
         )
 
 
+# ── Cookie freshness check ────────────────────────────────────────────────────
+
+_COOKIES_PATH     = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                  "data", "costco_cookies.json")
+_COOKIE_WARN_DAYS = 25
+
+
+def _send_telegram(token: str, chat_id: str, text: str) -> None:
+    """Fire-and-forget Telegram message. Logs on failure, never raises."""
+    url     = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
+    req     = urllib.request.Request(url, data=payload,
+                                     headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=10)
+        logger.info("Telegram cookie-age warning sent.")
+    except Exception as e:
+        logger.warning(f"Telegram message failed (non-fatal): {e}")
+
+
+def _check_cookie_age() -> None:
+    """
+    Warns if costco_cookies.json is older than 25 days.
+    Sends email alert and Telegram message (if TELEGRAM_BOT_TOKEN and
+    TELEGRAM_CHAT_ID are set). Never blocks the run.
+    """
+    if not os.path.exists(_COOKIES_PATH):
+        return  # no cookies file — rotation/refresh-notes mode, or first run
+
+    age_days = (time.time() - os.path.getmtime(_COOKIES_PATH)) / 86400
+    if age_days < _COOKIE_WARN_DAYS:
+        return
+
+    subject = "⚠️ Costco cookies need refresh — run .\\run.ps1 cookies on your laptop"
+    body    = (
+        f"Costco cookies are {age_days:.0f} days old (warn threshold: {_COOKIE_WARN_DAYS} days).\n\n"
+        f"Scraping will likely start returning CHECK FAILED soon.\n\n"
+        f"To fix:\n"
+        f"  1. On your Windows laptop: .\\run.ps1 cookies\n"
+        f"  2. Upload to VPS:          python tools/cookie_sync.py upload"
+    )
+    logger.warning(f"Cookie age: {age_days:.0f} days — {subject}")
+
+    try:
+        from tools.alert_sender import send_alert
+        send_alert(subject, body, urgent=False)
+    except Exception as e:
+        logger.warning(f"Cookie age email failed (non-fatal): {e}")
+
+    token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        tg_text = f"<b>{subject}</b>\n\n{body}"
+        _send_telegram(token, chat_id, tg_text)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -882,6 +940,7 @@ def main():
     parser.add_argument("--add-limit", type=int, default=None,
                         help="Max new products to add to sheet during discovery")
     args = parser.parse_args()
+    _check_cookie_age()
 
     config     = load_config()
     COL        = load_col_map()
