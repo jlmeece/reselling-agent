@@ -1,0 +1,36 @@
+services:
+
+  scheduler:
+    build:
+      context: ..            # project root — Dockerfile needs the full codebase
+      dockerfile: deploy/Dockerfile
+    env_file: ../.env        # all secrets — never committed, uploaded to VPS manually
+    volumes:
+      # Secret files — upload these to the VPS manually before first run:
+      #   scp google_credentials.json  user@VPS:~/reselling-agent/
+      #   scp data/costco_cookies.json user@VPS:~/reselling-agent/data/   (Chrome modes only)
+      - ../google_credentials.json:/app/google_credentials.json:ro
+
+      # Persist run data between container restarts
+      # Contains: run_history.json, tier2_watchlist.json, tier3_skipped.json,
+      #           category_performance.json, knowledge/, exports/
+      - ../data:/app/data
+
+    restart: unless-stopped
+
+    # Health check: verify the container is alive every 5 minutes.
+    # Fails if the process crashes — Docker will restart it automatically.
+    healthcheck:
+      test: ["CMD", "pgrep", "-x", "cron"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # Resource limits — a single-core VPS (Hostinger KVM 1) handles this fine.
+    # Rotation mode is the only active job; no need for more than 1 CPU.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M

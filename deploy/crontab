@@ -1,0 +1,27 @@
+# Reselling Agent — VPS cron schedule (UTC times)
+# Central = UTC-5 (CDT summer) / UTC-6 (CST winter)
+# Update UTC offset in October (CST) and March (CDT).
+#
+# CURRENTLY ACTIVE on VPS:
+#   rotation — the only mode that doesn't require Chrome/Costco cookies
+#
+# RUNS LOCALLY ON WINDOWS (Chrome-dependent — cannot run on Linux yet):
+#   discovery  7:00 AM CDT  →  0 12 * * *
+#   active     8:00 AM CDT  →  0 13 * * *
+#   daily      9:00 AM CDT  →  0 14 * * *
+#   research  10:00 AM CDT  →  0 15 * * *
+#   active     1:00 PM CDT  →  0 18 * * *
+#   active     6:00 PM CDT  →  0 23 * * *
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+PYTHONPATH=/app
+
+# Rotation digest — Fridays 9:00 AM CDT (14:00 UTC)
+0 14 * * 5 cd /app && python agents/scheduler.py --mode rotation >> /var/log/cron.log 2>&1
+
+# Uncomment these once Chrome-dependent modes are ported to Linux:
+# 0 12 * * *   cd /app && python agents/scheduler.py --mode discovery >> /var/log/cron.log 2>&1
+# 0 14 * * *   cd /app && python agents/scheduler.py --mode daily    >> /var/log/cron.log 2>&1
+# 0 15 * * *   cd /app && python agents/scheduler.py --mode research  >> /var/log/cron.log 2>&1
+# 0 13,18,23 * * *  cd /app && python agents/scheduler.py --mode active >> /var/log/cron.log 2>&1
