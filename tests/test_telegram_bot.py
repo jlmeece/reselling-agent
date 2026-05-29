@@ -99,3 +99,57 @@ def test_has_errors_clean_log():
 
 def test_has_errors_empty_list():
     assert has_errors([]) is False
+
+
+# ── cookie_age_days ───────────────────────────────────────────────────────────
+
+def test_cookie_age_days_returns_float(tmp_path):
+    f = tmp_path / "cookies.json"
+    f.write_text("{}")
+    age = cookie_age_days(str(f))
+    assert isinstance(age, float)
+    assert age < 1.0  # just created
+
+
+def test_cookie_age_days_missing_file_returns_none():
+    age = cookie_age_days("/nonexistent/cookies.json")
+    assert age is None
+
+
+# ── parse_logs_arg ────────────────────────────────────────────────────────────
+
+def test_parse_logs_arg_valid_modes():
+    assert parse_logs_arg("daily") == ("daily", None)
+    assert parse_logs_arg("rotation") == ("rotation", None)
+    assert parse_logs_arg("sync") == ("sync", None)
+
+
+def test_parse_logs_arg_empty_string():
+    mode, err = parse_logs_arg("")
+    assert mode is None
+    assert err is None
+
+
+def test_parse_logs_arg_none():
+    mode, err = parse_logs_arg(None)
+    assert mode is None
+    assert err is None
+
+
+def test_parse_logs_arg_whitespace():
+    mode, err = parse_logs_arg("  ")
+    assert mode is None
+    assert err is None
+
+
+def test_parse_logs_arg_unknown_mode():
+    mode, err = parse_logs_arg("badmode")
+    assert mode is None
+    assert err is not None
+    assert "badmode" in err
+
+
+def test_parse_logs_arg_case_insensitive():
+    mode, err = parse_logs_arg("DAILY")
+    assert mode == "daily"
+    assert err is None

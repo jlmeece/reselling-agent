@@ -9,6 +9,7 @@ and /logs commands from the authorized TELEGRAM_CHAT_ID only.
 import os
 import re
 import sys
+import time
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -65,9 +66,22 @@ def has_errors(lines):
 
 
 def cookie_age_days(path):
-    """Stub — implemented in Task 3."""
-    raise NotImplementedError
+    """Return age of file in days, or None if file doesn't exist."""
+    try:
+        return (time.time() - os.path.getmtime(path)) / 86400
+    except OSError:
+        return None
+
 
 def parse_logs_arg(text):
-    """Stub — implemented in Task 3."""
-    raise NotImplementedError
+    """
+    Parse the argument string from /logs.
+    Returns (mode, None) on valid input, (None, error_msg) on unknown mode,
+    (None, None) if no argument given.
+    """
+    if not text or not text.strip():
+        return None, None
+    mode = text.strip().lower()
+    if mode in VALID_MODES:
+        return mode, None
+    return None, f"Unknown mode '{mode}'. Valid: {', '.join(sorted(VALID_MODES))}"
