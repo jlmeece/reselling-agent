@@ -1,7 +1,6 @@
 """Unit tests for telegram_bot.py pure helpers."""
 import os
 import sys
-import time
 
 import pytest
 

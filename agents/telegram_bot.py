@@ -9,7 +9,6 @@ and /logs commands from the authorized TELEGRAM_CHAT_ID only.
 import os
 import re
 import sys
-import time
 
 from dotenv import load_dotenv
 from loguru import logger
