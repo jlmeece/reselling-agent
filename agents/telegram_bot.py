@@ -38,6 +38,8 @@ VALID_MODES = set(LOG_FILES.keys())
 
 _TS_RE = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
+_MAX_MSG = 4096
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -153,9 +155,8 @@ async def cmd_logs(update, context):
             return
         safe_lines = [html.escape(l) for l in lines]
         text = f"<pre>{mode}.log (last 30 lines):\n" + "\n".join(safe_lines) + "</pre>"
-        MAX_MSG = 4096
-        if len(text) > MAX_MSG:
-            text = text[:MAX_MSG - 20] + "\n[truncated]</pre>"
+        if len(text) > _MAX_MSG:
+            text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
         await update.message.reply_text(text, parse_mode="HTML")
     else:
         sections = []
@@ -164,9 +165,8 @@ async def cmd_logs(update, context):
             body = "\n".join(html.escape(l) for l in lines) if lines is not None else "not found"
             sections.append(f"--- {m}.log ---\n{body}")
         text = "<pre>" + "\n\n".join(sections) + "</pre>"
-        MAX_MSG = 4096
-        if len(text) > MAX_MSG:
-            text = text[:MAX_MSG - 20] + "\n[truncated]</pre>"
+        if len(text) > _MAX_MSG:
+            text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
         await update.message.reply_text(text, parse_mode="HTML")
 
 
