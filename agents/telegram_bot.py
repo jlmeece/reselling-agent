@@ -6,6 +6,7 @@ Runs as a systemd service on Hermes VPS. Responds to /help, /status,
 and /logs commands from the authorized TELEGRAM_CHAT_ID only.
 """
 
+import html
 import os
 import re
 import sys
@@ -14,7 +15,7 @@ import time
 from dotenv import load_dotenv
 from loguru import logger
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
@@ -150,15 +151,22 @@ async def cmd_logs(update, context):
         if lines is None:
             await update.message.reply_text(f"{mode}.log: not found")
             return
-        text = f"<pre>{mode}.log (last 30 lines):\n" + "\n".join(lines) + "</pre>"
+        safe_lines = [html.escape(l) for l in lines]
+        text = f"<pre>{mode}.log (last 30 lines):\n" + "\n".join(safe_lines) + "</pre>"
+        MAX_MSG = 4096
+        if len(text) > MAX_MSG:
+            text = text[:MAX_MSG - 20] + "\n[truncated]</pre>"
         await update.message.reply_text(text, parse_mode="HTML")
     else:
         sections = []
         for m, path in LOG_FILES.items():
             lines = read_tail(path, 10)
-            body = "\n".join(lines) if lines is not None else "not found"
+            body = "\n".join(html.escape(l) for l in lines) if lines is not None else "not found"
             sections.append(f"--- {m}.log ---\n{body}")
         text = "<pre>" + "\n\n".join(sections) + "</pre>"
+        MAX_MSG = 4096
+        if len(text) > MAX_MSG:
+            text = text[:MAX_MSG - 20] + "\n[truncated]</pre>"
         await update.message.reply_text(text, parse_mode="HTML")
 
 
