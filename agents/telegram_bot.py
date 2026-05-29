@@ -95,9 +95,9 @@ def parse_logs_arg(text):
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def _authorized(update, chat_id):
-    uid = update.effective_user.id if update.effective_user else None
-    if uid != chat_id:
-        logger.debug(f"Ignored message from unauthorized user {uid}")
+    cid = update.effective_chat.id if update.effective_chat else None
+    if cid != chat_id:
+        logger.debug(f"Ignored message from unauthorized chat {cid}")
         return False
     return True
 
@@ -158,16 +158,17 @@ async def cmd_logs(update, context):
         if len(text) > _MAX_MSG:
             text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
         await update.message.reply_text(text, parse_mode="HTML")
-    else:
-        sections = []
-        for m, path in LOG_FILES.items():
-            lines = read_tail(path, 10)
-            body = "\n".join(html.escape(l) for l in lines) if lines is not None else "not found"
-            sections.append(f"--- {m}.log ---\n{body}")
-        text = "<pre>" + "\n\n".join(sections) + "</pre>"
-        if len(text) > _MAX_MSG:
-            text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
-        await update.message.reply_text(text, parse_mode="HTML")
+        return
+
+    sections = []
+    for m, path in LOG_FILES.items():
+        lines = read_tail(path, 10)
+        body = "\n".join(html.escape(l) for l in lines) if lines is not None else "not found"
+        sections.append(f"--- {m}.log ---\n{body}")
+    text = "<pre>" + "\n\n".join(sections) + "</pre>"
+    if len(text) > _MAX_MSG:
+        text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
