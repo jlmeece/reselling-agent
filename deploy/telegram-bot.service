@@ -1,0 +1,17 @@
+[Unit]
+Description=WAT Reselling Agent — Telegram Status Bot
+After=network.target
+
+[Service]
+Type=simple
+User=hermes
+WorkingDirectory=/home/hermes/reselling-agent
+ExecStart=/home/hermes/reselling-agent/venv/bin/python agents/telegram_bot.py
+EnvironmentFile=/home/hermes/reselling-agent/.env
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
