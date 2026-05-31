@@ -68,19 +68,18 @@ LENS_WEIGHTS = {
 # ── How lenses combine into the final score ──
 
 FINAL_LENS_WEIGHTS = {
-    "conservative_analyst": 0.30,
-    "growth_operator":      0.30,
-    "brand_builder":        0.20,
-    "volume_flipper":       0.20,
+    "conservative_analyst": 0.25,
+    "growth_operator":      0.25,
+    "brand_builder":        0.10,
+    "volume_flipper":       0.40,
 }
 
 
 # ── Tier thresholds ──
 
 TIER_RULES = {
-    1: 7.0,   # >= 7.0 → Tier 1 (act now)
-    2: 4.0,   # >= 4.0 → Tier 2 (watch/recheck)
-    3: 0.0,   # <  4.0 → Tier 3 (skip, log reason)
+    "tier1": 6.0,
+    "tier2": 3.0,
 }
 
 MAX_TIER1_PER_RUN = 3
@@ -97,10 +96,11 @@ def score_dimension(dimension, value):
     if dimension == "margin_potential":
         if value is None:
             return 0
-        if value > 0.25:   return 10   # 25%+ margin
-        elif value > 0.15: return 7    # 15-25% margin
-        elif value > 0.10: return 4    # 10-15% margin
-        else:              return 1    # <10% not worth it
+        margin = value
+        if margin > 0.10:   return 7
+        if margin > 0.05:   return 5
+        if margin > 0:      return 3
+        return 1
 
     elif dimension == "demand_signals":
         if value is None:
@@ -155,9 +155,9 @@ def apply_seasonal_modifier(base_score, category_config):
 
 def assign_tier(weighted_score):
     """Convert a final weighted score (0-10) to Tier 1, 2, or 3."""
-    if weighted_score >= TIER_RULES[1]:
+    if weighted_score >= TIER_RULES["tier1"]:
         return 1
-    elif weighted_score >= TIER_RULES[2]:
+    elif weighted_score >= TIER_RULES["tier2"]:
         return 2
     else:
         return 3
