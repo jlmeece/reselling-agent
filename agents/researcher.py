@@ -917,6 +917,11 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     sale_info_val += f" ends {sale_expires}"
             free_ship_val = _ship_badge(free_shipping, cart_est)
 
+            # Skip if no eBay price could be determined
+            if not ebay_price or float(str(ebay_price).replace("$", "").replace(",", "") or 0) <= 0:
+                logger.warning(f"  Skipping {title[:50]} — no eBay price data, not writing to sheet.")
+                continue
+
             # 3f. Write to sheet
             from datetime import timedelta
             recheck_date_str = (date.today() + timedelta(days=30)).isoformat()
