@@ -23,13 +23,17 @@ import json
 import time
 import socket
 import random
+import sys
 import subprocess
 from datetime import datetime
 from contextlib import contextmanager
 from loguru import logger
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
-CHROME_EXE       = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+if sys.platform == "win32":
+    CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+else:
+    CHROME_PATH = "/usr/bin/google-chrome"
 CHROME_PORT      = 9222
 CHROME_DEBUG_URL = f"http://localhost:{CHROME_PORT}"
 # Dedicated profile — no spaces in path, not on OneDrive, no extensions
@@ -107,18 +111,24 @@ def _kill_agent_chrome():
     if os.path.exists(CHROME_PID_FILE):
         try:
             pid = int(open(CHROME_PID_FILE).read().strip())
-            subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"], capture_output=True)
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"], capture_output=True)
+            else:
+                subprocess.run(["kill", "-9", str(pid)], capture_output=True)
             os.remove(CHROME_PID_FILE)
             logger.info(f"  Killed agent Chrome (PID {pid})")
         except Exception as e:
             logger.debug(f"  PID kill failed ({e}) — falling back to profile-based kill")
             # Fallback: kill Chrome using the agent profile path as the discriminator
-            subprocess.run(
-                ["wmic", "process", "where",
-                 f"name='chrome.exe' and commandline like '%CostcoAgentProfile%'",
-                 "call", "terminate"],
-                capture_output=True
-            )
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["wmic", "process", "where",
+                     f"name='chrome.exe' and commandline like '%CostcoAgentProfile%'",
+                     "call", "terminate"],
+                    capture_output=True
+                )
+            else:
+                subprocess.run(["pkill", "-f", "CostcoAgentProfile"], capture_output=True)
     time.sleep(2)
 
 
@@ -138,7 +148,7 @@ def _ensure_chrome():
     os.makedirs(AGENT_PROFILE, exist_ok=True)
     logger.info(f"  Launching Chrome (agent profile: {AGENT_PROFILE})...")
     proc = subprocess.Popen([
-        CHROME_EXE,
+        CHROME_PATH,
         f"--remote-debugging-port={CHROME_PORT}",
         f"--remote-allow-origins=http://localhost:{CHROME_PORT}",
         f"--user-data-dir={AGENT_PROFILE}",

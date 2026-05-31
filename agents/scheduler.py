@@ -340,98 +340,101 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
             logger.info(f"  {status} -> PENDING (re_eval_date reached): {title[:50]}")
 
     # ── Pass 2: Costco scrape for APPROVED / PAUSED_OOS / PAUSED_MARGIN ──────
-    with make_browser() as page:
-        for idx, row in enumerate(all_data):
-            sheet_row = idx + start_row
-            if not row:
-                continue
+    if sys.platform != "win32":
+        logger.info("Daily sweep: Chrome-dependent scrape skipped on non-Windows.")
+    else:
+        with make_browser() as page:
+            for idx, row in enumerate(all_data):
+                sheet_row = idx + start_row
+                if not row:
+                    continue
 
-            status     = safe_get(row, col_to_idx(COL["status"]))
-            costco_url = safe_get(row, col_to_idx(COL["costco_url"]))
+                status     = safe_get(row, col_to_idx(COL["status"]))
+                costco_url = safe_get(row, col_to_idx(COL["costco_url"]))
 
-            if status not in DAILY_SWEEP_STATUSES:
-                continue
-            if not costco_url.startswith("http"):
-                continue
+                if status not in DAILY_SWEEP_STATUSES:
+                    continue
+                if not costco_url.startswith("http"):
+                    continue
 
-            title       = safe_get(row, col_to_idx(COL["title"]))
-            category    = safe_get(row, col_to_idx(COL["category"]))
-            seo_title   = safe_get(row, col_to_idx(COL["seo_title"]))
-            costco_cost = safe_get(row, col_to_idx(COL["costco_cost"]))
-            ebay_price  = safe_get(row, col_to_idx(COL["ebay_price"]))
-            fee_rate    = safe_get(row, col_to_idx(COL["fee_rate"]))
-            ship_cost   = safe_get(row, col_to_idx(COL["ship_cost"]))
+                title       = safe_get(row, col_to_idx(COL["title"]))
+                category    = safe_get(row, col_to_idx(COL["category"]))
+                seo_title   = safe_get(row, col_to_idx(COL["seo_title"]))
+                costco_cost = safe_get(row, col_to_idx(COL["costco_cost"]))
+                ebay_price  = safe_get(row, col_to_idx(COL["ebay_price"]))
+                fee_rate    = safe_get(row, col_to_idx(COL["fee_rate"]))
+                ship_cost   = safe_get(row, col_to_idx(COL["ship_cost"]))
 
-            logger.info(f"Daily sweep: {title[:50]} [{status}]")
+                logger.info(f"Daily sweep: {title[:50]} [{status}]")
 
-            costco_data  = scrape_costco(costco_url, page=page)
-            stock_status = costco_data["stock_status"]
-            new_price    = costco_data["price"]
+                costco_data  = scrape_costco(costco_url, page=page)
+                stock_status = costco_data["stock_status"]
+                new_price    = costco_data["price"]
 
-            updates = [
-                (COL["stock_status"], stock_status),
-                (COL["last_checked"], run_time),
-            ]
-            if new_price:
-                updates.append((COL["costco_cost"], new_price))
+                updates = [
+                    (COL["stock_status"], stock_status),
+                    (COL["last_checked"], run_time),
+                ]
+                if new_price:
+                    updates.append((COL["costco_cost"], new_price))
 
-            if status == "APPROVED":
-                if stock_status == "OUT OF STOCK":
-                    updates.append((COL["tier_summary"], "Stock OOS — holding APPROVED until restocked"))
-                    logger.info(f"  APPROVED held — OOS")
-                else:
-                    if not seo_title:
-                        cat_config = categories.get(category, {})
-                        products_need_copy.append({
-                            "title": title, "category": category,
-                            "cost": costco_cost, "sell_price": ebay_price,
-                            "site_url": cat_config.get("site_url", ""),
-                            "discount_code": business["discount_code"],
-                        })
-                        copy_row_map.append((sheet_row, title))
-                        updates.append((COL["tier_summary"], "Stock OK — generating copy, will promote to READY"))
-                        logger.info(f"  Stock OK, copy queued")
+                if status == "APPROVED":
+                    if stock_status == "OUT OF STOCK":
+                        updates.append((COL["tier_summary"], "Stock OOS — holding APPROVED until restocked"))
+                        logger.info(f"  APPROVED held — OOS")
                     else:
-                        updates.append((COL["status"], "READY"))
-                        updates.append((COL["tier_summary"], "Stock verified, copy ready — run ebay_export.py to list"))
-                        ready_items.append({"title": title, "row": sheet_row, "has_copy": True})
-                        logger.info(f"  APPROVED -> READY")
+                        if not seo_title:
+                            cat_config = categories.get(category, {})
+                            products_need_copy.append({
+                                "title": title, "category": category,
+                                "cost": costco_cost, "sell_price": ebay_price,
+                                "site_url": cat_config.get("site_url", ""),
+                                "discount_code": business["discount_code"],
+                            })
+                            copy_row_map.append((sheet_row, title))
+                            updates.append((COL["tier_summary"], "Stock OK — generating copy, will promote to READY"))
+                            logger.info(f"  Stock OK, copy queued")
+                        else:
+                            updates.append((COL["status"], "READY"))
+                            updates.append((COL["tier_summary"], "Stock verified, copy ready — run ebay_export.py to list"))
+                            ready_items.append({"title": title, "row": sheet_row, "has_copy": True})
+                            logger.info(f"  APPROVED -> READY")
 
-            elif status == "PAUSED_OOS":
-                _, reason_code, notes = determine_status(
-                    status, stock_status, None, False, None,
-                )
-                updates.append((COL["tier_summary"], notes))
-                if reason_code == "restock":
-                    updates.append((COL["status"], "WATCH"))
-                    oos_recovered.append({"title": title, "row": sheet_row})
-                    logger.info(f"  PAUSED_OOS -> WATCH (restocked)")
+                elif status == "PAUSED_OOS":
+                    _, reason_code, notes = determine_status(
+                        status, stock_status, None, False, None,
+                    )
+                    updates.append((COL["tier_summary"], notes))
+                    if reason_code == "restock":
+                        updates.append((COL["status"], "WATCH"))
+                        oos_recovered.append({"title": title, "row": sheet_row})
+                        logger.info(f"  PAUSED_OOS -> WATCH (restocked)")
 
-            elif status == "PAUSED_MARGIN":
-                # Recompute margin with latest Costco price
-                margin = None
-                try:
-                    p = float(str(ebay_price).replace("$", "").replace(",", ""))
-                    c = float(str(new_price or costco_cost).replace("$", "").replace(",", ""))
-                    f = float(str(fee_rate).replace("%", "")) / (100 if "%" in str(fee_rate) else 1)
-                    s = float(str(ship_cost).replace("$", "").replace(",", "")) if ship_cost else 0
-                    if p > 0:
-                        margin = (p - c - p * f - s) / p
-                except (ValueError, TypeError):
-                    pass
+                elif status == "PAUSED_MARGIN":
+                    # Recompute margin with latest Costco price
+                    margin = None
+                    try:
+                        p = float(str(ebay_price).replace("$", "").replace(",", ""))
+                        c = float(str(new_price or costco_cost).replace("$", "").replace(",", ""))
+                        f = float(str(fee_rate).replace("%", "")) / (100 if "%" in str(fee_rate) else 1)
+                        s = float(str(ship_cost).replace("$", "").replace(",", "")) if ship_cost else 0
+                        if p > 0:
+                            margin = (p - c - p * f - s) / p
+                    except (ValueError, TypeError):
+                        pass
 
-                _, reason_code, notes = determine_status(
-                    status, stock_status, margin, False, None,
-                    min_margin=business["min_margin_threshold"],
-                )
-                updates.append((COL["tier_summary"], notes))
-                if reason_code == "margin_recovered":
-                    updates.append((COL["status"], "WATCH"))
-                    margin_recovered.append({"title": title, "row": sheet_row})
-                    logger.info(f"  PAUSED_MARGIN -> WATCH (margin {margin:.1%})")
+                    _, reason_code, notes = determine_status(
+                        status, stock_status, margin, False, None,
+                        min_margin=business["min_margin_threshold"],
+                    )
+                    updates.append((COL["tier_summary"], notes))
+                    if reason_code == "margin_recovered":
+                        updates.append((COL["status"], "WATCH"))
+                        margin_recovered.append({"title": title, "row": sheet_row})
+                        logger.info(f"  PAUSED_MARGIN -> WATCH (margin {margin:.1%})")
 
-            write_row_partial(service, sheet_name, sheet_row, updates)
-            time.sleep(2)
+                write_row_partial(service, sheet_name, sheet_row, updates)
+                time.sleep(2)
 
     # ── Copy generation for queued APPROVED products ──────────────────────────
     if products_need_copy:
