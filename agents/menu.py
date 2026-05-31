@@ -53,6 +53,7 @@ MENU_GROUPS = [
             {"label": "Run weekly: performance digest",               "mode": "rotation", "category_prompt": False, "args": []},
             {"label": "Refresh Costco session cookies",               "mode": None,       "category_prompt": False, "args": [], "script": SETUP_COOKIES},
             {"label": "Sheet formatter / setup",                      "mode": None,       "category_prompt": False, "args": [], "script": SETUP_SHEET},
+            {"label": "Generate eBay listing CSV (READY products only)", "action": "ebay_export", "category_prompt": False, "args": []},
         ],
     },
 ]
@@ -195,6 +196,10 @@ def run_item(item, category=None, add_limit=None):
     """Invoke the subprocess for the selected menu item."""
     if item.get("action") == "reset_paused":
         reset_paused_to_pending()
+        input("\nPress Enter to return to menu...")
+        return
+    elif item.get("action") == "ebay_export":
+        subprocess.run([sys.executable, "tools/ebay_export.py"])
         input("\nPress Enter to return to menu...")
         return
     if item.get("script"):
