@@ -31,30 +31,73 @@ MENU_GROUPS = [
     {
         "label": "RESEARCH",
         "items": [
-            {"label": "Discover new products — all categories",   "mode": "discovery", "category_prompt": False, "args": [], "limit_prompt": True},
-            {"label": "Discover new products — pick category",    "mode": "discovery", "category_prompt": True,  "args": [], "limit_prompt": True},
-            {"label": "Score PENDING rows — all categories",      "mode": "research",  "category_prompt": False, "args": []},
-            {"label": "Score PENDING rows — pick category",       "mode": "research",  "category_prompt": True,  "args": []},
+            {"label": "Find new Costco products (all categories)",        "mode": "discovery",      "category_prompt": False, "args": [], "limit_prompt": True},
+            {"label": "Find new Costco products (pick category)",         "mode": "discovery",      "category_prompt": True,  "args": [], "limit_prompt": True},
+            {"label": "Research & score queued products (all)",           "mode": "research",       "category_prompt": False, "args": []},
+            {"label": "Research & score queued products (pick category)", "mode": "research",       "category_prompt": True,  "args": []},
+            {"label": "Reset PAUSED products → PENDING for re-research", "action": "reset_paused", "category_prompt": False, "args": []},
         ],
     },
     {
         "label": "PRICE & STOCK",
         "items": [
-            {"label": "Recheck failed / missing prices",          "mode": "recheck",   "category_prompt": False, "args": []},
-            {"label": "Force full refresh (all rows)",            "mode": "recheck",   "category_prompt": False, "args": ["--force"]},
-            {"label": "Active listings monitor",                  "mode": "active",    "category_prompt": False, "args": []},
+            {"label": "Fix products with missing eBay prices",            "mode": "recheck", "category_prompt": False, "args": []},
+            {"label": "Refresh all prices and stock status",              "mode": "recheck", "category_prompt": False, "args": ["--force"]},
+            {"label": "Check active eBay listings for OOS/price changes", "mode": "active",  "category_prompt": False, "args": []},
         ],
     },
     {
         "label": "MAINTENANCE",
         "items": [
-            {"label": "Daily sweep (APPROVED→READY, PAUSED_OOS)", "mode": "daily",    "category_prompt": False, "args": []},
-            {"label": "Rotation digest (weekly)",                  "mode": "rotation", "category_prompt": False, "args": []},
-            {"label": "Refresh Costco session cookies",            "mode": None,       "category_prompt": False, "args": [], "script": SETUP_COOKIES},
-            {"label": "Sheet formatter / setup",                   "mode": None,       "category_prompt": False, "args": [], "script": SETUP_SHEET},
+            {"label": "Run daily: promote approved, check restocks", "mode": "daily",    "category_prompt": False, "args": []},
+            {"label": "Run weekly: performance digest",               "mode": "rotation", "category_prompt": False, "args": []},
+            {"label": "Refresh Costco session cookies",               "mode": None,       "category_prompt": False, "args": [], "script": SETUP_COOKIES},
+            {"label": "Sheet formatter / setup",                      "mode": None,       "category_prompt": False, "args": [], "script": SETUP_SHEET},
         ],
     },
 ]
+
+
+def reset_paused_to_pending():
+    sys.path.insert(0, PROJECT_ROOT)
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(PROJECT_ROOT, ".env"), encoding="utf-8", override=True)
+    from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial
+
+    with open(os.path.join(PROJECT_ROOT, "config", "categories.yaml")) as f:
+        config = yaml.safe_load(f)
+    with open(os.path.join(PROJECT_ROOT, "config", "col_map.yaml")) as f:
+        COL = yaml.safe_load(f)["columns"]
+
+    business   = config["business"]
+    sheet_name = business["sheet_name"]
+    start_row  = business["data_start_row"]
+    end_row    = business["data_end_row"]
+
+    service  = get_sheets_service()
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
+
+    paused_rows = [
+        idx + start_row
+        for idx, row in enumerate(all_data)
+        if row and row[0] == "PAUSED_DEMAND"
+    ]
+
+    if not paused_rows:
+        print("No PAUSED_DEMAND rows found.")
+        return
+
+    raw = input(f"Reset {len(paused_rows)} PAUSED_DEMAND products to PENDING? (y/n): ").strip().lower()
+    if raw != "y":
+        print("Cancelled.")
+        return
+
+    for sheet_row in paused_rows:
+        write_row_partial(service, sheet_name, sheet_row, [
+            (COL["status"],       "PENDING"),
+            (COL["re_eval_date"], ""),
+        ])
+    print(f"{len(paused_rows)} rows reset to PENDING.")
 
 
 def load_categories(path=None):
@@ -150,6 +193,10 @@ def prompt_limit():
 
 def run_item(item, category=None, add_limit=None):
     """Invoke the subprocess for the selected menu item."""
+    if item.get("action") == "reset_paused":
+        reset_paused_to_pending()
+        input("\nPress Enter to return to menu...")
+        return
     if item.get("script"):
         cmd = [sys.executable, item["script"]]
     else:
