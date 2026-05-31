@@ -113,9 +113,10 @@ def _search_subreddit_pullpush(subreddit: str, query: str) -> list[Post]:
         posts.append(Post.make(
             source_id=source_id,
             title=title,
-            body=item.get("selftext", ""),
+            snippet=(item.get("selftext") or "")[:400],
             url=f"https://reddit.com{item.get('permalink', '')}",
-            date=_to_date(item.get("created_utc")),
+            date_=_to_date(item.get("created_utc")),
+            engagement=int(item.get("score", 0) or 0) + int(item.get("num_comments", 0) or 0),
         ))
     return posts
 
