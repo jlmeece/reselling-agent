@@ -37,7 +37,10 @@ else:
 CHROME_PORT      = 9222
 CHROME_DEBUG_URL = f"http://localhost:{CHROME_PORT}"
 # Dedicated profile — no spaces in path, not on OneDrive, no extensions
-AGENT_PROFILE    = os.path.join(os.environ.get("LOCALAPPDATA", ""), "CostcoAgentProfile")
+if sys.platform == "win32":
+    AGENT_PROFILE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "CostcoAgentProfile")
+else:
+    AGENT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "CostcoAgentProfile")
 COOKIES_PATH     = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "costco_cookies.json"
@@ -147,7 +150,7 @@ def _ensure_chrome():
 
     os.makedirs(AGENT_PROFILE, exist_ok=True)
     logger.info(f"  Launching Chrome (agent profile: {AGENT_PROFILE})...")
-    proc = subprocess.Popen([
+    chrome_flags = [
         CHROME_PATH,
         f"--remote-debugging-port={CHROME_PORT}",
         f"--remote-allow-origins=http://localhost:{CHROME_PORT}",
@@ -156,7 +159,16 @@ def _ensure_chrome():
         "--no-default-browser-check",
         "--disable-extensions",
         "--disable-sync",
-    ])
+    ]
+    if sys.platform != "win32":
+        chrome_flags += [
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1920,1080",
+        ]
+    proc = subprocess.Popen(chrome_flags)
 
     # Save PID so we can kill only this process next time
     with open(CHROME_PID_FILE, "w") as f:
