@@ -1,11 +1,11 @@
 """
 tools.scouts.web_scout
-General web search scout. Two backends, picked in this order:
+General web search scout. Three backends, tried in this order:
 
-  1. Google Custom Search JSON API — cleanest data, 100 queries/day free.
+  1. Serper — Google results via API. Requires SERPER_API_KEY in .env.
+  2. Brave Search API — Requires BRAVE_API_KEY in .env.
+  3. Google Custom Search JSON API — last resort, 100 queries/day free.
      Requires GOOGLE_CSE_KEY + GOOGLE_CSE_ID in .env.
-  2. DuckDuckGo HTML fallback — no API key. Less reliable; rate-limited; uses
-     the existing CDP Chrome session for stealth.
 
 Beyond returning post-shaped results, web_scout surfaces `candidate_domains`
 back to the orchestrator. The knowledge_store tracks recurrence: any domain
@@ -29,7 +29,8 @@ from .base_scout import Post, QueryContext, ScoutResult
 
 
 GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
-DDG_HTML_URL   = "https://html.duckduckgo.com/html/?q={query}"
+SERPER_URL     = "https://google.serper.dev/search"
+BRAVE_URL      = "https://api.search.brave.com/res/v1/web/search"
 
 EXCLUDED_DOMAINS = {
     "pinterest.com", "ebay.com", "amazon.com", "walmart.com",
@@ -54,6 +55,54 @@ def _is_excluded(url: str) -> bool:
     return any(d == ex or d.endswith("." + ex) for ex in EXCLUDED_DOMAINS)
 
 
+def _via_serper(query: str) -> list[dict]:
+    key = os.getenv("SERPER_API_KEY")
+    if not key:
+        return []
+    try:
+        import json as _json
+        data = _json.dumps({"q": query, "num": MAX_RESULTS_PER_TERM}).encode()
+        req = urllib.request.Request(
+            SERPER_URL,
+            data=data,
+            headers={"X-API-KEY": key, "Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            results = _json.loads(resp.read().decode())
+        return [
+            {"link": r.get("link",""), "title": r.get("title",""), "snippet": r.get("snippet","")}
+            for r in results.get("organic", [])
+            if not _is_excluded(r.get("link",""))
+        ]
+    except Exception as e:
+        logger.debug(f"  Serper failed: {e}")
+        return []
+
+
+def _via_brave(query: str) -> list[dict]:
+    key = os.getenv("BRAVE_API_KEY")
+    if not key:
+        return []
+    try:
+        params = urllib.parse.urlencode({"q": query, "count": MAX_RESULTS_PER_TERM})
+        req = urllib.request.Request(
+            f"{BRAVE_URL}?{params}",
+            headers={"Accept": "application/json", "X-Subscription-Token": key},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            import json as _json
+            results = _json.loads(resp.read().decode())
+        return [
+            {"link": r.get("url",""), "title": r.get("title",""), "snippet": r.get("description","")}
+            for r in results.get("web", {}).get("results", [])
+            if not _is_excluded(r.get("url",""))
+        ]
+    except Exception as e:
+        logger.debug(f"  Brave search failed: {e}")
+        return []
+
+
 def _via_google_cse(query: str) -> list[dict]:
     key = os.getenv("GOOGLE_CSE_KEY")
     cx  = os.getenv("GOOGLE_CSE_ID")
@@ -67,45 +116,11 @@ def _via_google_cse(query: str) -> list[dict]:
     except Exception as e:
         err = str(e)
         if "403" in err or "quota" in err.lower():
-            logger.warning("  web_scout: Google CSE quota exhausted (100/day) — falling back to DuckDuckGo")
+            logger.warning("  web_scout: Google CSE quota exhausted (100/day)")
         else:
             logger.debug(f"  web_scout CSE failed: {e}")
         return []
     return data.get("items", []) or []
-
-
-def _via_duckduckgo(query: str) -> list[dict]:
-    """
-    Fallback using DuckDuckGo's HTML endpoint via urllib (no Playwright).
-    Playwright sync API can't start a second session while the main CDP Chrome
-    session is already running in the researcher loop.
-    """
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        url = DDG_HTML_URL.format(query=urllib.parse.quote(query))
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-    except Exception as e:
-        logger.debug(f"  web_scout DDG fetch failed: {e}")
-        return []
-
-    items: list[dict] = []
-    # Parse result links from DDG HTML — format: <a class="result__a" href="...">title</a>
-    matches = list(re.finditer(
-        r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>',
-        html, re.DOTALL
-    ))[:MAX_RESULTS_PER_TERM]
-    for m in matches:
-        href  = m.group(1).strip()
-        title = re.sub(r"<[^>]+>", "", m.group(2)).strip()
-        if href and title:
-            items.append({"link": href, "title": title, "snippet": ""})
-
-    return items
 
 
 def _parse_date_hint(snippet: str) -> date | None:
@@ -145,7 +160,7 @@ def run(query_ctx: QueryContext, category_config: dict) -> list[ScoutResult]:
     seen_urls: set[str] = set()
 
     for query in rendered:
-        items = _via_google_cse(query) or _via_duckduckgo(query)
+        items = _via_serper(query) or _via_brave(query) or _via_google_cse(query)
         for it in items:
             url = it.get("link") or ""
             if not url or url in seen_urls or _is_excluded(url):
@@ -166,8 +181,13 @@ def run(query_ctx: QueryContext, category_config: dict) -> list[ScoutResult]:
             if d and d not in candidate_domains:
                 candidate_domains.append(d)
 
-    note = f"queries={rendered!r}; backends="
-    note += "google_cse" if os.getenv("GOOGLE_CSE_KEY") and os.getenv("GOOGLE_CSE_ID") else "duckduckgo"
+    active = (
+        "serper" if os.getenv("SERPER_API_KEY") else
+        "brave" if os.getenv("BRAVE_API_KEY") else
+        "google_cse" if (os.getenv("GOOGLE_CSE_KEY") and os.getenv("GOOGLE_CSE_ID")) else
+        "none"
+    )
+    note = f"queries={rendered!r}; backends=serper+brave+google_cse; primary={active}"
 
     return [ScoutResult.from_posts(
         source_id="web:search",

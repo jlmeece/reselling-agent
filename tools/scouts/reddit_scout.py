@@ -28,17 +28,24 @@ SUB_SEARCH_URL = (
     "?q={query}&sort=new&limit=15&restrict_sr=1&t=month"
 )
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; reselling-agent/1.0)",
-}
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+]
+
+def _get_headers() -> dict:
+    return {"User-Agent": random.choice(_USER_AGENTS)}
+
 
 REQUEST_TIMEOUT = 10
-SLEEP_BETWEEN_QUERIES = (0.8, 1.5)
+SLEEP_BETWEEN_QUERIES = (1.5, 3.0)
 
 
-def _fetch(url: str) -> dict:
+def _fetch(url: str, headers: dict | None = None) -> dict:
     try:
-        req = urllib.request.Request(url, headers=HEADERS)
+        req = urllib.request.Request(url, headers=headers or _get_headers())
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except Exception as e:
@@ -61,8 +68,11 @@ def _search_subreddit(subreddit: str, query: str) -> list[Post]:
         sub=urllib.parse.quote(sub_clean),
         query=urllib.parse.quote(query),
     )
-    data = _fetch(url)
-    children = data.get("data", {}).get("children", [])
+    try:
+        data = _fetch(url)
+        children = data.get("data", {}).get("children", [])
+    except Exception:
+        return _search_subreddit_pullpush(subreddit, query)
 
     posts: list[Post] = []
     source_id = f"reddit:r/{sub_clean}"
@@ -78,6 +88,34 @@ def _search_subreddit(subreddit: str, query: str) -> list[Post]:
             snippet=(d.get("selftext") or "")[:400],
             engagement=int(d.get("score", 0) or 0) + int(d.get("num_comments", 0) or 0),
             source_id=source_id,
+        ))
+
+    if not posts:
+        return _search_subreddit_pullpush(subreddit, query)
+    return posts
+
+
+PULLPUSH_URL = "https://api.pullpush.io/reddit/search/submission/?q={query}&subreddit={sub}&size=10&sort=desc"
+
+def _search_subreddit_pullpush(subreddit: str, query: str) -> list[Post]:
+    sub_clean = subreddit.lstrip("r/").lstrip("/").strip()
+    url = PULLPUSH_URL.format(
+        sub=urllib.parse.quote(sub_clean),
+        query=urllib.parse.quote(query),
+    )
+    data = _fetch(url, headers=_get_headers())
+    posts = []
+    source_id = f"reddit:r/{sub_clean}"
+    for item in data.get("data", []):
+        title = item.get("title")
+        if not title:
+            continue
+        posts.append(Post.make(
+            source_id=source_id,
+            title=title,
+            body=item.get("selftext", ""),
+            url=f"https://reddit.com{item.get('permalink', '')}",
+            date=_to_date(item.get("created_utc")),
         ))
     return posts
 
