@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import random
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timezone
@@ -42,12 +43,19 @@ def _get_headers() -> dict:
 REQUEST_TIMEOUT = 10
 SLEEP_BETWEEN_QUERIES = (1.5, 3.0)
 
+_REDDIT_BLOCKED = False
+
 
 def _fetch(url: str, headers: dict | None = None) -> dict:
     try:
         req = urllib.request.Request(url, headers=headers or _get_headers())
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            raise
+        logger.debug(f"  reddit fetch failed: {e}")
+        return {}
     except Exception as e:
         logger.debug(f"  reddit fetch failed: {e}")
         return {}
@@ -63,36 +71,42 @@ def _to_date(utc_ts) -> date | None:
 
 
 def _search_subreddit(subreddit: str, query: str) -> list[Post]:
+    global _REDDIT_BLOCKED
     sub_clean = subreddit.lstrip("r/").lstrip("/").strip()
-    url = SUB_SEARCH_URL.format(
-        sub=urllib.parse.quote(sub_clean),
-        query=urllib.parse.quote(query),
-    )
-    try:
-        data = _fetch(url)
-        children = data.get("data", {}).get("children", [])
-    except Exception:
-        return _search_subreddit_pullpush(subreddit, query)
 
-    posts: list[Post] = []
-    source_id = f"reddit:r/{sub_clean}"
-    for item in children:
-        d = item.get("data", {}) or {}
-        title = d.get("title")
-        if not title:
-            continue
-        posts.append(Post.make(
-            title=title,
-            url=f"https://reddit.com{d.get('permalink', '')}",
-            date_=_to_date(d.get("created_utc")),
-            snippet=(d.get("selftext") or "")[:400],
-            engagement=int(d.get("score", 0) or 0) + int(d.get("num_comments", 0) or 0),
-            source_id=source_id,
-        ))
+    if not _REDDIT_BLOCKED:
+        url = SUB_SEARCH_URL.format(
+            sub=urllib.parse.quote(sub_clean),
+            query=urllib.parse.quote(query),
+        )
+        try:
+            data = _fetch(url)
+            children = data.get("data", {}).get("children", [])
+            posts: list[Post] = []
+            source_id = f"reddit:r/{sub_clean}"
+            for item in children:
+                d = item.get("data", {}) or {}
+                title = d.get("title")
+                if not title:
+                    continue
+                posts.append(Post.make(
+                    title=title,
+                    url=f"https://reddit.com{d.get('permalink', '')}",
+                    date_=_to_date(d.get("created_utc")),
+                    snippet=(d.get("selftext") or "")[:400],
+                    engagement=int(d.get("score", 0) or 0) + int(d.get("num_comments", 0) or 0),
+                    source_id=source_id,
+                ))
+            if posts:
+                return posts
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                logger.warning("  reddit_scout: 403 — Reddit is blocking unauthenticated requests; switching all remaining subreddits to Pullpush")
+                _REDDIT_BLOCKED = True
+        except Exception:
+            pass
 
-    if not posts:
-        return _search_subreddit_pullpush(subreddit, query)
-    return posts
+    return _search_subreddit_pullpush(subreddit, query)
 
 
 PULLPUSH_URL = "https://api.pullpush.io/reddit/search/submission/?q={query}&subreddit={sub}&size=10&sort=desc"

@@ -160,7 +160,11 @@ def run(query_ctx: QueryContext, category_config: dict) -> list[ScoutResult]:
     seen_urls: set[str] = set()
 
     for query in rendered:
-        items = _via_serper(query) or _via_brave(query) or _via_google_cse(query)
+        items = _via_serper(query)
+        if not items:
+            items = _via_brave(query)
+        if not items:
+            items = _via_google_cse(query)
         for it in items:
             url = it.get("link") or ""
             if not url or url in seen_urls or _is_excluded(url):
