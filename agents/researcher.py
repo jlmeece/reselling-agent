@@ -847,8 +847,10 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 )
 
             # Hard floor: strong eBay velocity (30+ sold) locks in a minimum demand score of 8.
-            # Real transaction data outranks community signal for established products.
-            sold_90d_for_floor = ebay_data.get("sold_90d") or 0
+            # Use max of live scrape + cached sheet value — eBay scrape results fluctuate run-to-run.
+            live_sold_90d      = ebay_data.get("sold_90d") or 0
+            cached_sold_90d    = int(float(safe_get(row, col_to_idx(COL["sold_90d"])) or 0))
+            sold_90d_for_floor = max(live_sold_90d, cached_sold_90d)
             if sold_90d_for_floor >= 30:
                 dimension_scores["demand_signals"] = max(dimension_scores.get("demand_signals", 0), 8.0)
 
@@ -914,7 +916,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             verify_flag = " ⚠️VERIFY" if ebay_data.get("wrong_product_flag") else ""
 
             # Velocity + monthly profit estimate — the real opportunity signal
-            sold_90d_val   = ebay_data.get("sold_90d") or 0
+            sold_90d_val   = max(ebay_data.get("sold_90d") or 0, int(float(safe_get(row, col_to_idx(COL["sold_90d"])) or 0)))
             monthly_units  = round(sold_90d_val / 3, 1)
             # Cap velocity by purchase limit — you can only buy what Costco allows
             if purchase_limit:
