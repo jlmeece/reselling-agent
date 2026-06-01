@@ -109,6 +109,7 @@ def score_dimension(dimension, value):
             return 1   # unknown ≠ zero — product may simply be new
         if value > 30:   return 10
         elif value > 15: return 8
+        elif value > 8:  return 6
         elif value > 5:  return 5
         elif value > 1:  return 3
         else:            return 1
