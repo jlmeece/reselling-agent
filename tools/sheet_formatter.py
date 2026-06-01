@@ -1137,7 +1137,7 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
         cost_f  = _flt(cost_s)
         fee_f   = _flt(fee_s) if fee_s else 0.1325
         net     = round(ebay_f * (1 - fee_f) - cost_f, 2) if ebay_f > 0 else 0.0
-        if ebay_f > 0 and cost_f > 0:
+        if ebay_f > 0 and cost_f > 0 and status != "PAUSED_DEMAND" and net > 0:
             cat["net_sum"]   += net
             cat["net_count"] += 1
 
@@ -1175,7 +1175,7 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
             cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
             for run in reversed(history.get("runs", [])):
                 mode = run.get("mode", "")
-                ts   = f"{run.get('date', '')} {run.get('time', '')}"
+                ts   = f"'{run.get('date', '')} {run.get('time', '')}"
                 if mode == "research" and last_research == "—":
                     last_research = ts
                 if mode == "discovery" and last_discovery == "—":

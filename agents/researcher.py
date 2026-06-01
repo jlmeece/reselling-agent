@@ -1042,6 +1042,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             # Clear re_eval_date when a PAUSED item gets re-researched
             if safe_get(row, 0) == "PAUSED":
                 updates.append((COL["re_eval_date"], recheck_date_str))
+            if costco_data.get("image_urls"):
+                updates.append((COL["image_urls"], ",".join(costco_data["image_urls"][:5])))
             write_row_partial(service, sheet_name, sheet_row, updates)
 
             # 3g. Listing copy — generate immediately for Tier 1/2 so it's ready before
