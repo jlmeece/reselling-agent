@@ -7,9 +7,9 @@ researcher agent (which uses Claude to reason through Pass 1 + Pass 2), then
 applies the deterministic scoring math from skills/scoring.py.
 
 Tier rules:
-  Tier 1 (score >= 7.0): List now — top opportunity
-  Tier 2 (4.0 <= score < 7.0): Watch — recheck in 7 days
-  Tier 3 (score < 4.0): Skip — log reason and move on
+  Tier 1 (score >= 6.0): SCORED — review and approve to list
+  Tier 2 (3.0 <= score < 6.0): WATCH — re-scored weekly
+  Tier 3 (score < 3.0): PAUSED_DEMAND — re-eval in 30 days
 """
 
 import sys
@@ -48,11 +48,11 @@ def score_product(product_data, dimension_scores, reasoning, category_config):
     tier = assign_tier(final_score)
 
     if tier == 1:
-        recommendation = "List now. Review copy and photos before publishing."
+        recommendation = "Tier 1 — SCORED. Review notes and approve to list, or set PAUSED_DEMAND to skip."
     elif tier == 2:
-        recommendation = "Watch. Recheck in 7 days or when stock status changes."
+        recommendation = "Tier 2 — WATCH. Re-scored weekly; promotes to SCORED if conditions improve."
     else:
-        recommendation = "Skip. Log reason and move on."
+        recommendation = "Tier 3 — PAUSED_DEMAND. Re-eval in 30 days."
 
     return {
         "tier": tier,

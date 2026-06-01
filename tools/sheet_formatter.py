@@ -29,10 +29,12 @@ HDR_FG    = _rgb("FFFFFF")
 BORDER_CLR = _rgb("616161")  # solid grid border (dark grey — visible on colored backgrounds)
 
 STATUS_COLORS = {
-    "PENDING":        _rgb("FFF9C4"),   # yellow    — new, awaiting review
-    "APPROVED":       _rgb("DCEDC8"),   # green     — Jordan approved, copy generating
+    "PENDING":        _rgb("FFF9C4"),   # yellow    — new, awaiting research
+    "SCORED":         _rgb("66BB6A"),   # green     — Tier 1 result, action required
+    "APPROVED":       _rgb("DCEDC8"),   # pale green — Jordan approved, copy generating
     "READY":          _rgb("B2DFDB"),   # teal      — copy done, export to list
-    "ACTIVE":         _rgb("F1F8E9"),   # pale green — live listing, monitored
+    "LISTED":         _rgb("90CAF9"),   # light blue — CSV uploaded, listing in progress
+    "ACTIVE":         _rgb("F1F8E9"),   # very pale green — live listing, monitored
     "WATCH":          _rgb("BBDEFB"),   # blue      — Tier 2, needs more data
     "PAUSED_OOS":     _rgb("FFE0B2"),   # orange    — out of stock at Costco
     "PAUSED_MARGIN":  _rgb("FFE0B2"),   # orange    — margin below threshold
@@ -331,7 +333,7 @@ def _create_filter_views(service, spreadsheet_id, tab_id, data_start_row):
         return {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": v} for v in values]}}
 
     all_statuses = [
-        "PENDING", "APPROVED", "READY", "ACTIVE", "WATCH",
+        "PENDING", "SCORED", "APPROVED", "READY", "LISTED", "ACTIVE", "WATCH",
         "PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL",
     ]
 
@@ -340,17 +342,17 @@ def _create_filter_views(service, spreadsheet_id, tab_id, data_start_row):
 
     requests = [
         # Col A (index 0) = STATUS
-        # "Action needed" = paused states that require immediate attention
+        # "Action needed" = Tier 1 results needing Jordan's review + paused urgent
         _filter_view("ACTION — Needs Attention", {
-            "0": _hidden_except("PAUSED_OOS", "PAUSED_MARGIN")
+            "0": _hidden_except("SCORED", "PAUSED_OOS", "PAUSED_MARGIN")
         }),
-        # Queue = items Jordan still needs to review / approve
+        # Queue = items Jordan needs to review / approve
         _filter_view("QUEUE — Pending Review", {
-            "0": _hidden_except("PENDING")
+            "0": _hidden_except("SCORED", "PENDING")
         }),
         # Active inventory = live or export-ready
         _filter_view("ACTIVE — Live Inventory", {
-            "0": _hidden_except("ACTIVE", "READY")
+            "0": _hidden_except("ACTIVE", "LISTED", "READY")
         }),
         # Bench = all paused + watch (not currently selling)
         _filter_view("BENCH — Paused & Watch", {
@@ -375,7 +377,8 @@ def _add_status_dropdown(tab_id, data_start_row):
                     "values": [
                         {"userEnteredValue": s}
                         for s in [
-                            "PENDING", "APPROVED", "READY", "ACTIVE", "WATCH",
+                            "PENDING", "SCORED", "APPROVED", "READY", "LISTED",
+                            "ACTIVE", "WATCH",
                             "PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL",
                         ]
                     ],
@@ -561,7 +564,7 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
     # 16. Conditional formatting — row colors by STATUS (col A)
     for status in [
         "PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL",
-        "ACTIVE", "READY", "WATCH", "APPROVED", "PENDING",
+        "ACTIVE", "LISTED", "READY", "WATCH", "APPROVED", "PENDING", "SCORED",
     ]:
         requests.append(_conditional_row_color(tab_id, status, STATUS_COLORS[status], data_row_idx))
 
@@ -569,11 +572,11 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
     # Formula reference uses data_start_row (the FIRST cell of the rule range).
     # Sheets evaluates the formula relative to that anchor, then auto-shifts per row.
     score_ref = f"$B{data_start_row}"
-    requests.append(_conditional_tier_color(tab_id, f"={score_ref}>=7", TIER1_BG, data_row_idx))
+    requests.append(_conditional_tier_color(tab_id, f"={score_ref}>=6", TIER1_BG, data_row_idx))
     requests.append(_conditional_tier_color(
-        tab_id, f"=AND({score_ref}>=4,{score_ref}<7)", TIER2_BG, data_row_idx))
+        tab_id, f"=AND({score_ref}>=3,{score_ref}<6)", TIER2_BG, data_row_idx))
     requests.append(_conditional_tier_color(
-        tab_id, f"=AND(ISNUMBER({score_ref}),{score_ref}<4)", TIER3_BG, data_row_idx))
+        tab_id, f"=AND(ISNUMBER({score_ref}),{score_ref}<3)", TIER3_BG, data_row_idx))
 
     # 17b. Conditional formatting — COMP SCORE cell (col N, index 13)
     comp_ref = f"$N{data_start_row}"
@@ -687,16 +690,18 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
 # ── Legend tab ─────────────────────────────────────────────────────────────────
 
 STATUS_LEGEND = [
-    ["STATUS",           "MEANING",                                                                              "WHEN IT'S SET",                                                          "NEXT ACTION"],
-    ["PENDING",          "Newly discovered or Tier 1 scored — awaiting your review.",                            "Auto — set by discovery or researcher (Tier 1 result).",                "Review in sheet. Change to APPROVED to greenlight, or leave for next run."],
-    ["APPROVED",         "You approved it. Agent is verifying stock and generating listing copy.",               "Manual — you change col A to APPROVED after reviewing.",                 "Agent generates copy, verifies Costco stock, then auto-sets to READY."],
-    ["READY",            "Copy complete and stock verified. Export CSV and list on eBay.",                       "Auto — set by daily sweep when APPROVED product has copy + stock OK.",   "Run python tools/ebay_export.py. Upload CSV to eBay Seller Hub. Add photos."],
-    ["ACTIVE",           "Live listing on eBay or your site. Highest monitoring priority.",                      "Auto — set when eBay URL is filled in col Q, or manual.",               "Agent checks stock/price 3x/day. Issues trigger PAUSED_OOS or alert."],
-    ["WATCH",            "Tier 2 — promising but needs more data. Monitored weekly.",                            "Auto — set by researcher when score is 4.0–6.9.",                        "Agent re-researches weekly. If conditions improve, promotes to PENDING."],
-    ["PAUSED_OOS",       "Costco is out of stock. eBay listing should be paused to avoid unfilled orders.",     "Auto — set by active monitor when Costco page shows OUT OF STOCK.",      "Pause your eBay listing manually. Agent checks daily and moves to WATCH when restocked."],
-    ["PAUSED_MARGIN",    "Margin has fallen below the minimum threshold. Not profitable at current prices.",    "Auto — set by active monitor when net_margin < 10%.",                    "Lower your eBay price or wait for Costco cost to drop. Agent promotes to WATCH when margin recovers."],
-    ["PAUSED_DEMAND",    "Low eBay demand or extreme competition (e.g. 26x comp score). Not worth listing.",   "Auto — set by researcher for Tier 3 products.",                          "No automatic action. Review notes. Change manually to PENDING if conditions change."],
-    ["PAUSED_SEASONAL",  "Right product, wrong season. Flagged for a future re-eval date.",                     "Auto — set by researcher based on seasonal scoring.",                     "Agent re-evaluates on RE-EVAL DATE (col S). May promote to PENDING in-season."],
+    ["STATUS",           "MEANING",                                                                              "SET BY",                                                                 "YOUR ACTION"],
+    ["PENDING",          "Discovered — not yet scored.",                                                         "Agent (discovery)",                                                      "None — agent scores automatically."],
+    ["SCORED",           "Tier 1 result — needs your decision.",                                                 "Agent (research)",                                                       "Review notes → change to APPROVED (greenlight) or PAUSED_DEMAND (skip)."],
+    ["APPROVED",         "You approved it. Agent is verifying stock and generating listing copy.",               "You",                                                                    "None — agent generates copy + verifies stock, then sets to READY."],
+    ["READY",            "Copy complete and stock verified. Export CSV and list on eBay.",                       "Agent (daily sweep)",                                                    "Run python tools/ebay_export.py. Upload CSV to eBay Seller Hub. Add photos."],
+    ["LISTED",           "CSV exported, eBay listing in progress — not yet live.",                              "You",                                                                    "Paste live eBay URL in col Q when listing goes live."],
+    ["ACTIVE",           "Live listing on eBay. Highest monitoring priority.",                                   "Auto — when eBay URL pasted in col Q",                                   "Agent checks stock/price 3x/day. Issues trigger PAUSED_OOS or alert."],
+    ["WATCH",            "Tier 2 — promising but not ready. Re-scored weekly.",                                  "Agent (research)",                                                       "None — agent re-scores automatically. Promotes to SCORED if conditions improve."],
+    ["PAUSED_OOS",       "Costco is out of stock. Pause your eBay listing to avoid unfilled orders.",           "Agent (active monitor)",                                                 "Pause your eBay listing manually. Agent checks daily and moves to WATCH when restocked."],
+    ["PAUSED_MARGIN",    "Margin has fallen below the 10% threshold. Not profitable at current prices.",        "Agent (active monitor)",                                                 "Lower your eBay price or wait for Costco cost to drop. Agent promotes to WATCH when margin recovers."],
+    ["PAUSED_DEMAND",    "Tier 3 — not viable now. Low demand or extreme competition.",                         "Agent (research)",                                                       "Review in 30 days — check RE-EVAL DATE col S."],
+    ["PAUSED_SEASONAL",  "Right product, wrong season. Flagged for a future re-eval date.",                     "Agent (research)",                                                       "Agent re-evaluates on RE-EVAL DATE (col S). May promote to PENDING in-season."],
 ]
 
 
@@ -740,9 +745,9 @@ def _build_legend_rows():
 
     # ── TIER & COMP SCORE
     _divider("TIER SCORE  (col B)")
-    _row("Tier 1  ≥ 7.0", "Strong opportunity — PENDING status. Review and approve to list.", "", "Green cell")
-    _row("Tier 2  4.0–6.9", "Promising but not ready — WATCH status. Re-scored weekly automatically.", "", "Yellow cell")
-    _row("Tier 3  < 4.0", "Not viable now — PAUSED_DEMAND. Re-eval in 30 days.", "", "Red cell")
+    _row("Tier 1  ≥ 6.0", "Strong opportunity — SCORED status. Review and approve to list.", "", "Green cell")
+    _row("Tier 2  3.0–5.9", "Promising but not ready — WATCH status. Re-scored weekly automatically.", "", "Yellow cell")
+    _row("Tier 3  < 3.0", "Not viable now — PAUSED_DEMAND. Re-eval in 30 days.", "", "Red cell")
 
     _blank()
 
@@ -829,10 +834,10 @@ def _build_legend_rows():
 
     # ── 5-STEP WORKFLOW
     _divider("5-STEP WORKFLOW")
-    _row("1  Discover",  "Agent scrapes Costco → adds new products as PENDING. Runs 7 AM daily (GitHub).")
-    _row("2  Research",  "Agent scores PENDING → Tier 1 stays PENDING, Tier 2 becomes WATCH. Runs 10 AM.")
-    _row("3  Approve",   "YOU change col A from PENDING → APPROVED. Agent generates listing copy + verifies stock.")
-    _row("4  List",      "Agent sets APPROVED → READY. Export CSV (VS Code task) → upload to eBay Seller Hub.")
+    _row("1  Discover",  "Agent scrapes Costco → adds new products as PENDING. Runs 7 AM daily (local + VPS).")
+    _row("2  Research",  "Agent scores PENDING → Tier 1 becomes SCORED, Tier 2 becomes WATCH. Runs 10 AM.")
+    _row("3  Review",    "YOU review SCORED products in the Summary tab ACTION REQUIRED section. Change to APPROVED (greenlight) or PAUSED_DEMAND (skip).")
+    _row("4  List",      "Agent sets APPROVED → READY when copy + stock verified. Export CSV → upload to eBay Seller Hub. Set status to LISTED.")
     _row("5  Monitor",   "Paste eBay URL in col Q → auto-set to ACTIVE. Active Monitor checks stock/price 3×/day.")
 
     _blank()
@@ -1049,20 +1054,21 @@ def update_stats_row(service, sheet_name, stats: dict):
 
 def refresh_summary_tab(service, sheet_name, all_data=None):
     """
-    Builds or refreshes the Summary tab with live pipeline counts, category stats,
-    and focus recommendations.
+    Builds or refreshes the Summary tab with live pipeline counts, action items,
+    revenue snapshot, category stats, and run health.
 
-    all_data: list of sheet rows (A–AZ) from read_sheet. If None, reads from sheet.
+    all_data: list of sheet rows (A–AV) from read_sheet. If None, reads from sheet.
     Safe to re-run anytime — overwrites previous content.
     """
-    import os
+    import json
+    import time as _time
     from collections import defaultdict
+    from datetime import datetime, timedelta
 
     spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
     meta           = _get_sheet_meta(service, spreadsheet_id)
     existing       = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
 
-    # Create Summary tab if missing (index 0 = leftmost)
     if "Summary" not in existing:
         service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
@@ -1074,137 +1080,206 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
 
     sum_id = existing["Summary"]
 
-    # ── Compute stats from all_data ───────────────────────────────────────────
-    pipeline = defaultdict(int)
-    category_stats = defaultdict(lambda: {"count": 0, "score_sum": 0.0, "score_count": 0,
-                                           "margin_sum": 0.0, "margin_count": 0, "t1": 0})
-    top_pending = []   # (score, title, costco_url) for focus recommendation
-    sale_count  = 0
-    ship_count  = 0
+    def _safe(lst, i, default=""):
+        return str(lst[i]).strip() if lst and i < len(lst) and lst[i] else default
 
-    def _safe(lst, i):
-        return str(lst[i]).strip() if lst and i < len(lst) else ""
+    def _flt(s, default=0.0):
+        try:
+            return float(str(s).replace("$", "").replace(",", "").strip())
+        except (ValueError, TypeError):
+            return default
+
+    # ── Compute stats from all_data ───────────────────────────────────────────
+    pipeline       = defaultdict(int)
+    scored_rows    = []   # dicts for ACTION REQUIRED section
+    category_stats = defaultdict(lambda: {
+        "count": 0, "score_sum": 0.0, "score_count": 0,
+        "net_sum": 0.0, "net_count": 0, "t1": 0,
+        "best_score": -1.0, "best_title": "",
+    })
+    sale_count     = 0
+    ship_count     = 0
+    active_revenue = 0.0
 
     for row in (all_data or []):
         if not row or not row[0]:
             continue
-        status   = _safe(row, 0)   # A
-        score_s  = _safe(row, 1)   # B
-        title    = _safe(row, 2)   # C
-        category = _safe(row, 3)   # D
-        ebay_s   = _safe(row, 7)   # H
-        cost_s   = _safe(row, 6)   # G
-        url      = _safe(row, 17)  # R
-        sale_val = _safe(row, 23)  # X — dedicated SALE col
-        ship_val = _safe(row, 24)  # Y — ship cost badge
+        status     = _safe(row, 0)    # A
+        score_s    = _safe(row, 1)    # B
+        title      = _safe(row, 2)    # C
+        category   = _safe(row, 3)    # D
+        cost_s     = _safe(row, 6)    # G
+        ebay_s     = _safe(row, 7)    # H
+        sold_90d_s = _safe(row, 10)   # K
+        costco_url = _safe(row, 17)   # R
+        sale_val   = _safe(row, 23)   # X
+        ship_val   = _safe(row, 24)   # Y
+        fee_s      = _safe(row, 27)   # AB fee_rate
 
         if not status:
             continue
 
         pipeline[status] += 1
 
-        try:
-            score = float(score_s)
-            cat   = category_stats[category or "Unknown"]
+        score = _flt(score_s, None) if score_s else None
+        cat   = category_stats[category or "Unknown"]
+        if score is not None:
             cat["count"]       += 1
             cat["score_sum"]   += score
             cat["score_count"] += 1
-            if score >= 7.0:
+            if score >= 6.0:
                 cat["t1"] += 1
-        except (ValueError, TypeError):
-            score = None
+            if score > cat["best_score"]:
+                cat["best_score"] = score
+                cat["best_title"] = title
 
-        try:
-            ep = float(str(ebay_s).replace("$", "").replace(",", ""))
-            cp = float(str(cost_s).replace("$", "").replace(",", ""))
-            if ep > 0:
-                margin = (ep - cp - ep * 0.1325) / ep
-                cat = category_stats[category or "Unknown"]
-                cat["margin_sum"]   += margin
-                cat["margin_count"] += 1
-        except (ValueError, TypeError):
-            pass
+        ebay_f  = _flt(ebay_s)
+        cost_f  = _flt(cost_s)
+        fee_f   = _flt(fee_s) if fee_s else 0.1325
+        net     = round(ebay_f * (1 - fee_f) - cost_f, 2) if ebay_f > 0 else 0.0
+        if ebay_f > 0 and cost_f > 0:
+            cat["net_sum"]   += net
+            cat["net_count"] += 1
+
+        if status == "SCORED":
+            monthly = round(_flt(sold_90d_s) / 3, 1) if sold_90d_s else 0
+            scored_rows.append({
+                "score":       score or 0,
+                "title":       title,
+                "net_profit":  net,
+                "est_monthly": round(net * monthly, 0) if net else 0,
+                "costco_url":  costco_url,
+            })
+
+        if status == "ACTIVE" and ebay_f > 0:
+            monthly = round(_flt(sold_90d_s) / 3, 1) if sold_90d_s else 0
+            active_revenue += net * monthly
 
         if sale_val:
             sale_count += 1
         if "FREE" in ship_val:
             ship_count += 1
 
-        if status == "PENDING" and score is not None:
-            top_pending.append((score, title, url))
+    scored_rows.sort(key=lambda x: x["score"], reverse=True)
 
-    top_pending.sort(reverse=True)
+    # ── Run health from run_history.json ─────────────────────────────────────
+    last_research  = "—"
+    last_discovery = "—"
+    errors_7d      = 0
+    _data_dir      = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    _history_file  = os.path.join(_data_dir, "run_history.json")
+    if os.path.exists(_history_file):
+        try:
+            with open(_history_file) as f:
+                history = json.load(f)
+            cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            for run in reversed(history.get("runs", [])):
+                mode = run.get("mode", "")
+                ts   = f"{run.get('date', '')} {run.get('time', '')}"
+                if mode == "research" and last_research == "—":
+                    last_research = ts
+                if mode == "discovery" and last_discovery == "—":
+                    last_discovery = ts
+                if run.get("date", "") >= cutoff and run.get("status") == "error":
+                    errors_7d += 1
+        except Exception:
+            pass
+
+    cookie_note = ""
+    for cookie_file in ("costco_cookies.json", "costco_session.json"):
+        fpath = os.path.join(_data_dir, cookie_file)
+        if os.path.exists(fpath):
+            age_days = int((_time.time() - os.path.getmtime(fpath)) / 86400)
+            cookie_note = f"{age_days}d old (refresh if > 3 days)"
+            break
 
     # ── Build row content ─────────────────────────────────────────────────────
-    rows = []
+    NUM_COLS = 6
+    rows     = []
 
     def _hdr(label):
-        rows.append([label, "", "", "", ""])
+        rows.append([label] + [""] * (NUM_COLS - 1))
 
     def _blank():
-        rows.append(["", "", "", "", ""])
+        rows.append([""] * NUM_COLS)
 
     def _row(*cells):
         r = list(cells)
-        r += [""] * (5 - len(r))
+        r += [""] * (NUM_COLS - len(r))
         rows.append(r)
 
-    # Title
-    _hdr("WAT Agent — Live Summary Dashboard")
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # Section 1 — Header
+    _row("Reselling Agent — Live Dashboard", "", "", "", "", today_str)
     _blank()
 
-    # Pipeline counts
-    _hdr("PIPELINE STATUS")
-    _row("Status", "Count", "", "", "")
-    status_order = ["PENDING", "WATCH", "APPROVED", "READY", "ACTIVE",
-                    "PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL"]
-    total = sum(pipeline.values())
-    for s in status_order:
-        if pipeline[s] > 0:
-            _row(s, pipeline[s], "", "", "")
-    _row("TOTAL", total, "", "", "")
+    # Section 2 — ACTION REQUIRED
+    _hdr("⚡ ACTION REQUIRED")
+    if scored_rows:
+        _row("Status", "Product", "Score", "Net $/sale", "Est. $/mo", "Costco URL")
+        for item in scored_rows:
+            net_str = f"${item['net_profit']:.2f}" if item["net_profit"] else "—"
+            est_str = f"${item['est_monthly']:,.0f}" if item["est_monthly"] else "—"
+            _row("SCORED", item["title"][:80], item["score"], net_str, est_str, item["costco_url"])
+    else:
+        _row("✓ Nothing needs your attention right now", "", "", "", "", "")
     _blank()
 
-    # Highlights
-    _hdr("HIGHLIGHTS")
-    _row("Products currently ON SALE at Costco", sale_count)
-    _row("Products with FREE SHIPPING from Costco", ship_count)
-    _row("Active (live on eBay)", pipeline.get("ACTIVE", 0))
-    _row("Ready to list (copy done)", pipeline.get("READY", 0))
+    # Section 3 — Pipeline counts
+    _hdr("PIPELINE")
+    _row("Status", "Count", "Notes", "", "", "")
+    pipeline_display = [
+        ("SCORED",          "needs review"),
+        ("APPROVED",        "copy pending"),
+        ("READY",           "list on eBay"),
+        ("LISTED",          "awaiting live"),
+        ("ACTIVE",          "live + monitored"),
+        ("WATCH",           "re-scoring weekly"),
+        ("PENDING",         "awaiting research"),
+    ]
+    paused_total = sum(v for k, v in pipeline.items() if k.startswith("PAUSED_"))
+    for stat, note in pipeline_display:
+        _row(stat, pipeline.get(stat, 0), f"({note})", "", "", "")
+    _row("PAUSED", paused_total, "(various)", "", "", "")
+    _row("TOTAL", sum(pipeline.values()), "", "", "", "")
     _blank()
 
-    # Category breakdown
+    # Section 4 — Revenue snapshot
+    _hdr("REVENUE SNAPSHOT")
+    _row("Active listings", pipeline.get("ACTIVE", 0))
+    _row("Est. monthly revenue (ACTIVE)", f"${active_revenue:,.0f}/mo" if active_revenue else "—")
+    _row("Products on sale at Costco", sale_count)
+    _row("Products with free Costco shipping", ship_count)
+    _blank()
+
+    # Section 5 — Category breakdown
     _hdr("CATEGORY BREAKDOWN")
-    _row("Category", "Products", "Avg Score", "T1 Count", "Avg Margin")
-    best_cat, best_margin = "", -999.0
+    _row("Category", "Products", "Avg Score", "Tier 1s", "Avg Net $/sale", "Best product")
     for cat_name, d in sorted(category_stats.items()):
-        avg_score  = round(d["score_sum"] / d["score_count"], 2) if d["score_count"] else "—"
-        avg_margin = (
-            f"{d['margin_sum'] / d['margin_count'] * 100:.1f}%"
-            if d["margin_count"] else "—"
-        )
-        _row(cat_name, d["count"], avg_score, d["t1"], avg_margin)
-        if d["margin_count"] and d["margin_sum"] / d["margin_count"] > best_margin:
-            best_margin = d["margin_sum"] / d["margin_count"]
-            best_cat    = cat_name
+        avg_score = round(d["score_sum"] / d["score_count"], 2) if d["score_count"] else "—"
+        avg_net   = f"${d['net_sum'] / d['net_count']:.2f}" if d["net_count"] else "—"
+        best      = d["best_title"][:40] if d["best_title"] else "—"
+        _row(cat_name, d["count"], avg_score, d["t1"], avg_net, best)
     _blank()
 
-    # Focus recommendation
-    _hdr("WHERE TO FOCUS")
-    if best_cat:
-        _row("Highest-margin category", best_cat, f"{best_margin * 100:.1f}% avg margin")
-    if top_pending:
-        top_score, top_title, top_url = top_pending[0]
-        _row("Top PENDING to approve", top_title[:60], f"Score: {top_score}", top_url)
-    if pipeline.get("READY", 0):
-        _row("Action needed", f"{pipeline['READY']} product(s) READY — export CSV and list on eBay")
-    if pipeline.get("PAUSED_OOS", 0):
-        _row("Monitor", f"{pipeline['PAUSED_OOS']} OOS — check if restocked")
+    # Section 6 — Run health
+    _hdr("RUN HEALTH")
+    _row("Last research run", last_research)
+    _row("Last discovery run", last_discovery)
+    _row("Errors in last 7 days", errors_7d)
+    if cookie_note:
+        _row("Cookie status", cookie_note)
     _blank()
 
-    _row(f"Last refreshed: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    # Section 7 — Footer
+    _row(f"Last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M')}", "", "", "", "", "Agent v1.0")
 
-    # ── Write content ─────────────────────────────────────────────────────────
+    # ── Write content (clear first, then update) ──────────────────────────────
+    service.spreadsheets().values().clear(
+        spreadsheetId=spreadsheet_id,
+        range="'Summary'!A1:Z300",
+    ).execute()
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range="'Summary'!A1",
@@ -1214,18 +1289,15 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
 
     # ── Format ────────────────────────────────────────────────────────────────
     total_rows = len(rows)
-    hdr_rows   = [i for i, r in enumerate(rows) if r and r[0] and not r[1] and r[0] != ""]
 
     requests = [
-        # Freeze row 1
         {"updateSheetProperties": {
             "properties": {"sheetId": sum_id, "gridProperties": {"frozenRowCount": 1}},
             "fields": "gridProperties.frozenRowCount",
         }},
-        # Base style
         {"repeatCell": {
             "range": {"sheetId": sum_id, "startRowIndex": 0, "endRowIndex": total_rows + 5,
-                       "startColumnIndex": 0, "endColumnIndex": 5},
+                       "startColumnIndex": 0, "endColumnIndex": NUM_COLS},
             "cell": {"userEnteredFormat": {
                 "textFormat": {"fontSize": 10},
                 "verticalAlignment": "MIDDLE",
@@ -1233,48 +1305,73 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
             }},
             "fields": "userEnteredFormat",
         }},
-        # Column widths
         {"updateDimensionProperties": {
             "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-            "properties": {"pixelSize": 220}, "fields": "pixelSize",
+            "properties": {"pixelSize": 210}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-            "properties": {"pixelSize": 100}, "fields": "pixelSize",
+            "properties": {"pixelSize": 300}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-            "properties": {"pixelSize": 120}, "fields": "pixelSize",
+            "properties": {"pixelSize": 85}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 3, "endIndex": 4},
-            "properties": {"pixelSize": 80}, "fields": "pixelSize",
+            "properties": {"pixelSize": 100}, "fields": "pixelSize",
         }},
         {"updateDimensionProperties": {
             "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 4, "endIndex": 5},
-            "properties": {"pixelSize": 350}, "fields": "pixelSize",
+            "properties": {"pixelSize": 100}, "fields": "pixelSize",
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": sum_id, "dimension": "COLUMNS", "startIndex": 5, "endIndex": 6},
+            "properties": {"pixelSize": 260}, "fields": "pixelSize",
         }},
     ]
 
-    # Section header rows — dark navy
+    # Title row (row 0)
+    requests.append({"repeatCell": {
+        "range": {"sheetId": sum_id, "startRowIndex": 0, "endRowIndex": 1,
+                   "startColumnIndex": 0, "endColumnIndex": NUM_COLS},
+        "cell": {"userEnteredFormat": {
+            "backgroundColor": TITLE_BG,
+            "textFormat": {"foregroundColor": HDR_FG, "bold": True, "fontSize": 13},
+            "verticalAlignment": "MIDDLE",
+        }},
+        "fields": "userEnteredFormat",
+    }})
+    requests.append({"updateDimensionProperties": {
+        "range": {"sheetId": sum_id, "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+        "properties": {"pixelSize": 42}, "fields": "pixelSize",
+    }})
+
+    # Section header rows: single non-empty cell spanning all cols
+    _data_row_labels = {
+        "Status", "Category", "✓ Nothing needs your attention right now",
+        "Active listings", "Est. monthly revenue (ACTIVE)",
+        "Products on sale at Costco", "Products with free Costco shipping",
+        "Last research run", "Last discovery run", "Errors in last 7 days",
+        "Cookie status", "SCORED", "APPROVED", "READY", "LISTED", "ACTIVE",
+        "WATCH", "PENDING", "PAUSED", "TOTAL",
+    }
     for i, r in enumerate(rows):
-        label = r[0] if r else ""
-        is_title = (i == 0)
-        if not label or r[1]:  # skip blank or data rows
+        if i == 0:
             continue
-        if any(label == s for s in status_order + ["Status", "Category", "Products currently ON SALE at Costco",
-                                                     "Action needed", "Monitor", "Top PENDING to approve",
-                                                     "Highest-margin category"]):
-            continue  # these are data rows, not section headers
+        label = r[0] if r else ""
+        if not label:
+            continue
+        if label in _data_row_labels or r[1]:
+            continue
+        is_action = label.startswith("⚡")
+        bg = _rgb("B71C1C") if is_action else HDR_BG
         requests.append({"repeatCell": {
             "range": {"sheetId": sum_id, "startRowIndex": i, "endRowIndex": i + 1,
-                       "startColumnIndex": 0, "endColumnIndex": 5},
+                       "startColumnIndex": 0, "endColumnIndex": NUM_COLS},
             "cell": {"userEnteredFormat": {
-                "backgroundColor": TITLE_BG if is_title else HDR_BG,
-                "textFormat": {
-                    "foregroundColor": HDR_FG, "bold": True,
-                    "fontSize": 13 if is_title else 10,
-                },
+                "backgroundColor": bg,
+                "textFormat": {"foregroundColor": HDR_FG, "bold": True, "fontSize": 10},
                 "verticalAlignment": "MIDDLE",
             }},
             "fields": "userEnteredFormat",
@@ -1282,8 +1379,7 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
         requests.append({"updateDimensionProperties": {
             "range": {"sheetId": sum_id, "dimension": "ROWS",
                        "startIndex": i, "endIndex": i + 1},
-            "properties": {"pixelSize": 34 if is_title else 26},
-            "fields": "pixelSize",
+            "properties": {"pixelSize": 28}, "fields": "pixelSize",
         }})
 
     service.spreadsheets().batchUpdate(
@@ -1291,44 +1387,45 @@ def refresh_summary_tab(service, sheet_name, all_data=None):
     ).execute()
     logger.info("  Summary tab refreshed.")
 
+    refresh_images_tab(service, sheet_name, all_data=all_data)
 
-def populate_images_tab(service, sheet_name, all_data, col_map):
+
+def refresh_images_tab(service, sheet_name, all_data=None):
     """
-    Refreshes the Images tab with ACTIVE and APPROVED products + their image URLs.
-    Called at the end of each scheduler run.
+    Refreshes the Images tab with all active products (excludes PAUSED_DEMAND and blank status).
+    Sorted by score descending. Includes Score column.
+    col AT (index 45) = IMAGE URLS — comma-separated Costco image URLs.
     """
     spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
-    rows = [["PRODUCT TITLE", "STATUS", "IMAGE 1", "IMAGE 2", "IMAGE 3", "IMAGE 4", "IMAGE 5"]]
+    IMG_COL_IDX    = 45   # AT
 
-    status_col = ord(col_map.get("status", "A")) - ord("A")        # 0
-    title_col  = ord(col_map.get("title", "C")) - ord("C") + 2     # 2
-    img_col    = col_map.get("image_urls", "AM")
-
-    # Convert AM-style letter to 0-based index
-    def letter_to_idx(letter):
-        result = 0
-        for ch in letter:
-            result = result * 26 + (ord(ch.upper()) - ord("A") + 1)
-        return result - 1
-
-    img_idx    = letter_to_idx(img_col)   # AM = 38
-
-    def safe(lst, i):
+    def _safe(lst, i):
         return lst[i] if i < len(lst) else ""
 
-    for row in all_data:
+    header       = ["PRODUCT TITLE", "STATUS", "SCORE", "IMAGE 1", "IMAGE 2", "IMAGE 3", "IMAGE 4", "IMAGE 5"]
+    product_rows = []
+
+    for row in (all_data or []):
         if not row:
             continue
-        status = safe(row, 0)   # col A
-        title  = safe(row, 2)   # col C
-        if status not in ("ACTIVE", "APPROVED", "READY"):
+        status  = _safe(row, 0)
+        title   = _safe(row, 2)
+        score_s = _safe(row, 1)
+        if not status or status == "PAUSED_DEMAND":
             continue
-        raw_imgs = safe(row, img_idx)
+        raw_imgs = _safe(row, IMG_COL_IDX)
         if not raw_imgs:
             continue
+        try:
+            score = float(score_s) if score_s else 0.0
+        except (ValueError, TypeError):
+            score = 0.0
         img_urls = [u.strip() for u in raw_imgs.split(",") if u.strip()]
         img_urls += [""] * (5 - len(img_urls))
-        rows.append([title, status] + img_urls[:5])
+        product_rows.append((score, [title, status, score_s] + img_urls[:5]))
+
+    product_rows.sort(key=lambda x: x[0], reverse=True)
+    rows = [header] + [r for _, r in product_rows]
 
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
@@ -1337,3 +1434,8 @@ def populate_images_tab(service, sheet_name, all_data, col_map):
         body={"values": rows},
     ).execute()
     logger.info(f"  Images tab updated — {len(rows) - 1} products.")
+
+
+def populate_images_tab(service, sheet_name, all_data, col_map):
+    """Legacy wrapper — delegates to refresh_images_tab()."""
+    refresh_images_tab(service, sheet_name, all_data=all_data)

@@ -5,14 +5,16 @@ Pure functions — no I/O, no API calls. Always testable.
 
 Statuses
 --------
-PENDING       New product or Tier 1 scored — awaiting Jordan's review
-APPROVED      Jordan approved — copy generating, verify stock before export
-READY         Copy complete + stock OK — run ebay_export.py to list
-ACTIVE        Live listing on eBay/website — top priority monitoring
-WATCH         Tier 2 — promising, needs more data; may graduate to PENDING
-PAUSED_OOS    Costco out of stock — daily stock-check until restocked
-PAUSED_MARGIN Below margin threshold — re-eval when prices recover
-PAUSED_DEMAND Low demand / high competition — deep research only, no scraping
+PENDING         New product — discovered, awaiting research scoring
+SCORED          Tier 1 result — needs Jordan's review (approve or skip)
+APPROVED        Jordan approved — copy generating, verify stock before export
+READY           Copy complete + stock OK — run ebay_export.py to list
+LISTED          CSV exported, eBay listing in progress — not yet live
+ACTIVE          Live listing on eBay/website — top priority monitoring
+WATCH           Tier 2 — promising, needs more data; re-scored weekly
+PAUSED_OOS      Costco out of stock — daily stock-check until restocked
+PAUSED_MARGIN   Below margin threshold — re-eval when prices recover
+PAUSED_DEMAND   Low demand / high competition — deep research only, no scraping
 PAUSED_SEASONAL Off-season — monthly re-eval
 """
 
@@ -29,7 +31,7 @@ WATCH_STATUSES = {"WATCH"}
 RESEARCH_STATUSES = {"PENDING"}
 
 # Statuses that are completely skipped in all automated runs
-SKIP_STATUSES = {"PAUSED_DEMAND", "PAUSED_SEASONAL"}
+SKIP_STATUSES = {"PAUSED_DEMAND", "PAUSED_SEASONAL", "LISTED"}
 
 
 def determine_status(

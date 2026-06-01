@@ -16,10 +16,16 @@ Full autonomous cycle:
        f. Write Tier score and summary to sheet
   4. Send Tier 1 digest email if any Tier 1s found
 
+Status routing after research:
+  SCORED        = Tier 1 — needs your review, action required
+  WATCH         = Tier 2 — promising, re-scored weekly
+  PAUSED_DEMAND = Tier 3 — not viable now, re-eval in 30 days
+
 Jordan's approval workflow:
-  PENDING  → newly discovered, waiting for Jordan to review
+  PENDING  → newly discovered, waiting for research
+  SCORED   → Tier 1 result — review notes → change to APPROVED or PAUSED_DEMAND
   APPROVED → Jordan approved, monitor cycle tracks it, copy generates
-  WATCH    → Jordan wants to keep an eye on it, re-researched weekly
+  WATCH    → Tier 2, re-researched weekly
   ACTIVE   → listed and monitored
   PAUSED   → margin issue, hold
   URGENT   → needs immediate attention
@@ -511,7 +517,11 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             status == "PENDING" or
             (status == "WATCH" and costco_url in tier2_recheck_urls) or
             paused_due or
-            (not demand_score and status not in ("APPROVED", "ACTIVE", "URGENT", "PAUSED"))
+            (not demand_score and status not in (
+                "APPROVED", "ACTIVE", "URGENT", "PAUSED", "SCORED",
+                "WATCH", "LISTED", "PAUSED_OOS", "PAUSED_MARGIN",
+                "PAUSED_DEMAND", "PAUSED_SEASONAL",
+            ))
         )
         if needs_research:
             to_research.append((idx + start_row, row))
@@ -1017,8 +1027,9 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             if purchase_limit:
                 updates.append((COL["purchase_limit"], f"{purchase_limit}/day"))
             # Update status so researched rows don't get re-queued every run
-            # Tier 1 stays PENDING (Jordan email sent; Jordan changes to APPROVED manually)
-            if tier == 2:
+            if tier == 1:
+                updates.append((COL["status"], "SCORED"))   # Awaiting your review — action required
+            elif tier == 2:
                 updates.append((COL["status"], "WATCH"))
             elif tier == 3:
                 updates.append((COL["status"], "PAUSED_DEMAND"))

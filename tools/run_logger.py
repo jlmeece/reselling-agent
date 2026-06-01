@@ -107,6 +107,15 @@ def _append_json(entry: dict):
         logger.warning(f"run_logger: json write failed: {e}")
 
 
+def _truncate_error(text: str, max_len: int = 120) -> str:
+    """Keep only the last line of a Python traceback, capped at max_len chars."""
+    if not text:
+        return text
+    lines = [ln.strip() for ln in str(text).splitlines() if ln.strip()]
+    last  = lines[-1] if lines else text
+    return last[:max_len]
+
+
 def _append_sheet(entry: dict, service):
     """Appends one row to the 'Run Log' sheet tab. Creates the tab + header if missing."""
     try:
@@ -120,6 +129,20 @@ def _append_sheet(entry: dict, service):
         if _RUN_LOG_TAB not in tab_names:
             _create_run_log_tab(service, sheet_id)
 
+        # Dedup: skip if the last row already has same date+time+mode
+        existing = service.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=f"'{_RUN_LOG_TAB}'!A:C",
+        ).execute().get("values", [])
+        if len(existing) > 1:
+            last_row = existing[-1]
+            if (len(last_row) >= 3 and
+                    last_row[0] == entry["date"] and
+                    last_row[1] == entry["time"] and
+                    last_row[2] == entry["mode"]):
+                logger.debug("run_logger: duplicate entry skipped — same date/time/mode already logged")
+                return
+
         status_icon = "✓ OK" if entry["status"] == "ok" else ("⚠ Skipped" if entry["status"] == "skipped" else "✗ Error")
         spot_str = ""
         if entry.get("spot_gold"):
@@ -130,6 +153,8 @@ def _append_sheet(entry: dict, service):
         notes_col = entry.get("notes", "")
         if spot_str:
             notes_col = f"{spot_str} | {notes_col}" if notes_col else spot_str
+
+        error_col = _truncate_error(entry.get("errors", ""))
 
         row = [
             entry["date"],
@@ -142,7 +167,7 @@ def _append_sheet(entry: dict, service):
             entry.get("tier1", ""),
             entry.get("tier2", ""),
             entry.get("scout_health", ""),
-            entry.get("errors", "") or notes_col,
+            error_col or notes_col,
         ]
 
         service.spreadsheets().values().append(
