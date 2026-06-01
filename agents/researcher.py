@@ -207,7 +207,8 @@ Return ONLY raw JSON starting with { and ending with }. No markdown."""
 
 def _run_claude_research(title, category, costco_cost, ebay_price,
                           stock_status, fee_rate, category_notes,
-                          ebay_data, community_data, spot_data=None):
+                          ebay_data, community_data, spot_data=None,
+                          fulfillment_risk="medium"):
     """Pass 1+2: Claude scores the product using real eBay + community data."""
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -232,7 +233,8 @@ def _run_claude_research(title, category, costco_cost, ebay_price,
         f"STOCK STATUS: {stock_status}\n"
         f"CALCULATED MARGIN: {margin_text}\n"
         f"EBAY FEE RATE: {fee_rate * 100:.1f}%\n"
-        f"CATEGORY NOTES: {category_notes}\n\n"
+        f"CATEGORY NOTES: {category_notes}\n"
+        f"FULFILLMENT RISK: MUST be scored as \"{fulfillment_risk}\" for this category — use {10 if fulfillment_risk == 'low' else 6 if fulfillment_risk == 'medium' else 2}/10 (low=10, medium=6, high=2). Do not override this with your own assessment.\n\n"
         f"REAL EBAY DATA:\n"
         f"  Sold last 90 days: {ebay_data.get('sold_90d', 'unknown')}\n"
         f"  Median sold price: ${ebay_data.get('median_sold', 'unknown')}\n"
@@ -802,6 +804,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     cat_config.get("notes", ""),
                     ebay_data, community_data,
                     spot_data=spot_data,
+                    fulfillment_risk=cat_config.get("fulfillment_risk", "medium"),
                 )
             except Exception as e:
                 logger.error(f"  Claude research failed: {e}")
@@ -824,7 +827,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             dimension_scores["costco_availability"] = avail_score
 
             # Incorporate community signal into demand score (weighted blend)
-            if community_data["signal_strength"] > 1:
+            if community_data["signal_strength"] > 5:
                 claude_demand = dimension_scores.get("demand_signals", 5)
                 community_score = community_data["signal_strength"]
                 # 70% eBay data, 30% community signal
@@ -842,6 +845,12 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 dimension_scores["demand_signals"] = round(
                     current_demand * 0.70 + st_score * 0.30, 1
                 )
+
+            # Hard floor: strong eBay velocity (30+ sold) locks in a minimum demand score of 8.
+            # Real transaction data outranks community signal for established products.
+            sold_90d_for_floor = ebay_data.get("sold_90d") or 0
+            if sold_90d_for_floor >= 30:
+                dimension_scores["demand_signals"] = max(dimension_scores.get("demand_signals", 0), 8.0)
 
             # Precious Metals: override two dimensions with spot-price-aware logic.
             # Generic scoring breaks for gold bars because:
