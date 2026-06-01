@@ -423,7 +423,7 @@ def get_cart_estimate(costco_url: str, page) -> dict:
         )
         if not atc_btn:
             logger.debug("  cart_estimate: no Add to Cart button — skipping")
-            return out
+            return {"reason": "no_atc_button"}
 
         # Snapshot existing cart items so we only remove what we added
         pre_url = page.url
@@ -433,7 +433,7 @@ def get_cart_estimate(costco_url: str, page) -> dict:
         # If click navigated away (drawer opened wrong product), bail
         if page.url.split("?")[0].rstrip("/") != pre_url.split("?")[0].rstrip("/"):
             logger.debug(f"  cart_estimate: ATC click changed URL — not a direct add, skipping")
-            return out
+            return {"reason": "url_changed"}
 
         page.goto("https://www.costco.com/CheckoutCartView",
                   timeout=20000, wait_until="domcontentloaded")
@@ -455,6 +455,16 @@ def get_cart_estimate(costco_url: str, page) -> dict:
                 out["subtotal"] = float(sub_m.group(1).replace(",", ""))
             # Tax is not available pre-checkout on Costco ("Applicable taxes will be calculated...")
             # Don't populate out["tax"] — researcher falls back to formula =G*0.0825
+
+        # Detect free shipping explicitly vs unknown
+        if "shipping" in out:
+            out["free_shipping"] = out["shipping"] == 0.0
+        else:
+            # Fallback: scan for free shipping text
+            full_text = page.inner_text("body") if summary_el is None else summary_el.inner_text()
+            if re.search(r"free\sshipping|shipping\sfree|\$0\.00\s*shipping", full_text, re.IGNORECASE):
+                out["shipping"] = 0.0
+                out["free_shipping"] = True
 
         logger.info(f"  cart_estimate: {out}")
 

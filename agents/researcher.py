@@ -30,6 +30,7 @@ Run: python agents/researcher.py
 import os
 import sys
 import json
+import re
 import yaml
 import time
 import random
@@ -56,6 +57,7 @@ from skills.research_watches import run_pass3 as watches_pass3
 from skills.research_appliances import run_pass3 as appliances_pass3
 from skills.research_pharmacy import run_pass3 as pharmacy_pass3
 from skills.scoring import score_dimension
+from skills.base_scoring import score_sell_through
 
 
 def col_to_idx(col_letter: str) -> int:
@@ -407,6 +409,15 @@ def _pass3_for_category(category):
     return outdoor_pass3
 
 
+def _build_niche_key(title):
+    """Reduce a product title to its core niche identifier for duplicate detection."""
+    GENERIC = {"kirkland", "signature", "costco", "set", "pack", "count", "piece",
+               "bottles", "oz", "fl", "mg", "ct"}
+    words = re.sub(r'[^\w\s]', ' ', title.lower()).split()
+    key_words = [w for w in words if w not in GENERIC and not w.isdigit()][:3]
+    return "-".join(key_words)
+
+
 # ── Main research loop ────────────────────────────────────────────
 
 def run_researcher(limit=None, add_limit=None, category_filter=None, discover_only=False, skip_discovery=False):
@@ -532,6 +543,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
     _ebay_fail_log          = []   # titles of products whose eBay fetch failed
     researched_count = 0
 
+    _seen_niches: set = set()
     with make_browser() as costco_page:
         for _product_idx, (sheet_row, row) in enumerate(to_research):
             # Refresh Costco session every 5 products — empirically the session
@@ -545,6 +557,12 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             costco_url   = safe_get(row, 17)  # col R
             costco_cost  = safe_get(row, 6)   # col G
             ebay_price   = safe_get(row, 7)   # col H
+
+            # Near-duplicate niche detection
+            niche_key = f"{category}:{_build_niche_key(title)}"
+            if niche_key in _seen_niches:
+                logger.warning(f"  ⚠️ Near-duplicate niche already researched this run: {niche_key} — consider consolidating listings")
+            _seen_niches.add(niche_key)
 
             if not costco_url:
                 continue
@@ -659,6 +677,11 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 except Exception as e:
                     logger.warning(f"  Cart estimate failed: {e}")
 
+            # Log cart estimate failure reason for debugging
+            if not cart_est or (not cart_est.get("shipping") and not cart_est.get("free_shipping")):
+                reason = cart_est.get("reason", "unknown") if cart_est else "exception"
+                logger.debug(f"  Cart estimate unavailable ({reason}) — ship cost will be empty in sheet")
+
             time.sleep(1)
 
             # 3b. eBay comp research — with one retry and a consecutive-failure halt.
@@ -705,6 +728,19 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
 
             # Suggested listing price — fill col H when not already set
             suggested_price = _suggest_ebay_price(costco_cost, ebay_data, fee_rate)
+
+            # Jewelry-specific wrong_product_flag: eBay median far below Costco cost signals wrong comps
+            if category and "jewelry" in category.lower() and costco_cost:
+                try:
+                    median_price = ebay_data.get("median_sold") or ebay_data.get("median_active") or 0
+                    if median_price and median_price < float(str(costco_cost).replace("$","").replace(",","")) * 0.20:
+                        ebay_data["wrong_product_flag"] = True
+                        ebay_data["note"] = (
+                            (ebay_data.get("note") or "")
+                            + f"⚠️ eBay median (${median_price:.0f}) << Costco cost (${costco_cost}) — likely wrong comps, verify manually"
+                        )
+                except (TypeError, ValueError):
+                    pass
 
             # Precious metals fallback: when eBay comps return no usable median
             # (common for $3k+ gold bars), estimate from melt value × target premium.
@@ -796,6 +832,17 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     claude_demand * 0.70 + community_score * 0.30, 1
                 )
 
+            # Blend sell-through rate into demand score
+            _st_sold = ebay_data.get("sold_90d") or 0
+            active_count_val = ebay_data.get("active_count") or 0
+            st_score = score_sell_through(_st_sold, active_count_val)
+            if st_score > 5:
+                # Only boost if sell-through is above neutral — don't penalize low-signal products
+                current_demand = dimension_scores.get("demand_signals", 5)
+                dimension_scores["demand_signals"] = round(
+                    current_demand * 0.70 + st_score * 0.30, 1
+                )
+
             # Precious Metals: override two dimensions with spot-price-aware logic.
             # Generic scoring breaks for gold bars because:
             #   - margin_potential uses stale eBay sold comps (90d old = gold was cheaper)
@@ -860,6 +907,14 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             # Velocity + monthly profit estimate — the real opportunity signal
             sold_90d_val   = ebay_data.get("sold_90d") or 0
             monthly_units  = round(sold_90d_val / 3, 1)
+            # Cap velocity by purchase limit — you can only buy what Costco allows
+            if purchase_limit:
+                try:
+                    limit_per_day = int(str(purchase_limit).replace("/day", "").strip())
+                    max_monthly   = limit_per_day * 30
+                    monthly_units = min(monthly_units, max_monthly)
+                except (ValueError, TypeError):
+                    pass
             if suggested_price and costco_cost:
                 try:
                     _sp = float(suggested_price)

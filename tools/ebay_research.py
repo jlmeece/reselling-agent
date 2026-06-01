@@ -96,6 +96,45 @@ def _build_query(title):
     return " ".join(words[:_MAX_QUERY_TOKENS])
 
 
+def _build_jewelry_query(title):
+    """
+    Jewelry-specific eBay query builder.
+    Keeps: karat (14kt, 18kt), metal (gold, silver), weight indicators,
+           distinctive style words (paperclip, rope, popcorn, heart charm, rolo).
+    Drops: generic filler (bracelet, necklace, earring, ring — eBay infers from category).
+    Caps at 6 tokens — jewelry search works better with fewer, more specific terms.
+    """
+    title_lower = title.lower()
+
+    # Extract karat — critical differentiator
+    karat_match = re.search(r'\b(\d{1,2}kt|\d{1,2}k\b)', title_lower)
+    karat = karat_match.group(1) if karat_match else ""
+
+    # Extract metal
+    metal = ""
+    for m in ["white gold", "yellow gold", "rose gold", "platinum", "silver", "gold"]:
+        if m in title_lower:
+            metal = m
+            break
+
+    # Style words that are actually meaningful on eBay for jewelry
+    JEWELRY_STYLE_WORDS = {
+        "paperclip", "rope", "popcorn", "heart", "charm", "rolo", "figaro",
+        "cuban", "tennis", "bangle", "cuff", "hoop", "stud", "drop", "dangle",
+        "pave", "station", "box", "snake", "omega", "wheat", "herringbone",
+        "diamond", "sapphire", "emerald", "ruby", "pearl", "moissanite"
+    }
+    words = re.sub(r'[^\w\s]', ' ', title_lower).split()
+    style_words = [w for w in words if w in JEWELRY_STYLE_WORDS][:2]
+
+    parts = [p for p in [karat, metal] + style_words if p]
+    if not parts:
+        # Absolute fallback — just clean the title
+        return _build_query(title)
+
+    return " ".join(parts[:6])
+
+
 def _parse_price(text):
     """
     Extract a representative dollar amount from a price cell.
@@ -306,11 +345,15 @@ def get_ebay_comps(product_title, category=None, page=None,
 
     sacat = int(ebay_category_id) if ebay_category_id else 0
 
-    # Determine query strategy
+    # Determine query strategy — category-aware
     model_query = _build_model_query(brand, model) if model else None
-    title_query = _build_query(product_title)
+    if category and "jewelry" in category.lower():
+        title_query   = _build_jewelry_query(product_title)
+        query_strategy = "jewelry" if not model_query else "model"
+    else:
+        title_query   = _build_query(product_title)
+        query_strategy = "model" if model_query else "title"
     primary_query = model_query if model_query else title_query
-    query_strategy = "model" if model_query else "title"
 
     result = {
         "sold_90d":         None,

@@ -97,26 +97,29 @@ def score_dimension(dimension, value):
         if value is None:
             return 0
         margin = value
-        if margin > 0.10:   return 7
-        if margin > 0.05:   return 5
-        if margin > 0:      return 3
+        if margin > 0.15:  return 10
+        if margin > 0.10:  return 8
+        if margin > 0.05:  return 6
+        if margin > 0.02:  return 4
+        if margin > 0:     return 2
         return 1
 
     elif dimension == "demand_signals":
         if value is None:
             return 1   # unknown ≠ zero — product may simply be new
-        if value > 50:   return 10
-        elif value > 20: return 7
-        elif value > 5:  return 4
+        if value > 30:   return 10
+        elif value > 15: return 8
+        elif value > 5:  return 5
+        elif value > 1:  return 3
         else:            return 1
 
     elif dimension == "competition_density":
         if value is None:
             return 5   # unknown → assume moderate
-        if value < 5:    return 10   # near-monopoly window
-        elif value < 15: return 7
-        elif value < 30: return 4
-        else:            return 1   # crowded market
+        if value < 10:   return 10
+        elif value < 25: return 7
+        elif value < 60: return 4
+        else:            return 1
 
     elif dimension == "costco_availability":
         return {
@@ -136,6 +139,17 @@ def score_dimension(dimension, value):
         }.get(value, 6)
 
     return 5   # unknown dimension → neutral score
+
+
+def score_sell_through(sold_90d, active_count):
+    if not sold_90d or not active_count:
+        return 3  # unknown → neutral
+    rate = sold_90d / max(active_count * 3, 1)
+    if rate > 1.0:   return 10
+    elif rate > 0.5: return 8
+    elif rate > 0.2: return 5
+    elif rate > 0.1: return 3
+    else:            return 1
 
 
 def apply_seasonal_modifier(base_score, category_config):
