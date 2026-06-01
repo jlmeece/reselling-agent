@@ -104,23 +104,8 @@ def _via_brave(query: str) -> list[dict]:
 
 
 def _via_google_cse(query: str) -> list[dict]:
-    key = os.getenv("GOOGLE_CSE_KEY")
-    cx  = os.getenv("GOOGLE_CSE_ID")
-    if not key or not cx:
-        return []
-    params = {"key": key, "cx": cx, "q": query, "num": MAX_RESULTS_PER_TERM}
-    url = f"{GOOGLE_CSE_URL}?{urllib.parse.urlencode(params)}"
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except Exception as e:
-        err = str(e)
-        if "403" in err or "quota" in err.lower():
-            logger.warning("  web_scout: Google CSE quota exhausted (100/day)")
-        else:
-            logger.debug(f"  web_scout CSE failed: {e}")
-        return []
-    return data.get("items", []) or []
+    # Disabled — 100/day quota exhausted too quickly. Serper + Brave cover this.
+    return []
 
 
 def _parse_date_hint(snippet: str) -> date | None:
