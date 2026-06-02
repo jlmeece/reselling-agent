@@ -35,7 +35,7 @@ from tools.status_logic import (
     ACTIVE_MONITOR_STATUSES, DAILY_SWEEP_STATUSES, SKIP_STATUSES,
 )
 from tools.listing_copy import generate_listing_copy
-from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest, send_run_summary
+from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest, send_run_summary, send_sale_expiry_alert
 from tools.run_logger import log_run_start, log_run_end
 from tools.spot_price import check_spot_movement
 
@@ -248,6 +248,70 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
             time.sleep(2)
 
     logger.info(f"Active monitor complete. Checked: {checked} | Urgent: {len(urgent_items)}")
+
+    # ── Sale expiry check ──────────────────────────────────────────────────────
+    # Online arbitrage model — no inventory held. Sale expiry = repricing event.
+    import re as _re
+    from datetime import datetime as _dt
+
+    SALE_WARN_HOURS   = int(business.get("sale_warn_hours",   48))
+    SALE_URGENT_HOURS = int(business.get("sale_urgent_hours", 24))
+
+    expiring = []
+    for row in all_data:
+        if not row:
+            continue
+        status    = safe_get(row, col_to_idx(COL["status"]))
+        sale_info = safe_get(row, col_to_idx(COL["sale_info"]))
+        if status != "ACTIVE" or not sale_info:
+            continue
+
+        exp_match = _re.search(r'ends?\s+(\d{1,2}/\d{1,2}/\d{2,4})', sale_info, _re.IGNORECASE)
+        if not exp_match:
+            continue
+
+        try:
+            exp_str = exp_match.group(1)
+            exp_dt = None
+            for fmt in ("%m/%d/%y", "%m/%d/%Y"):
+                try:
+                    exp_dt = _dt.strptime(exp_str, fmt).replace(hour=23, minute=59)
+                    break
+                except ValueError:
+                    continue
+            if exp_dt is None:
+                continue
+
+            hours_left = (exp_dt - _dt.now()).total_seconds() / 3600
+            if 0 < hours_left <= SALE_WARN_HOURS:
+                savings_match = _re.search(r'\$(\d+\.?\d*)', sale_info)
+                savings = float(savings_match.group(1)) if savings_match else None
+                costco_cost_raw = safe_get(row, col_to_idx(COL["costco_cost"]))
+                try:
+                    regular_cost = (float(costco_cost_raw) + savings) if (costco_cost_raw and savings) else None
+                except Exception:
+                    regular_cost = None
+
+                expiring.append({
+                    "title":               safe_get(row, col_to_idx(COL["title"])),
+                    "sale_expires":        exp_str,
+                    "sale_savings":        savings,
+                    "costco_url":          safe_get(row, col_to_idx(COL["costco_url"])),
+                    "ebay_url":            safe_get(row, col_to_idx(COL["ebay_listing_url"])),
+                    "current_ebay_price":  safe_get(row, col_to_idx(COL["ebay_price"])),
+                    "costco_cost":         costco_cost_raw,
+                    "regular_costco_cost": regular_cost,
+                    "fee_rate":            safe_get(row, col_to_idx(COL["fee_rate"])),
+                    "net_profit":          safe_get(row, col_to_idx(COL["net_profit"])),
+                    "hours_left":          hours_left,
+                })
+        except Exception as e:
+            logger.debug(f"  Sale expiry parse error: {e}")
+
+    if expiring:
+        min_hours = min(p["hours_left"] for p in expiring)
+        send_sale_expiry_alert(expiring, hours_remaining=min_hours)
+        logger.info(f"  Sale expiry alert — {len(expiring)} listing(s) expiring within {min_hours:.0f}h")
 
     # Only alert if something actually needs action
     if urgent_items:

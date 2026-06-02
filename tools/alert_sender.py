@@ -15,6 +15,20 @@ from email.mime.multipart import MIMEMultipart
 from loguru import logger
 
 
+# ── Alert level config ────────────────────────────────────────────────────────
+# Set ALERT_LEVEL in .env:
+#   "all"       → every run summary (noisy)
+#   "important" → only Tier 1 found, OOS, price change, sale expiry, errors (recommended)
+#   "urgent"    → only OOS, errors, sale expiry (minimal)
+ALERT_LEVEL = os.getenv("ALERT_LEVEL", "important")
+
+def _should_send(alert_type: str) -> bool:
+    """Returns True if this alert type should be sent at the current ALERT_LEVEL."""
+    levels    = {"routine": 0, "important": 1, "urgent": 2}
+    threshold = {"all": 0, "important": 1, "urgent": 2}.get(ALERT_LEVEL, 1)
+    return levels.get(alert_type, 0) >= threshold
+
+
 # ── HTML Templates ────────────────────────────────────────────────────────────
 
 def _html_urgent(subject, items, sheet_url, run_time):
@@ -151,6 +165,10 @@ def send_urgent_alert(subject, items, run_time=None, sheet_url=None):
     html_body = _html_urgent(subject, items, sheet_url, run_time)
     _send_email(f"🚨 URGENT — {subject}", html_body, urgent=True)
     _send_sms(_sms_urgent(items))
+    _send_telegram(
+        f"🚨 Action needed — {subject}\n"
+        + "\n".join(f"• {i['title'][:35]}: {i['reason'][:50]}" for i in items[:3])
+    )
 
 
 def send_routine_alert(subject, summary_rows, product_rows=None, run_time=None, sheet_url=None):
@@ -160,6 +178,9 @@ def send_routine_alert(subject, summary_rows, product_rows=None, run_time=None, 
     summary_rows: list of (label, value, color) tuples
     product_rows: optional list of {title, row, note} dicts
     """
+    if not _should_send("routine"):
+        logger.debug("  Routine alert suppressed by ALERT_LEVEL setting")
+        return
     from datetime import datetime
     run_time = run_time or datetime.now().strftime("%Y-%m-%d %H:%M")
     sheet_url = sheet_url or f"https://docs.google.com/spreadsheets/d/{os.getenv('GOOGLE_SHEET_ID','')}/edit"
@@ -192,6 +213,79 @@ def send_ready_to_list_alert(items, run_time=None, sheet_url=None):
 
     if len(items) >= 3:
         _send_sms(_sms_ready(items))
+
+
+def send_sale_expiry_alert(products: list, hours_remaining: float):
+    """
+    Alerts when a Costco sale is ending on an ACTIVE product.
+    Online arbitrage model — no inventory held. Action = reprice or end listing.
+
+    products: list of dicts — title, sale_expires, sale_savings, costco_url,
+              ebay_url, current_ebay_price, costco_cost, regular_costco_cost,
+              fee_rate, net_profit
+    """
+    if not products:
+        return
+
+    urgency = "ENDING TODAY" if hours_remaining <= 24 else "ENDING IN 2 DAYS"
+    rows = ""
+    for p in products:
+        try:
+            fee_rate     = float(p.get("fee_rate") or 0.1325)
+            regular_cost = float(p.get("regular_costco_cost") or p.get("costco_cost") or 0)
+            min_break_even = round(regular_cost / (1 - fee_rate), 2) if regular_cost else None
+            target_price   = round((regular_cost + 5) / (1 - fee_rate), 2) if regular_cost else None
+            price_note = (
+                f"Raise to ${target_price} to keep ~$5 net, or ${min_break_even} to break even"
+                if target_price else "Recalculate price after sale ends"
+            )
+        except Exception:
+            price_note = "Recalculate eBay price after sale ends"
+
+        savings = f"${p.get('sale_savings', 0):.0f} off" if p.get("sale_savings") else "ON SALE"
+        ebay_link = f'  <a href="{p["ebay_url"]}">Edit eBay listing &#x2192;</a>' if p.get("ebay_url") else ""
+        rows += f"""
+        <tr>
+          <td style="padding:12px;border-bottom:1px solid #f2f2f2">
+            <b>{p['title'][:60]}</b><br>
+            <span style="color:#e63946">&#x23F0; Sale ends {p.get('sale_expires','?')} ({savings})</span><br>
+            <span style="color:#1d1d1f;font-size:14px;margin-top:4px;display:block">
+              Current: Costco ${p.get('costco_cost','?')} &#x2192; eBay ${p.get('current_ebay_price','?')} &#x2192; net ${p.get('net_profit','?')}
+            </span>
+            <span style="color:#e63946;font-size:14px">After sale: {price_note}</span><br>
+            <a href="{p.get('costco_url','#')}">Check Costco price &#x2192;</a>{ebay_link}
+          </td>
+        </tr>"""
+
+    html = f"""<div style="font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:24px">
+      <div style="background:#e63946;color:white;padding:16px;border-radius:8px;margin-bottom:20px">
+        <h2 style="margin:0">&#x23F0; Costco Sale {urgency}</h2>
+        <p style="margin:6px 0 0 0;opacity:0.9">
+          {len(products)} active listing(s) affected &#x2014; reprice or end before margin goes negative
+        </p>
+      </div>
+      <table style="width:100%;border-collapse:collapse">{rows}</table>
+      <div style="background:#fff3cd;border-radius:8px;padding:12px;margin-top:16px">
+        <b>What to do:</b><br>
+        1. Check Costco price after sale ends<br>
+        2. If new cost kills margin &#x2192; end or pause the eBay listing<br>
+        3. If margin still positive at higher price &#x2192; edit eBay listing price<br>
+        4. Wait for next sale cycle &#x2014; Costco runs these regularly
+      </div>
+    </div>"""
+
+    sms = f"⏰ Sale ending {hours_remaining:.0f}h: {products[0]['title'][:35]} — reprice eBay or end listing."
+    _send_email(
+        subject=f"[WAT] ⏰ Sale {urgency} — action needed on {len(products)} listing(s)",
+        html_body=html,
+        urgent=True,
+    )
+    _send_sms(sms)
+    p0 = products[0]
+    _send_telegram(
+        f"⏰ Sale ending {hours_remaining:.0f}h — {p0['title'][:45]}\n"
+        f"Sale ends {p0.get('sale_expires','?')} — check eBay price."
+    )
 
 
 def send_rotation_digest(rotation_by_category, run_date, sheet_url=None):
@@ -266,13 +360,22 @@ def send_rotation_digest(rotation_by_category, run_date, sheet_url=None):
 
 def send_run_summary(mode: str, results: dict, run_time: str = None, sheet_url: str = None):
     """
-    Sends a brief green summary email after every scheduled run — even quiet ones.
-    Closes the "silent run" gap where Jordan has no idea if the agent ran.
+    Sends a brief green summary email after scheduled runs.
+    Suppressed for quiet runs when ALERT_LEVEL is 'important' or 'urgent'.
 
     results keys: status, new_products, researched, tier1, tier2, tier3,
                   scout_health, errors, spot_gold, spot_silver, product_lines
     product_lines: list of str like "Argor Heraeus → Tier 2 (4.62)"
     """
+    has_tier1  = bool(results.get("tier1"))
+    has_errors = bool(results.get("errors"))
+    has_new    = bool(results.get("new_products"))
+    notable    = has_tier1 or has_errors or has_new
+
+    if not notable and not _should_send("routine"):
+        logger.info(f"  [{mode}] Quiet run — no email (set ALERT_LEVEL=all to always send). Logged to sheet.")
+        return
+
     from datetime import datetime
     run_time   = run_time   or datetime.now().strftime("%Y-%m-%d %H:%M CDT")
     sheet_url  = sheet_url  or f"https://docs.google.com/spreadsheets/d/{os.getenv('GOOGLE_SHEET_ID','')}/edit"
@@ -315,6 +418,10 @@ def send_run_summary(mode: str, results: dict, run_time: str = None, sheet_url: 
     html_body = _html_routine(status_label, summary_rows, product_rows, sheet_url, run_time)
     _send_email(subject, html_body, urgent=False)
 
+    if has_tier1:
+        top = (results.get("product_lines") or ["Unknown product"])[0]
+        _send_telegram(f"⭐ Tier 1 found!\n{top[:80]}\nOpen sheet → SCORED status — review and approve.")
+
 
 def send_failure_alert(job_name: str, error: str = "", run_time: str = None, sheet_url: str = None):
     """
@@ -335,9 +442,33 @@ def send_failure_alert(job_name: str, error: str = "", run_time: str = None, she
     html_body = _html_urgent(subject, items, sheet_url, run_time)
     _send_email(f"🚨 {subject}", html_body, urgent=True)
     _send_sms(f"⚠ WAT FAILED: {job_name}\n{error[:80] or 'Check GitHub Actions'}")
+    _send_telegram(f"💥 Agent error [{job_name}] — {error[:100] or 'Check GitHub Actions'}")
 
 
 # ── Internal send helpers ─────────────────────────────────────────────────────
+
+def _send_telegram(message: str):
+    """
+    Sends a plain-text message to the configured Telegram chat.
+    Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env.
+    Falls back silently if not configured.
+    """
+    import urllib.request, json as _json
+    token   = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        return
+    try:
+        payload = _json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        logger.debug(f"  Telegram notify failed: {e}")
+
 
 def _send_email(subject, html_body, urgent=False, plain_fallback=""):
     from_email = os.getenv("ALERT_FROM_EMAIL")

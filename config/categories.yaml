@@ -10,6 +10,8 @@ business:
   sheet_name: "Product Tracker"
   data_start_row: 4
   data_end_row: 500
+  sale_warn_hours: 48              # first sale expiry warning — time to reprice or plan listing end
+  sale_urgent_hours: 24            # urgent sale expiry warning — last chance before margin changes
 
   # Run schedule — times are local (Central). GitHub Actions workflow uses UTC offsets.
   # active:    Check ACTIVE listings — 3x/day, every run
