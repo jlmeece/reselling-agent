@@ -59,7 +59,13 @@ categories:
       viral social proof, prepper/investment demand. Max list qty = 2 for 1oz bars.
       Melt value and spot premium % are critical scoring signals.
 
-    ebay_category_id: "3229"               # Precious Metals
+    ebay_category_id: "39482"              # Gold Bars (leaf)
+    ebay_category_map:
+      "gold bar": "39482"                  # Gold Bars (leaf)
+      "gold coin": "39482"                 # Gold (leaf)
+      "silver bar": "45109"               # Silver Bars (leaf)
+      "silver coin": "45108"              # Silver Coins (leaf)
+      "default": "39482"
     ebay_item_specifics:
       "C:Type": ""                         # Gold Bar / Gold Coin / Silver Bar — Claude fills
       "C:Metal": ""                        # Gold / Silver / Platinum — Claude fills
@@ -113,7 +119,15 @@ categories:
       Brand matters less than style, metal type (14k/18k), and stone quality.
       eBay comps: search by metal + style description, not model number.
 
-    ebay_category_id: "67"                      # Fine Jewelry
+    ebay_category_id: "137835"                   # Fine Bracelets (leaf, most common)
+    ebay_category_map:
+      "bracelet": "137835"                      # Fine Bracelets (leaf)
+      "necklace": "137839"                      # Fine Necklaces & Pendants (leaf)
+      "chain": "137839"                         # Fine Necklaces & Pendants (leaf)
+      "ring": "10968"                           # Fine Rings (leaf)
+      "earring": "261994"                       # Fine Earrings (leaf)
+      "pendant": "137839"                       # Fine Necklaces & Pendants (leaf)
+      "default": "137835"                       # Fine Bracelets (fallback)
     ebay_item_specifics:
       "C:Metal": ""                             # e.g. 14K Gold, Sterling Silver
       "C:Type": ""                              # e.g. Ring, Necklace, Earrings
@@ -155,7 +169,13 @@ categories:
     research_skill: "skills/research_outdoor.py"
     seasonal_peak_months: [3, 4, 5, 6]
     notes: "Watch shipping weight — heavy items cut margin fast"
-    ebay_category_id: "139849"
+    ebay_category_id: "261940"                  # Patio Furniture Sets (leaf)
+    ebay_category_map:
+      "sectional": "261940"                     # Patio Furniture Sets (leaf)
+      "chair": "13322"                          # Outdoor Chairs (leaf)
+      "adirondack": "13322"                     # Outdoor Chairs (leaf)
+      "table": "20563"                          # Outdoor Tables (leaf)
+      "default": "261940"
     ebay_item_specifics:
       "C:Brand": ""
       "C:Material": ""
@@ -233,7 +253,18 @@ categories:
       Avoid: weight loss claims, testosterone boosters, exotic proprietary blends (eBay policy risk).
       Fulfillment: lightweight poly mailer. High margin-to-weight ratio.
 
-    ebay_category_id: "11897"               # Vitamins & Dietary Supplements
+    ebay_category_id: "181001"              # Energy & Endurance Supplements (leaf)
+    ebay_category_map:
+      "energy shot": "181001"               # Energy & Endurance Supplements (leaf)
+      "energy drink": "181001"              # Energy & Endurance Supplements (leaf)
+      "fish oil": "11892"                   # Fish Oil & Omega-3 (leaf)
+      "omega": "11892"                      # Fish Oil & Omega-3 (leaf)
+      "calcium": "11894"                    # Calcium (leaf)
+      "vitamin d": "11896"                  # Vitamin D (leaf)
+      "vitamin c": "11896"                  # Vitamins & Minerals (leaf)
+      "probiotic": "11896"                  # Other Vitamins (leaf)
+      "dog": "177799"                       # Pet Vitamins & Supplements (leaf)
+      "default": "11896"                    # Other Vitamins & Supplements (leaf)
     ebay_item_specifics:
       "C:Brand": ""                         # e.g. Kirkland Signature, Nature Made
       "C:Type": ""                          # e.g. Fish Oil, Vitamin D, Probiotics
@@ -282,7 +313,15 @@ categories:
       Always search eBay by exact model number first. Costco Concierge 2-year warranty is a selling point.
       Ship standard residential (UPS/FedEx). Check product weight — skip anything over 40 lbs.
 
-    ebay_category_id: "20625"               # Small Kitchen Appliances
+    ebay_category_id: "20667"               # Small Kitchen Appliances (parent)
+    ebay_category_map:
+      "blender": "14070"                    # Blenders (leaf)
+      "vitamix": "14070"                    # Blenders (leaf)
+      "air fryer": "177749"                 # Air Fryers (leaf)
+      "coffee": "30063"                     # Coffee Makers (leaf)
+      "stand mixer": "116174"               # Stand Mixers (leaf)
+      "food processor": "14070"             # Food Processors (leaf)
+      "default": "20667"                    # Small Kitchen Appliances
     ebay_item_specifics:
       "C:Brand": ""                         # e.g. Vitamix, KitchenAid, Ninja
       "C:Type": ""                          # e.g. Blender, Stand Mixer, Air Fryer

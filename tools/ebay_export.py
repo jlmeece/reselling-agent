@@ -79,8 +79,19 @@ _EBAY_COLUMNS = [
     "Location",
     "PicURL",
     "C:Brand",
-    "C:Material",
     "C:Type",
+    "C:Material",
+    "C:Metal",
+    "C:Purity",
+    "C:Style",
+    "C:Formulation",
+    "C:Unit Count",
+    "C:Movement",
+    "C:Water Resistance",
+    "C:Case Color",
+    "C:Band Color",
+    "C:Model",
+    "C:Color",
     "ShippingProfileName",
     "ReturnProfileName",
     "PaymentProfileName",
@@ -110,9 +121,167 @@ def _load_config() -> dict:
         return yaml.safe_load(f)
 
 
-def _ebay_category_id(category: str, config: dict) -> str:
+def _ebay_category_id(title: str, category: str, config: dict) -> str:
     cat_config = config["categories"].get(category, {})
-    return str(cat_config.get("ebay_category_id", ""))
+    cat_map = cat_config.get("ebay_category_map", {})
+    title_lower = title.lower()
+    for keyword, cat_id in cat_map.items():
+        if keyword != "default" and keyword in title_lower:
+            return str(cat_id)
+    return str(cat_map.get("default", cat_config.get("ebay_category_id", "")))
+
+
+def _infer_item_specifics(title: str, category: str, brand: str, cat_config: dict) -> dict:
+    """
+    Infers eBay item specifics from product title + category config.
+    Returns a flat dict of C:FieldName → value for all required specifics.
+    """
+    title_lower = title.lower()
+    specifics = {}
+
+    if brand:
+        specifics["C:Brand"] = brand
+
+    if category == "Pharmacy":
+        if any(w in title_lower for w in ["energy shot", "energy drink", "shot"]):
+            specifics["C:Type"] = "Energy Shot"
+        elif any(w in title_lower for w in ["fish oil", "omega"]):
+            specifics["C:Type"] = "Fish Oil"
+        elif any(w in title_lower for w in ["vitamin d", "vitamin c", "vitamin b"]):
+            specifics["C:Type"] = "Vitamins & Minerals"
+        elif "calcium" in title_lower:
+            specifics["C:Type"] = "Calcium"
+        elif "probiotic" in title_lower:
+            specifics["C:Type"] = "Probiotics"
+        elif "protein" in title_lower:
+            specifics["C:Type"] = "Protein"
+        elif any(w in title_lower for w in ["magnesium", "zinc", "iron"]):
+            specifics["C:Type"] = "Vitamins & Minerals"
+        else:
+            specifics["C:Type"] = "Dietary Supplement"
+
+        if any(w in title_lower for w in ["softgel", "soft gel", "softchew", "soft chew", "chew"]):
+            specifics["C:Formulation"] = "Softgels"
+        elif "tablet" in title_lower:
+            specifics["C:Formulation"] = "Tablets"
+        elif "capsule" in title_lower:
+            specifics["C:Formulation"] = "Capsules"
+        elif "liquid" in title_lower or "shot" in title_lower or "drink" in title_lower:
+            specifics["C:Formulation"] = "Liquid"
+        elif "powder" in title_lower:
+            specifics["C:Formulation"] = "Powder"
+        else:
+            specifics["C:Formulation"] = "Other"
+
+        count_match = re.search(r'(\d+)\s*(?:-count|count|bottles?|tablets?|capsules?|softgels?|ct\b)', title_lower)
+        if count_match:
+            specifics["C:Unit Count"] = count_match.group(1)
+
+    elif category == "Jewelry":
+        if "14kt" in title_lower or "14k" in title_lower:
+            specifics["C:Metal"] = "14K Gold"
+        elif "18kt" in title_lower or "18k" in title_lower:
+            specifics["C:Metal"] = "18K Gold"
+        elif "sterling" in title_lower or "silver" in title_lower:
+            specifics["C:Metal"] = "Sterling Silver"
+        elif "platinum" in title_lower:
+            specifics["C:Metal"] = "Platinum"
+
+        if "bracelet" in title_lower:
+            specifics["C:Type"] = "Bracelet"
+        elif "necklace" in title_lower or "chain" in title_lower:
+            specifics["C:Type"] = "Necklace"
+        elif "ring" in title_lower:
+            specifics["C:Type"] = "Ring"
+        elif "earring" in title_lower:
+            specifics["C:Type"] = "Earrings"
+        elif "pendant" in title_lower:
+            specifics["C:Type"] = "Pendant"
+        else:
+            specifics["C:Type"] = "Other"
+
+        style_map = {
+            "paperclip": "Paperclip", "rope": "Rope", "popcorn": "Popcorn",
+            "figaro": "Figaro", "cuban": "Cuban Link", "tennis": "Tennis",
+            "heart": "Heart", "rolo": "Rolo", "charm": "Charm",
+        }
+        for kw, style in style_map.items():
+            if kw in title_lower:
+                specifics["C:Style"] = style
+                break
+
+    elif category == "Precious Metals":
+        if "coin" in title_lower:
+            specifics["C:Type"] = "Coin"
+        else:
+            specifics["C:Type"] = "Bar"
+
+        if "gold" in title_lower:
+            specifics["C:Metal"] = "Gold"
+        elif "silver" in title_lower:
+            specifics["C:Metal"] = "Silver"
+        elif "platinum" in title_lower:
+            specifics["C:Metal"] = "Platinum"
+
+        purity = re.search(r'(\.9{3,4}|24\s*k|22\s*k)', title_lower)
+        if purity:
+            specifics["C:Purity"] = purity.group(1).upper()
+        else:
+            specifics["C:Purity"] = ".9999 Fine"
+
+    elif category == "Outdoor Furniture":
+        if "sectional" in title_lower:
+            specifics["C:Type"] = "Sectional"
+        elif "adirondack" in title_lower or "chair" in title_lower:
+            specifics["C:Type"] = "Chair"
+        elif "sofa" in title_lower or "loveseat" in title_lower:
+            specifics["C:Type"] = "Sofa"
+        elif "table" in title_lower:
+            specifics["C:Type"] = "Table"
+        elif "set" in title_lower:
+            specifics["C:Type"] = "Patio Set"
+        else:
+            specifics["C:Type"] = "Patio Furniture"
+
+        if "wicker" in title_lower or "rattan" in title_lower:
+            specifics["C:Material"] = "Wicker/Rattan"
+        elif "polywood" in title_lower or "hdpe" in title_lower:
+            specifics["C:Material"] = "HDPE"
+        elif "aluminum" in title_lower or "aluminium" in title_lower:
+            specifics["C:Material"] = "Aluminum"
+        elif "steel" in title_lower:
+            specifics["C:Material"] = "Steel"
+        elif "teak" in title_lower:
+            specifics["C:Material"] = "Teak"
+        else:
+            specifics["C:Material"] = "Other"
+
+    elif category == "Watches":
+        specifics["C:Type"] = "Wristwatch"
+        if "automatic" in title_lower:
+            specifics["C:Movement"] = "Automatic"
+        else:
+            specifics["C:Movement"] = "Quartz"
+
+    elif category == "Small Appliances":
+        appliance_types = {
+            "blender": "Blender", "air fryer": "Air Fryer", "vitamix": "Blender",
+            "stand mixer": "Stand Mixer", "coffee": "Coffee Maker",
+            "instant pot": "Pressure Cooker", "toaster": "Toaster",
+            "food processor": "Food Processor", "juicer": "Juicer",
+        }
+        for kw, t in appliance_types.items():
+            if kw in title_lower:
+                specifics["C:Type"] = t
+                break
+        if "C:Type" not in specifics:
+            specifics["C:Type"] = "Kitchen Appliance"
+
+        model = re.search(r'\b([A-Z]{1,4}[\-]?[0-9]{3,6}[A-Z]?)\b', title)
+        if model:
+            specifics["C:Model"] = model.group(1)
+
+    return specifics
 
 
 def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> str:
@@ -157,10 +326,11 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             skipped += 1
             continue
 
-        title    = _safe(row, _COL["title"])
-        brand    = _parse_brand_from_notes(notes)
-        quantity = _parse_quantity_from_notes(notes)
-        cat_id   = _ebay_category_id(category, config)
+        title      = _safe(row, _COL["title"])
+        brand      = _parse_brand_from_notes(notes)
+        quantity   = _parse_quantity_from_notes(notes)
+        cat_id     = _ebay_category_id(title, category, config)
+        cat_config = config["categories"].get(category, {})
         logger.debug(f"  {title[:40]} → eBay category: {cat_id} ({category})")
         if not cat_id:
             logger.warning(f"  Skipping {title[:40]} — no eBay category ID configured for '{category}'")
@@ -193,9 +363,8 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             "ConditionID":         "1000",
             "Location":            location,
             "PicURL":              pic_url,
-            "C:Brand":             brand,
-            "C:Material":          "",
-            "C:Type":              "",
+            **{k: v for k, v in _infer_item_specifics(title, category, brand, cat_config).items()
+               if k in _EBAY_COLUMNS},
             "ShippingProfileName": shipping,
             "ReturnProfileName":   returns,
             "PaymentProfileName":  payment,
