@@ -1052,12 +1052,10 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             if tier in (1, 2) and not safe_get(row, seo_title_idx):
                 try:
                     copy_batch = [{
-                        "title":         title,
-                        "category":      category,
-                        "cost":          costco_cost or "",
-                        "sell_price":    ebay_price or "",
-                        "site_url":      cat_config.get("site_url", ""),
-                        "discount_code": business.get("discount_code", "SAVE10"),
+                        "title":      title,
+                        "category":   category,
+                        "cost":       costco_cost or "",
+                        "sell_price": ebay_price or "",
                     }]
                     copy_result = generate_listing_copy(copy_batch)[0]
                     copy_updates = [

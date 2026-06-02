@@ -14,15 +14,13 @@ import anthropic
 
 
 SYSTEM_PROMPT = """You are an expert eBay seller and SEO copywriter for the seller account JA_Liquidations. \
-You write listing copy that builds trust, ranks in eBay search, and converts browsers into buyers. \
-Every listing includes a redirect message that offers the buyer 10% off to purchase direct from the seller's website.
+You write listing copy that builds trust, ranks in eBay search, and converts browsers into buyers.
 
 Seller identity: JA_Liquidations — ships from Texas. Use this to build buyer confidence.
 
 Rules:
 - Never use the word "beautiful" — it is generic and kills trust
 - Always mention specific materials, dimensions, or specs in at least one bullet
-- Redirect message must reference the exact site URL and discount code provided
 - Headlines must be scannable, not clever — buyers search with keywords not wit
 - Meta descriptions must be exactly 155 characters
 - HTML descriptions must use ONLY inline styles — no <style> blocks, eBay strips them
@@ -74,10 +72,6 @@ Follow this exact structure (fill in real product content):
     <li style="padding:10px 0;border-bottom:1px solid #f2f2f2;font-size:14px">✓ {BULLET 4}</li>
     <li style="padding:10px 0;font-size:14px">✓ {BULLET 5}</li>
   </ul>
-  <div style="background:#f5f5f7;border-radius:10px;padding:16px;margin:0 0 20px 0">
-    <b style="font-size:14px">Save 10% buying direct:</b>
-    <p style="font-size:13px;color:#1d1d1f;margin:6px 0 0 0">{REDIRECT MESSAGE — site URL and code}</p>
-  </div>
   <p style="font-size:12px;color:#6e6e73;margin:0">Sold by JA_Liquidations — Ships from Texas. New in original packaging. \
 eBay Money Back Guarantee applies to all purchases.</p>
 </div>
@@ -108,9 +102,7 @@ def generate_listing_copy(products_batch):
             f"{i}. PRODUCT: {p['title']}\n"
             f"   CATEGORY: {p['category']}\n"
             f"   COSTCO COST: ${p['cost']}\n"
-            f"   EBAY SELL PRICE: ${p['sell_price']}\n"
-            f"   SITE URL: {p.get('site_url', '')}\n"
-            f"   DISCOUNT CODE: {p.get('discount_code', 'SAVE10')}"
+            f"   EBAY SELL PRICE: ${p['sell_price']}"
         )
 
     user_content = (
@@ -130,7 +122,6 @@ def generate_listing_copy(products_batch):
         "- meta_desc: exactly 155 chars for WordPress SEO\n"
         "- keywords: 6-8 comma-separated search terms\n"
         "- alt_text: one descriptive sentence for the main product image\n"
-        "- redirect_msg: \"Save 10% buying direct at [SITE_URL] with code [CODE] — same product, no eBay fees.\"\n"
         "- google_hl: 3 Google ad headlines max 30 chars each, separated by |\n"
         "- google_desc: 2 Google ad descriptions max 90 chars each, separated by |\n"
         "- meta_text: Meta/Facebook primary text max 125 chars\n"

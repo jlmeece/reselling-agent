@@ -156,9 +156,15 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             skipped += 1
             continue
 
+        title    = _safe(row, _COL["title"])
         brand    = _parse_brand_from_notes(notes)
         quantity = _parse_quantity_from_notes(notes)
         cat_id   = _ebay_category_id(category, config)
+        logger.debug(f"  {title[:40]} → eBay category: {cat_id} ({category})")
+        if not cat_id:
+            logger.warning(f"  Skipping {title[:40]} — no eBay category ID configured for '{category}'")
+            skipped += 1
+            continue
 
         # PicURL: eBay accepts pipe-separated multiple image URLs
         pic_url = image_urls.replace("|", "|") if image_urls else ""
