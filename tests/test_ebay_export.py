@@ -95,3 +95,24 @@ def test_generate_ebay_csv_skips_row_with_no_seo_title():
     csv_text = generate_ebay_csv([(4, row)], _config_with_id())
     rows = list(csv.DictReader(io.StringIO(csv_text)))
     assert len(rows) == 0
+
+
+# ── PicURL: placeholder and separator ─────────────────────────────────────────
+
+def test_generate_ebay_csv_uses_placeholder_when_no_image_urls():
+    """PicURL must be the placeholder URL when no image URLs are scraped."""
+    from tools.ebay_export import generate_ebay_csv, PLACEHOLDER_IMAGE
+    row = _make_row(image_urls="")
+    csv_text = generate_ebay_csv([(4, row)], _config_with_id())
+    rows = list(csv.DictReader(io.StringIO(csv_text)))
+    assert rows[0]["PicURL"] == PLACEHOLDER_IMAGE
+
+
+def test_generate_ebay_csv_converts_comma_separated_images_to_pipe():
+    """Comma-separated image URLs from the sheet must become pipe-separated in PicURL."""
+    from tools.ebay_export import generate_ebay_csv
+    urls = "https://example.com/a.jpg,https://example.com/b.jpg"
+    row = _make_row(image_urls=urls)
+    csv_text = generate_ebay_csv([(4, row)], _config_with_id())
+    rows = list(csv.DictReader(io.StringIO(csv_text)))
+    assert rows[0]["PicURL"] == "https://example.com/a.jpg|https://example.com/b.jpg"

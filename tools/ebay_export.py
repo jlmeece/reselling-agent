@@ -60,6 +60,7 @@ _COL = {
 }
 
 _EXPORT_STATUSES = {"READY"}
+PLACEHOLDER_IMAGE = "https://placehold.co/1600x1600/ffffff/cccccc/png"
 
 # eBay Seller Hub CSV column order
 _EBAY_COLUMNS = [
@@ -167,7 +168,9 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             continue
 
         # PicURL: eBay accepts pipe-separated multiple image URLs
-        pic_url = image_urls.replace("|", "|") if image_urls else ""
+        pic_url = image_urls.replace(",", "|") if image_urls else PLACEHOLDER_IMAGE
+        if pic_url == PLACEHOLDER_IMAGE:
+            logger.info(f"  {title[:40]} — no images scraped, using placeholder. Replace in Seller Hub before publishing.")
 
         # Inline the HTML description as a single line (strip stray newlines)
         desc_clean = " ".join(description.split()) if description else ""
