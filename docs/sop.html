@@ -319,7 +319,7 @@
     <div class="site-title">WAT <span>/</span> Reselling <span>/</span> SOP</div>
     <div class="header-right">
       <span id="last-refresh"></span>
-      <button id="btn-refresh" onclick="fetchData()">↻ Refresh</button>
+      <button id="btn-refresh" onclick="loadSheetData()">↻ Refresh</button>
     </div>
   </div>
 </header>
@@ -582,7 +582,6 @@
 
 <script>
 const SHEET_ID  = '1KXxULBBp4dmZb1OMGYPkf_YIE1HFd4byQCsAb-_tSic';
-const GVIZ_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Product%20Tracker`;
 const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`;
 
 const VALID = new Set([
@@ -746,45 +745,60 @@ function tickRefresh() {
                  : lastFetch.toLocaleTimeString();
 }
 
-async function fetchData() {
+function showError(msg) {
+  const cache = lastFetch ? ` Last fetch: ${lastFetch.toLocaleTimeString()}.` : '';
+  document.getElementById('action-card').innerHTML = `
+    <div class="action-card error">
+      <div class="action-card-title">Could not load live data</div>
+      <div class="action-card-body">${esc(msg)}.${cache}
+        <br><br><a href="${esc(SHEET_URL)}" target="_blank" class="sheet-link">Open sheet directly ↗</a>
+      </div>
+    </div>`;
+  fetching = false;
+  const btn = document.getElementById('btn-refresh');
+  btn.disabled = false; btn.textContent = '↻ Refresh';
+}
+
+function parseAndRender(table) {
+  products  = parseRows({table});
+  lastFetch = new Date();
+  renderActionCard(products);
+  renderPipeline(products);
+  renderActive(products);
+  tickRefresh();
+  fetching = false;
+  const btn = document.getElementById('btn-refresh');
+  btn.disabled = false; btn.textContent = '↻ Refresh';
+}
+
+function loadSheetData() {
   if (fetching) return;
   fetching = true;
   const btn = document.getElementById('btn-refresh');
   btn.disabled = true; btn.textContent = '↻ Loading…';
 
-  try {
-    const res  = await fetch(GVIZ_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    const s = text.indexOf('{'), e = text.lastIndexOf('}');
-    if (s === -1) throw new Error('Unexpected response');
-    const json = JSON.parse(text.slice(s, e + 1));
+  const old = document.getElementById('gviz-script');
+  if (old) old.remove();
 
-    products  = parseRows(json);
-    lastFetch = new Date();
+  window.handleSheetData = function(response) {
+    if (response.status !== 'ok') {
+      showError('Sheet returned status: ' + response.status);
+      return;
+    }
+    parseAndRender(response.table);
+  };
 
-    renderActionCard(products);
-    renderPipeline(products);
-    renderActive(products);
-    tickRefresh();
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;handler:handleSheetData&sheet=Product%20Tracker`;
 
-  } catch (err) {
-    const cache = lastFetch ? ` Last fetch: ${lastFetch.toLocaleTimeString()}.` : '';
-    document.getElementById('action-card').innerHTML = `
-      <div class="action-card error">
-        <div class="action-card-title">Could not load live data</div>
-        <div class="action-card-body">${esc(err.message)}.${cache}
-          <br><br><a href="${esc(SHEET_URL)}" target="_blank" class="sheet-link">Open sheet directly ↗</a>
-        </div>
-      </div>`;
-  } finally {
-    fetching = false;
-    btn.disabled = false; btn.textContent = '↻ Refresh';
-  }
+  const script = document.createElement('script');
+  script.id = 'gviz-script';
+  script.src = url;
+  script.onerror = () => showError('Could not reach Google Sheets. Check your internet connection.');
+  document.head.appendChild(script);
 }
 
 setInterval(tickRefresh, 30000);
-fetchData();
+loadSheetData();
 </script>
 </body>
 </html>
