@@ -31,6 +31,7 @@ categories:
   # ── PRIORITY: Gold bars, silver bars, gold coins ──────────────────────────────
   Precious Metals:
     fee_rate: 0.04   # eBay bullion category 3229: ~1.35% FVF + ~2.7% payment processing ≈ 4% total (verify with your eBay account)
+    ad_rate: 0.0     # Promoted Listings rate (0 = no ads); change to e.g. 0.02 to budget 2% of sale price
     fulfillment_risk: medium
     site_url: "coming-soon.com/precious-metals"
     max_active: 10          # small — purchase limits mean low unit volume
@@ -107,6 +108,7 @@ categories:
   # ── Fashion jewelry: rings, necklaces, earrings, bracelets ───────────────────
   Jewelry:
     fee_rate: 0.15
+    ad_rate: 0.0
     fulfillment_risk: low
     site_url: "coming-soon.com/jewelry"
     max_active: 30
@@ -162,6 +164,7 @@ categories:
   # ── Future categories ─────────────────────────────────────────────────────────
   Outdoor Furniture:
     fee_rate: 0.115
+    ad_rate: 0.0
     fulfillment_risk: high
     site_url: "coming-soon.com/outdoor"
     max_active: 15
@@ -203,6 +206,7 @@ categories:
 
   Watches:
     fee_rate: 0.13
+    ad_rate: 0.0
     fulfillment_risk: low
     site_url: "coming-soon.com/watches"
     max_active: 20
@@ -240,6 +244,7 @@ categories:
   # ── Vitamins, supplements, OTC health ───────────────────────────────────────
   Pharmacy:
     fee_rate: 0.1325
+    ad_rate: 0.0
     fulfillment_risk: low
     site_url: "coming-soon.com/pharmacy"
     max_active: 20
@@ -300,6 +305,7 @@ categories:
   # ── Blenders, stand mixers, air fryers, etc. ─────────────────────────────────
   Small Appliances:
     fee_rate: 0.1255
+    ad_rate: 0.0
     fulfillment_risk: medium
     site_url: "coming-soon.com/appliances"
     max_active: 20
@@ -358,6 +364,7 @@ categories:
 
   Toys:
     fee_rate: 0.1325
+    ad_rate: 0.0
     site_url: "coming-soon.com/toys"
     research_skill: "skills/research_toys.py"
     seasonal_peak_months: [10, 11, 12]

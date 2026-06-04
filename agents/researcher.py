@@ -949,6 +949,23 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             else:
                 velocity_str = f" | {monthly_units}/mo" if monthly_units else ""
 
+            # Hard gate: never reach Tier 1 with negative net profit
+            _gate_note = ""
+            if tier == 1 and suggested_price and costco_cost:
+                try:
+                    _sp  = float(suggested_price)
+                    _c   = float(str(costco_cost).replace("$", "").replace(",", ""))
+                    _net = round(_sp * (1 - fee_rate) - _c, 2)
+                    if _net <= 0:
+                        _breakeven = round(_c / (1 - fee_rate) + 0.01, 2)
+                        _gate_note = (
+                            f"\nDowngraded T1→T2: net profit is ${_net:.2f} at suggested price "
+                            f"${_sp:.2f}. Raise eBay price above ${_breakeven:.2f} to be viable."
+                        )
+                        tier = 2
+                except (ValueError, TypeError):
+                    pass
+
             tier_summary_line = (
                 f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}"
                 f"{velocity_str}{verify_flag}]"
@@ -988,6 +1005,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     full_notes += f"\nCostco cart est: ship={ship_str} tax={tax_str}"
                 if cart_est.get("delivery_window"):
                     full_notes += f" | delivery: {cart_est['delivery_window']}"
+            if _gate_note:
+                full_notes += _gate_note
 
             # ── Col X: sale badge; Col Y: free ship badge ──────────────────────────
             sale_info_val = ""
@@ -1048,7 +1067,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 updates.append((COL["re_eval_date"], recheck_date_str))
             if costco_data.get("image_urls"):
                 updates.append((COL["image_urls"], ",".join(costco_data["image_urls"][:5])))
-            seed_formula_row(service, sheet_name, sheet_row)
+            seed_formula_row(service, sheet_name, sheet_row, ad_rate=cat_config.get("ad_rate", 0.0))
             write_row_partial(service, sheet_name, sheet_row, updates)
 
             # 3g. Listing copy — generate immediately for Tier 1/2 so it's ready before

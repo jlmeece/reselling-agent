@@ -23,7 +23,7 @@ def _col_idx(col: str) -> int:
     return idx - 1
 
 
-def seed_formula_row(service, sheet_name: str, row_num: int):
+def seed_formula_row(service, sheet_name: str, row_num: int, ad_rate: float = 0.0):
     """
     Writes formula cells and static defaults for row_num.
     Safe to call on every research pass — all writes are idempotent.
@@ -46,6 +46,7 @@ def seed_formula_row(service, sheet_name: str, row_num: int):
         "J":  f"=IF(H{r}>0,I{r}/H{r},0)",
         "Z":  f"=IFERROR(G{r}+AD{r},G{r})",
         "AC": f"=H{r}*AB{r}",
+        "AE": f"=H{r}*{ad_rate}",
         "AF": f"=G{r}*0.0825",
         "AG": f"=H{r}*0.9-G{r}",
         "AH": f"=I{r}*0.15",

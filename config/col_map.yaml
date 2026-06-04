@@ -6,7 +6,7 @@
 # monitoring data next (E–Z visible), everything else hidden (AA–AV).
 #
 # Formula columns — never overwrite these with agent writes:
-#   I  (net_profit):      =H-G-AC-AD-AE  (ebay_price - eBay_fees - ship - fulfillment - cost)
+#   I  (net_profit):      =H-G-AC-AD-AE  (ebay_price - eBay_fees - ship - ad_cost - cost)
 #   J  (net_margin):      =IF(H>0,I/H,0)
 #   N  (comp_saturation): =IFERROR(M/MAX(K,1),"")
 #   AC (ebay_fees):       =H*AB       (ebay_price * fee_rate)
@@ -52,10 +52,10 @@ columns:
   fee_rate:         "AB"
   ebay_fees:        "AC"  # formula =H*AB — do not overwrite
   ship_cost:        "AD"
-  fulfillment:      "AE"
+  ad_cost:          "AE"  # formula =H*ad_rate — ad spend (0 until ads enabled per category)
   tax_est:          "AF"  # formula =G*0.0825 — do not overwrite
   site_profit:      "AG"  # formula =H*0.90-G — do not overwrite
-  ad_budget:        "AH"  # formula =I*0.15 — do not overwrite
+  ad_budget:        "AH"  # formula =I*0.15 — suggested budget cap; not in net profit formula
   seo_title:        "AI"
   bullets:          "AJ"
   description:      "AK"
