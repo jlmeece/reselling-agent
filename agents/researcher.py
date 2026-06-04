@@ -50,6 +50,7 @@ load_dotenv(encoding="utf-8", override=True)
 import anthropic
 
 from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial, append_row, append_rows_batch
+from tools.formula_seeder import seed_formula_row
 from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
 from tools.ebay_research import get_ebay_comps
@@ -979,9 +980,12 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             if purchase_limit:
                 full_notes += f"\nPurchase limit: {purchase_limit}/day — list max {purchase_limit} units on eBay"
             if cart_est:
-                ship_str = f"${cart_est['shipping']:.2f}" if cart_est.get("shipping") is not None else "?"
-                tax_str  = f"${cart_est['tax']:.2f}" if cart_est.get("tax") is not None else "?"
-                full_notes += f"\nCostco cart est: ship={ship_str} tax={tax_str}"
+                if free_shipping:
+                    full_notes += "\nCostco shipping: FREE (confirmed)"
+                else:
+                    ship_str = f"${cart_est['shipping']:.2f}" if cart_est.get("shipping") is not None else "? (verify on Costco.com before purchasing)"
+                    tax_str  = f"${cart_est['tax']:.2f}" if cart_est.get("tax") is not None else "varies by state (supplements often exempt)"
+                    full_notes += f"\nCostco cart est: ship={ship_str} tax={tax_str}"
                 if cart_est.get("delivery_window"):
                     full_notes += f" | delivery: {cart_est['delivery_window']}"
 
@@ -1044,6 +1048,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 updates.append((COL["re_eval_date"], recheck_date_str))
             if costco_data.get("image_urls"):
                 updates.append((COL["image_urls"], ",".join(costco_data["image_urls"][:5])))
+            seed_formula_row(service, sheet_name, sheet_row)
             write_row_partial(service, sheet_name, sheet_row, updates)
 
             # 3g. Listing copy — generate immediately for Tier 1/2 so it's ready before

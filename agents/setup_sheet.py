@@ -136,6 +136,70 @@ def _write_formula_columns(service, spreadsheet_id, tab_id, data_start_row, num_
     logger.info(f"Formula columns seeded: {', '.join(formulas.keys())} ({num_rows} rows each).")
 
 
+def _write_legend_tab(service, spreadsheet_id):
+    """
+    Creates (or overwrites) a 'Legend' tab explaining every status value,
+    column formula, and scoring threshold used by the agent.
+    Safe to re-run — always overwrites.
+    """
+    # Ensure the Legend tab exists
+    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    existing_titles = {s["properties"]["title"] for s in meta["sheets"]}
+    if "Legend" not in existing_titles:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": "Legend"}}}]},
+        ).execute()
+        logger.info("Created 'Legend' tab.")
+    else:
+        logger.info("'Legend' tab already exists — overwriting.")
+
+    rows = [
+        ["WAT Reselling Agent — Legend", "", ""],
+        ["", "", ""],
+        ["STATUS VALUES", "Meaning", "Your next action"],
+        ["PENDING",         "Discovered, not yet researched",                        "Wait — agent will research on next run"],
+        ["SCORED",          "Tier 1 result — scored ≥ 6.0, ready for your review",   "Review col AV notes → change to APPROVED or PAUSED_*"],
+        ["WATCH",           "Tier 2 result — scored ≥ 3.0, monitor pricing",          "Check back in 2–4 weeks; reprice and approve if margin improves"],
+        ["APPROVED",        "You've approved it — ready for listing copy",             "Wait for READY status, or run ebay_export.py manually"],
+        ["READY",           "Listing copy generated, ready to export to eBay",         "Run: python tools/ebay_export.py"],
+        ["LISTED",          "Exported to eBay, awaiting first sale",                   "Check eBay Seller Hub; update col Q with listing URL"],
+        ["ACTIVE",          "Live eBay listing, actively monitored",                   "No action — agent monitors price, stock, and sale expiry"],
+        ["PAUSED_OOS",      "Paused — product went out of stock at Costco",            "Agent will re-check; restore to ACTIVE when back in stock"],
+        ["PAUSED_MARGIN",   "Paused — margin dropped below threshold",                 "Review pricing; manually change to ACTIVE if margin recovers"],
+        ["PAUSED_DEMAND",   "Paused — Tier 3, low eBay demand",                       "Check re_eval_date col S — agent will re-score then"],
+        ["PAUSED_SEASONAL", "Paused — seasonal product, wrong time of year",           "Check col S for re-eval date; approve manually when season returns"],
+        ["", "", ""],
+        ["SCORING THRESHOLDS", "Score range", "Action"],
+        ["Tier 1",  "≥ 6.0",           "Buy and list — strong demand, positive margin"],
+        ["Tier 2",  "3.0 – 5.9",       "Watch — borderline; monitor for price/stock changes"],
+        ["Tier 3",  "< 3.0",           "Skip — low demand or margin too thin"],
+        ["", "", ""],
+        ["FORMULA COLUMNS (do not overwrite)", "Formula", "What it shows"],
+        ["I  (net_profit)",    "=H-G-AC-AD-AE",        "eBay price minus all costs"],
+        ["J  (net_margin)",    "=IF(H>0,I/H,0)",        "Net profit as % of sale price"],
+        ["N  (comp_sat)",      "=IFERROR(M/MAX(K,1),\"\")","Active listings ÷ 90-day sold"],
+        ["Z  (total_cost)",    "=IFERROR(G+AD,G)",      "Costco cost + shipping"],
+        ["AC (ebay_fees)",     "=H*AB",                  "eBay fees (fee_rate × price)"],
+        ["AF (tax_est)",       "=G*0.0825",              "Estimated Costco tax"],
+        ["AG (site_profit)",   "=H*0.90-G",             "Gross margin at 90% of price"],
+        ["AH (ad_budget)",     "=I*0.15",               "15% of net profit for promoted listings"],
+        ["", "", ""],
+        ["KEY COLUMNS", "Column", "Notes"],
+        ["AB  fee_rate",       "AB", "eBay fee rate — default 0.1325 (13.25%)"],
+        ["AD  ship_cost",      "AD", "Costco shipping cost (0 if free shipping)"],
+        ["AE  fulfillment",    "AE", "Fulfillment cost (manual entry, usually 0 for dropship)"],
+        ["AV  full_notes",     "AV", "Full research narrative — hidden, view in formula bar"],
+    ]
+
+    data = [{"range": "Legend!A1", "values": rows}]
+    service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"valueInputOption": "USER_ENTERED", "data": data},
+    ).execute()
+    logger.success("Legend tab written.")
+
+
 def main():
     spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
     if not spreadsheet_id:
@@ -195,8 +259,22 @@ def main():
     # Re-running this is safe: only blank cells are touched.
     _write_formula_columns(service, spreadsheet_id, tab_id, DATA_START_ROW)
 
+    _write_legend_tab(service, spreadsheet_id)
     logger.success("Dashboard is ready. Open Google Sheets to review.")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Set up the reselling agent Google Sheet dashboard.")
+    parser.add_argument("--legend-only", action="store_true", help="Only write/update the Legend tab, skip full dashboard setup.")
+    args = parser.parse_args()
+
+    if args.legend_only:
+        spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
+        if not spreadsheet_id:
+            logger.error("GOOGLE_SHEET_ID not set in .env")
+            sys.exit(1)
+        service = get_sheets_service()
+        _write_legend_tab(service, spreadsheet_id)
+    else:
+        main()

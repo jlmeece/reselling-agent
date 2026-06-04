@@ -456,7 +456,10 @@ def _send_telegram(message: str):
     import urllib.request, json as _json
     token   = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-    if not token or not chat_id:
+    if not token:
+        return
+    if not chat_id:
+        logger.warning("Telegram alert skipped — TELEGRAM_CHAT_ID not set in .env")
         return
     try:
         payload = _json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}).encode()
