@@ -123,6 +123,7 @@ section[data-testid="stSidebar"] { background: var(--surface) !important; border
 .pill-active   { background: #0D2400; color: #78FF55; border: 1px solid #1E5000; }
 .pill-watch    { background: #0A1E3D; color: #4A9EFF; border: 1px solid #1A3A6A; }
 .pill-paused   { background: #2D1700; color: #FF9500; border: 1px solid #5C3000; }
+.pill-audit    { background: #2D1200; color: #FF6D00; border: 1px solid #5C2800; }
 
 /* Alert cards */
 .alert-card {
@@ -165,10 +166,50 @@ def load_sheet_data():
         start_row  = business["data_start_row"]
         end_row    = business["data_end_row"]
         service    = get_sheets_service()
-        rows       = read_sheet(service, f"'{sheet_name}'!A{start_row}:AU{end_row}")
+        rows       = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
         return rows, sheet_name
     except Exception as e:
         return [], f"error: {e}"
+
+
+@st.cache_data(ttl=300)
+def load_graveyard_data():
+    """Load Graveyard tab. Returns list of dicts or empty list if tab missing."""
+    try:
+        from tools.sheet_writer import get_sheets_service
+        svc = get_sheets_service()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range="Graveyard!A1:M200"
+        ).execute()
+        rows = result.get("values", [])
+        if len(rows) < 2:
+            return []
+        headers = rows[0]
+        return [dict(zip(headers, r + [""] * (len(headers) - len(r)))) for r in rows[1:]]
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=300)
+def load_audit_log():
+    """Load Audit Log tab. Returns list of dicts or empty list if tab missing."""
+    try:
+        from tools.sheet_writer import get_sheets_service
+        svc = get_sheets_service()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range="Audit Log!A1:H50"
+        ).execute()
+        rows = result.get("values", [])
+        if len(rows) < 2:
+            return []
+        headers = rows[0]
+        return [dict(zip(headers, r + [""] * (len(headers) - len(r)))) for r in rows[1:]]
+    except Exception:
+        return []
 
 
 def safe(lst, i, default=""):
@@ -180,6 +221,13 @@ def col_idx(letter):
     for c in letter.upper():
         result = result * 26 + (ord(c) - ord("A") + 1)
     return result - 1
+
+
+def _safe_float(v, default=0.0):
+    try:
+        return float(str(v).replace("$", "").replace(",", "").strip() or default)
+    except Exception:
+        return default
 
 
 # Column indices based on col_map.yaml
@@ -204,6 +252,7 @@ V_SUGG     = 21
 W_LIMIT    = 22
 X_SALE     = 23
 Y_SHIP     = 24
+AV_NOTES   = 47
 
 
 def parse_rows(rows):
@@ -327,6 +376,10 @@ with col_hdr_b:
 with st.spinner("Loading sheet data..."):
     rows, sheet_name = load_sheet_data()
 
+graveyard   = load_graveyard_data()
+audit_log   = load_audit_log()
+last_audit  = audit_log[-1] if audit_log else {}
+
 if not rows:
     st.error(f"Could not load sheet data: {sheet_name}")
     st.stop()
@@ -383,6 +436,95 @@ kpi3.metric("On Sale 🔥",         len(sale_items))
 kpi4.metric("Free Ship 📦",       len(ship_items))
 kpi5.metric("Avg Margin",         f"{avg_margin * 100:.1f}%")
 kpi6.metric("Live on eBay",       n_active)
+
+# ── Sheet Health Bar ──────────────────────────────────────────────────────────
+
+cat_health = {}
+for cat_name in cat_stats:
+    cat_prods = [p for p in products if p["category"] == cat_name]
+    if not cat_prods:
+        continue
+    viable_n = sum(
+        1 for p in cat_prods
+        if p["margin"] is not None and p["price"] is not None
+        and (p["price"] * p["margin"]) >= 1.00
+        and _safe_float(p["sold_90d"]) > 0
+    )
+    viable_pct = viable_n / len(cat_prods)
+    net_vals = [p["price"] * p["margin"] for p in cat_prods
+                if p["margin"] is not None and p["price"] is not None]
+    avg_net  = sum(net_vals) / len(net_vals) if net_vals else 0
+    avg_vel  = sum(_safe_float(p["sold_90d"]) for p in cat_prods) / len(cat_prods)
+    net_score = min(avg_net / 5.0, 1.0)
+    vel_score = min(avg_vel / 20.0, 1.0)
+    cat_health[cat_name] = max(0, int(viable_pct * 50 + net_score * 25 + vel_score * 25))
+
+overall_health = int(sum(cat_health.values()) / len(cat_health)) if cat_health else 0
+
+
+def _health_color(score):
+    if score >= 60:
+        return "#39D353"
+    if score >= 30:
+        return "#F5A623"
+    return "#FF4444"
+
+
+def _health_bar(score, width=120):
+    filled = int(score / 100 * width)
+    color  = _health_color(score)
+    return (
+        f'<div style="display:inline-block;width:{width}px;height:8px;'
+        f'background:#1E2D45;border-radius:4px;vertical-align:middle;">'
+        f'<div style="width:{filled}px;height:8px;background:{color};'
+        f'border-radius:4px;"></div></div>'
+    )
+
+
+last_audit_date  = last_audit.get("DATE", "Never")
+auto_removed     = last_audit.get("AUTO_REMOVED", "—")
+flagged_review   = last_audit.get("FLAGGED_REVIEW", "—")
+lifetime_removed = len(graveyard)
+
+cat_bars_html = "".join(
+    f'<div style="text-align:center;">'
+    f'<div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;'
+    f'letter-spacing:0.1em;margin-bottom:2px;">{cat}</div>'
+    f'<div style="display:flex;align-items:center;gap:6px;">'
+    f'{_health_bar(score, 60)}'
+    f'<span style="font-size:0.82rem;color:{_health_color(score)};">{score}</span>'
+    f'{"<span style=\'color:#FF4444;font-size:0.7rem;\'> ⚠</span>" if score < 30 else ""}'
+    f'</div>'
+    f'</div>'
+    for cat, score in sorted(cat_health.items())
+)
+
+st.markdown(
+    f'<div style="background:#111827;border:1px solid #1E2D45;border-radius:8px;'
+    f'padding:16px 20px;margin-bottom:16px;">'
+    f'<div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">'
+    f'<div>'
+    f'<div style="font-size:0.65rem;color:#6B7280;text-transform:uppercase;'
+    f'letter-spacing:0.12em;margin-bottom:4px;">Sheet Health</div>'
+    f'<div style="display:flex;align-items:center;gap:10px;">'
+    f'{_health_bar(overall_health, 160)}'
+    f'<span style="font-family:\'JetBrains Mono\',monospace;font-size:1.1rem;'
+    f'color:{_health_color(overall_health)};font-weight:600;">{overall_health}/100</span>'
+    f'</div>'
+    f'</div>'
+    f'{cat_bars_html}'
+    f'<div style="margin-left:auto;text-align:right;">'
+    f'<div style="font-size:0.65rem;color:#6B7280;text-transform:uppercase;'
+    f'letter-spacing:0.1em;">Last Audit</div>'
+    f'<div style="font-size:0.8rem;color:#E5E7EB;">{last_audit_date}</div>'
+    f'<div style="font-size:0.72rem;color:#6B7280;">'
+    f'{auto_removed} removed &nbsp;|&nbsp; {flagged_review} flagged &nbsp;|&nbsp; '
+    f'{lifetime_removed} in graveyard</div>'
+    f'</div>'
+    f'</div>'
+    f'</div>',
+    unsafe_allow_html=True
+)
 
 st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
 
@@ -469,6 +611,47 @@ with right_col:
                 unsafe_allow_html=True
             )
 
+    # ── AUDIT_REVIEW queue ────────────────────────────────────────────────────
+    audit_review_rows = [
+        r for r in rows
+        if safe(r, A_STATUS, "").upper() == "AUDIT_REVIEW"
+    ]
+    if audit_review_rows:
+        sheet_url = (
+            f"https://docs.google.com/spreadsheets/d/"
+            f"{os.getenv('GOOGLE_SHEET_ID', '')}/edit"
+        )
+        st.markdown("## ⚠️ Needs Your Decision")
+        for r in audit_review_rows[:5]:
+            title  = safe(r, C_TITLE, "Unknown")[:52]
+            net    = _safe_float(safe(r, I_PROFIT, "0"))
+            vel    = safe(r, K_SOLD90, "0")
+            notes  = safe(r, AV_NOTES, "")
+            reason = ""
+            if "AUDIT:" in notes:
+                reason = notes.split("AUDIT:")[-1].strip()[:80]
+            reason_html = (
+                f'<div style="font-size:0.72rem;color:#FF9500;margin-top:3px;">'
+                f'{reason}</div>'
+                if reason else ""
+            )
+            st.markdown(
+                f'<div class="alert-card urgent" style="border-left-color:#FF6D00;">'
+                f'<div style="font-size:0.68rem;color:#FF6D00;text-transform:uppercase;'
+                f'letter-spacing:0.1em;margin-bottom:3px;">Audit Review</div>'
+                f'<div style="font-size:0.88rem;color:#F9FAFB;margin-bottom:2px;">{title}</div>'
+                f'<div style="font-size:0.75rem;color:#6B7280;">'
+                f'Net ${net:.2f} &nbsp;|&nbsp; {vel} sold/90d</div>'
+                f'{reason_html}'
+                f'<div style="margin-top:6px;">'
+                f'<a href="{sheet_url}" target="_blank" style="font-size:0.72rem;'
+                f'color:#4A9EFF;text-decoration:none;">'
+                f'→ Open Sheet to decide KEEP or DELETE</a>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
     # ── Focus recommendation ──────────────────────────────────────────────────
     st.markdown("## Where to Focus")
     if top_pending:
@@ -522,6 +705,88 @@ if cat_table:
             "Avg Margin %": [r["margin_raw"] for r in cat_table],
         }).set_index("Category")
         st.bar_chart(chart_data, color="#F5A623")
+
+# ── Graveyard Insights ───────────────────────────────────────────────────────
+
+if graveyard:
+    from collections import Counter
+    st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
+    st.markdown("## 🪦 Graveyard Insights")
+
+    g_cols = st.columns([2, 2, 2, 1])
+
+    reasons     = Counter()
+    cat_removed = Counter()
+    for g in graveyard:
+        raw = g.get("REASON", "Unknown")
+        if "Negative"   in raw:          reasons["Negative net"]   += 1
+        elif "floor"    in raw:          reasons["Below floor"]    += 1
+        elif "velocity" in raw:          reasons["Zero velocity"]  += 1
+        elif "OOS"      in raw:          reasons["OOS 45+ days"]   += 1
+        elif "Stale"    in raw:          reasons["Stale 60+ days"] += 1
+        elif "wrong"    in raw.lower():  reasons["Bad comps"]      += 1
+        else:                            reasons["Other"]           += 1
+        cat_removed[g.get("CATEGORY", "Unknown")] += 1
+
+    with g_cols[0]:
+        st.markdown("**Removal Reasons**")
+        max_r = max(reasons.values()) if reasons else 1
+        for reason, count in reasons.most_common():
+            bar_w = int(count / max_r * 100)
+            st.markdown(
+                f'<div style="margin-bottom:6px;">'
+                f'<div style="font-size:0.75rem;color:#E5E7EB;margin-bottom:2px;">'
+                f'{reason} <span style="color:#6B7280;">({count})</span></div>'
+                f'<div style="height:4px;background:#1E2D45;border-radius:2px;">'
+                f'<div style="width:{bar_w}%;height:4px;background:#FF4444;'
+                f'border-radius:2px;"></div>'
+                f'</div></div>',
+                unsafe_allow_html=True
+            )
+
+    with g_cols[1]:
+        st.markdown("**Removed by Category**")
+        for cat, count in cat_removed.most_common():
+            flag = " ⛔" if count >= 3 else ""
+            st.markdown(
+                f'<div style="font-size:0.78rem;margin-bottom:4px;">'
+                f'<span style="color:#E5E7EB;">{cat}</span>'
+                f'<span style="color:#FF4444;margin-left:8px;">×{count}</span>'
+                f'<span style="color:#FF4444;">{flag}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        if any(v >= 3 for v in cat_removed.values()):
+            st.markdown(
+                '<div style="font-size:0.68rem;color:#FF6D00;margin-top:8px;">'
+                '⛔ = removed 3+ times. Stop researching this category.</div>',
+                unsafe_allow_html=True
+            )
+
+    with g_cols[2]:
+        st.markdown("**Recent Removals**")
+        for g in sorted(graveyard, key=lambda x: x.get("DATE_REMOVED", ""), reverse=True)[:5]:
+            title = g.get("TITLE", "Unknown")[:38]
+            date  = g.get("DATE_REMOVED", "")[:10]
+            net   = g.get("NET_PROFIT", "?")
+            st.markdown(
+                f'<div style="font-size:0.73rem;color:#6B7280;margin-bottom:5px;">'
+                f'<span style="color:#E5E7EB;">{title}</span><br>'
+                f'<span>{date} &nbsp;·&nbsp; net ${net}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    with g_cols[3]:
+        st.markdown("**Stats**")
+        st.metric("Total Removed", len(graveyard))
+        st.metric("Categories Culled", len(cat_removed))
+        most_recent = sorted(graveyard, key=lambda x: x.get("DATE_REMOVED", ""), reverse=True)[0]
+        st.markdown(
+            f'<div style="font-size:0.7rem;color:#6B7280;margin-top:4px;">'
+            f'Last: {most_recent.get("DATE_REMOVED", "")[:10]}</div>',
+            unsafe_allow_html=True
+        )
 
 st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
 
