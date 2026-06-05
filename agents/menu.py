@@ -49,6 +49,7 @@ MENU_GROUPS = [
     {
         "label": "MAINTENANCE",
         "items": [
+            {"label": "Run audit: weed junk rows (CFO mode)", "mode": "audit", "category_prompt": False, "args": []},
             {"label": "Run daily: promote approved, check restocks", "mode": "daily",    "category_prompt": False, "args": []},
             {"label": "Run weekly: performance digest",               "mode": "rotation", "category_prompt": False, "args": []},
             {"label": "Refresh Costco session cookies",               "mode": None,       "category_prompt": False, "args": [], "script": SETUP_COOKIES},

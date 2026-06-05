@@ -19,12 +19,13 @@ business:
   # research:  Score PENDING products — once/day (after discovery)
   # discovery: Find new Costco products — once/day (earliest, before research)
   run_schedule:
-    discovery: "07:00"    # Central — UTC 12:00 (CDT) / 13:00 (CST)
-    active_1:  "08:00"    # Central — UTC 13:00 (CDT) / 14:00 (CST)
-    daily:     "09:00"    # Central — UTC 14:00 (CDT) / 15:00 (CST)
-    research:  "10:00"    # Central — UTC 15:00 (CDT) / 16:00 (CST)
-    active_2:  "13:00"    # Central — UTC 18:00 (CDT) / 19:00 (CST)
-    active_3:  "18:00"    # Central — UTC 23:00 (CDT) / 00:00 (CST)
+    audit:      "08:00"    # Central — every other day (odd). VPS UTC 13:00
+    research:   "09:00"    # Central — daily, 2 products. VPS UTC 14:00
+    daily:      "10:00"    # Central — daily sweep. VPS UTC 15:00
+    active_1:   "13:00"    # Central — live listing check. VPS UTC 18:00
+    active_2:   "18:00"    # Central — second live check. VPS UTC 23:00
+    rotation:   "09:00"    # Central — Sunday digest. VPS UTC 14:00
+    discovery:  "manual"   # Windows only (Chrome/Akamai). Run from menu.
 
 categories:
 

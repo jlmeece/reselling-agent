@@ -3,11 +3,12 @@ Costco -> eBay Monitoring Agent
 ================================
 WAT Framework: Agent layer for monitoring and status management.
 
-Four run modes (--mode flag):
+Five run modes (--mode flag):
   active    3x/day  ACTIVE listings — stock/price, reprice alerts, URGENT SMS
   daily     1x/day  APPROVED->READY (copy+stock verify), PAUSED_OOS stock check
   research  1x/day  PENDING rows — full research + scoring (calls researcher.py logic)
   discovery 1x/day  Find new Costco products, add as PENDING
+  audit     every 2 days  Graveyard pass — remove junk, flag borderline rows
 
 Run locally:  python agents/scheduler.py --mode active
 Run in cloud: GitHub Actions handles scheduling (.github/workflows/run_agent.yml)
@@ -38,6 +39,7 @@ from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest, send_run_summary, send_sale_expiry_alert
 from tools.run_logger import log_run_start, log_run_end
 from tools.spot_price import check_spot_movement
+from agents.auditor import run_audit
 
 
 # ── Config loaders ────────────────────────────────────────────────────────────
@@ -552,7 +554,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
 
 # ── Mode: RESEARCH (1x/day) ───────────────────────────────────────────────────
 
-def run_research(config, COL, service, sheet_name, start_row, end_row, category=None):
+def run_research(config, COL, service, sheet_name, start_row, end_row, category=None, limit=None):
     """
     Delegates to researcher.py for PENDING rows.
     Passes --skip-discovery since discovery runs as a separate earlier step.
@@ -563,6 +565,8 @@ def run_research(config, COL, service, sheet_name, start_row, end_row, category=
            "--skip-discovery"]
     if category:
         cmd += ["--category", category]
+    if limit is not None:
+        cmd += ["--limit", str(limit)]
     result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
         raise RuntimeError(f"researcher.py exited with code {result.returncode}")
@@ -986,7 +990,7 @@ def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
-        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck"],
+        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "audit"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -995,7 +999,8 @@ def main():
             "discovery:      Find new Costco products, add as PENDING (1x/day)\n"
             "rotation:       Score all active products, flag underperformers, send weekly digest (1x/week)\n"
             "refresh-notes:  Retroactively reformat Col T summary line (one-shot)\n"
-            "recheck:        Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot)"
+            "recheck:        Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot)\n"
+            "audit:          Graveyard pass — remove junk, flag borderline rows (every 2 days)"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -1029,7 +1034,9 @@ def main():
             run_daily_sweep(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "research":
             run_research(config, COL, service, sheet_name, start_row, end_row,
-                         category=args.category)
+                         category=args.category, limit=args.limit)
+        elif args.mode == "audit":
+            run_audit(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "discovery":
             run_discovery(config, COL, service, sheet_name, start_row, end_row,
                           category=args.category, add_limit=args.add_limit)

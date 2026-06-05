@@ -1,0 +1,37 @@
+# ── Reselling Agent — VPS Cron Schedule ─────────────────────────────────────
+# All times UTC. Agent is in Central Time — UTC offsets:
+#   CDT (Mar-Nov): Central = UTC-5  →  9 AM Central = 14:00 UTC
+#   CST (Nov-Mar): Central = UTC-6  →  9 AM Central = 15:00 UTC
+# Schedule uses CDT offsets (summer). Adjust +1h in winter if needed.
+#
+# Daily drip model: small bites every day beats one big weekly session.
+# Research scores 2 PENDING rows per day → 14/week, same output, spread cost.
+# Audit runs every other day (odd days of month) to keep sheet clean.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# VPS backup sync — 3 AM UTC daily
+0 3 * * * bash /home/hermes/scripts/vps-sync.sh >> /home/hermes/logs/sync.log 2>&1
+
+# AUDIT — every other day (odd days), 8 AM Central (13:00 UTC)
+# Culls junk rows, archives to Graveyard, flags borderline for Jay's review
+0 13 1-31/2 * * cd /home/hermes/reselling-agent && PYTHONPATH=. venv/bin/python agents/scheduler.py --mode audit >> /home/hermes/logs/audit.log 2>&1
+
+# RESEARCH — daily, 9 AM Central (14:00 UTC), 2 products max per run
+# Scores PENDING rows. 2/day = 14/week. Chrome-free — runs clean on VPS.
+0 14 * * * cd /home/hermes/reselling-agent && PYTHONPATH=. venv/bin/python agents/scheduler.py --mode research --limit 2 >> /home/hermes/logs/research.log 2>&1
+
+# DAILY SWEEP — daily, 10 AM Central (15:00 UTC)
+# APPROVED→READY promotions, PAUSED_OOS restock checks
+0 15 * * * cd /home/hermes/reselling-agent && PYTHONPATH=. venv/bin/python agents/scheduler.py --mode daily >> /home/hermes/logs/daily.log 2>&1
+
+# ACTIVE MONITOR — 1 PM Central (18:00 UTC)
+# Live eBay listing: OOS checks, price change detection
+0 18 * * * cd /home/hermes/reselling-agent && PYTHONPATH=. venv/bin/python agents/scheduler.py --mode active >> /home/hermes/logs/active.log 2>&1
+
+# ACTIVE MONITOR — 6 PM Central (23:00 UTC)
+# Second daily check of live listings
+0 23 * * * cd /home/hermes/reselling-agent && PYTHONPATH=. venv/bin/python agents/scheduler.py --mode active >> /home/hermes/logs/active2.log 2>&1
+
+# ROTATION DIGEST — Sundays, 9 AM Central (14:00 UTC)
+# Weekly performance digest, flags underperformers
+0 14 * * 0 cd /home/hermes/reselling-agent && PYTHONPATH=. venv/bin/python agents/scheduler.py --mode rotation >> /home/hermes/logs/rotation.log 2>&1
