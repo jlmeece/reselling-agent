@@ -138,20 +138,8 @@ def append_audit_log(service, summary: dict) -> None:
 
 def queue_substitute(service, sheet_name: str, category: str) -> None:
     """
-    Append a placeholder PENDING row to signal that a substitute product
-    is needed for this category. Discovery run will fill it in.
+    Previously wrote a blank PENDING placeholder row — removed because those rows
+    have no URL and are skipped by research, polluting the sheet.
+    Now just logs that a discovery run is needed for this category.
     """
-    row = [[
-        "PENDING",   # A: status
-        "",          # B: score
-        f"[SUBSTITUTE NEEDED: {category}]",  # C: title
-        category,    # D: category
-    ]]
-    service.spreadsheets().values().append(
-        spreadsheetId=_get_sheet_id(),
-        range=f"'{sheet_name}'!A1",
-        valueInputOption="RAW",
-        insertDataOption="INSERT_ROWS",
-        body={"values": row},
-    ).execute()
-    logger.info(f"Substitute row queued for category: {category}")
+    logger.info(f"Category needs discovery run to refill: {category} (no placeholder row written)")
