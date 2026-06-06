@@ -2,23 +2,25 @@
 Skill: scoring
 Thin re-export of the shared base_scoring library.
 
-The canonical scoring engine lives at:
+On Windows, the canonical engine lives at:
     C:\\Users\\jorda\\.claude\\skills\\base_scoring.py
 
-All projects import from there. This file exists so that:
-  - Existing project imports (from skills.scoring import ...) keep working
-  - The project doesn't duplicate scoring logic that belongs to the shared library
-  - When the shared scoring engine is updated, this project gets it automatically
-
-To update scoring thresholds or add new dimensions: edit base_scoring.py, not this file.
+On VPS/Linux, falls back to the local skills/ directory within the project.
+Both resolve to the same base_scoring.py content.
 """
 
 import sys
 import os
 
+# Windows path (Jay's dev machine)
 _SHARED_SKILLS = r"C:\Users\jorda\.claude\skills"
 if _SHARED_SKILLS not in sys.path:
     sys.path.insert(0, _SHARED_SKILLS)
+
+# VPS/Linux fallback — skills/ lives inside the project root
+_LOCAL_SKILLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills")
+if _LOCAL_SKILLS not in sys.path:
+    sys.path.insert(0, _LOCAL_SKILLS)
 
 # Re-export everything so existing imports continue working unchanged
 from base_scoring import (
