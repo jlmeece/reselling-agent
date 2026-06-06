@@ -136,6 +136,23 @@ def _write_formula_columns(service, spreadsheet_id, tab_id, data_start_row, num_
     logger.info(f"Formula columns seeded: {', '.join(formulas.keys())} ({num_rows} rows each).")
 
 
+def _delete_legend_tab(service, spreadsheet_id):
+    """Remove the stale Legend tab if it exists."""
+    try:
+        meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        for sheet in meta["sheets"]:
+            if sheet["properties"]["title"] == "Legend":
+                legend_id = sheet["properties"]["sheetId"]
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={"requests": [{"deleteSheet": {"sheetId": legend_id}}]},
+                ).execute()
+                logger.info("Removed stale Legend tab.")
+                return
+    except Exception as e:
+        logger.warning(f"Could not check/remove Legend tab: {e}")
+
+
 def _write_legend_tab(service, spreadsheet_id):
     """
     Creates (or overwrites) a 'Legend' tab explaining every status value,
@@ -259,7 +276,7 @@ def main():
     # Re-running this is safe: only blank cells are touched.
     _write_formula_columns(service, spreadsheet_id, tab_id, DATA_START_ROW)
 
-    _write_legend_tab(service, spreadsheet_id)
+    _delete_legend_tab(service, spreadsheet_id)
     logger.success("Dashboard is ready. Open Google Sheets to review.")
 
 
@@ -275,6 +292,6 @@ if __name__ == "__main__":
             logger.error("GOOGLE_SHEET_ID not set in .env")
             sys.exit(1)
         service = get_sheets_service()
-        _write_legend_tab(service, spreadsheet_id)
+        _delete_legend_tab(service, spreadsheet_id)
     else:
         main()

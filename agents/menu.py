@@ -29,32 +29,32 @@ SETUP_SHEET      = os.path.join(PROJECT_ROOT, "agents", "setup_sheet.py")
 
 MENU_GROUPS = [
     {
-        "label": "RESEARCH",
+        "label": "PIPELINE",
         "items": [
-            {"label": "Find new Costco products (all categories)",        "mode": "discovery",      "category_prompt": False, "args": [], "limit_prompt": True},
-            {"label": "Find new Costco products (pick category)",         "mode": "discovery",      "category_prompt": True,  "args": [], "limit_prompt": True},
-            {"label": "Research & score queued products (all)",           "mode": "research",       "category_prompt": False, "args": []},
-            {"label": "Research & score queued products (pick category)", "mode": "research",       "category_prompt": True,  "args": []},
-            {"label": "Reset PAUSED products → PENDING for re-research", "action": "reset_paused", "category_prompt": False, "args": []},
+            {"label": "1. Discover new Costco products (all categories)",    "mode": "discovery", "category_prompt": False, "args": [], "limit_prompt": True},
+            {"label": "2. Discover new Costco products (pick category)",     "mode": "discovery", "category_prompt": True,  "args": [], "limit_prompt": True},
+            {"label": "3. Research & score queued products (all)",           "mode": "research",  "category_prompt": False, "args": []},
+            {"label": "4. Research & score queued products (pick category)", "mode": "research",  "category_prompt": True,  "args": []},
+            {"label": "5. Export READY products → eBay CSV",                "action": "ebay_export", "category_prompt": False, "args": []},
         ],
     },
     {
-        "label": "PRICE & STOCK",
+        "label": "MONITORING",
         "items": [
-            {"label": "Fix products with missing eBay prices",            "mode": "recheck", "category_prompt": False, "args": []},
-            {"label": "Refresh all prices and stock status",              "mode": "recheck", "category_prompt": False, "args": ["--force"]},
-            {"label": "Check active eBay listings for OOS/price changes", "mode": "active",  "category_prompt": False, "args": []},
+            {"label": "6. Check active eBay listings (OOS / price changes)", "mode": "active", "category_prompt": False, "args": []},
+            {"label": "7. Run daily sweep (promote APPROVED, restock checks)", "mode": "daily", "category_prompt": False, "args": []},
         ],
     },
     {
         "label": "MAINTENANCE",
         "items": [
-            {"label": "Run audit: weed junk rows (CFO mode)", "mode": "audit", "category_prompt": False, "args": []},
-            {"label": "Run daily: promote approved, check restocks", "mode": "daily",    "category_prompt": False, "args": []},
-            {"label": "Run weekly: performance digest",               "mode": "rotation", "category_prompt": False, "args": []},
-            {"label": "Refresh Costco session cookies",               "mode": None,       "category_prompt": False, "args": [], "script": SETUP_COOKIES},
-            {"label": "Sheet formatter / setup",                      "mode": None,       "category_prompt": False, "args": [], "script": SETUP_SHEET},
-            {"label": "Generate eBay listing CSV (READY products only)", "action": "ebay_export", "category_prompt": False, "args": []},
+            {"label": "8. Audit: clean junk rows (CFO mode)",                "mode": "audit",          "category_prompt": False, "args": []},
+            {"label": "9. Weekly performance digest",                         "mode": "rotation",       "category_prompt": False, "args": []},
+            {"label": "10. Fix products with missing eBay prices",            "mode": "recheck",        "category_prompt": False, "args": []},
+            {"label": "11. Refresh all prices and stock status",              "mode": "recheck",        "category_prompt": False, "args": ["--force"]},
+            {"label": "12. Reset PAUSED products → PENDING for re-research", "action": "reset_paused", "category_prompt": False, "args": []},
+            {"label": "13. Refresh Costco session cookies",                   "mode": None,             "category_prompt": False, "args": [], "script": SETUP_COOKIES},
+            {"label": "14. Sheet formatter / setup",                          "mode": None,             "category_prompt": False, "args": [], "script": SETUP_SHEET},
         ],
     },
 ]
@@ -141,15 +141,13 @@ def render_menu(last_runs):
     print()
     print(f"{Style.BRIGHT}{Fore.WHITE}WAT Reselling Agent{Style.RESET_ALL}")
     print("=" * 40)
-    num = 1
-    for i, group in enumerate(MENU_GROUPS, 1):
+    for group in MENU_GROUPS:
         print()
-        print(f"{Fore.YELLOW}[{i}] {group['label']}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}── {group['label']} ──{Style.RESET_ALL}")
         for item in group["items"]:
             ts = last_runs.get(item.get("mode") or "", "")
             ts_str = f"  {Fore.CYAN}[last: {ts}]{Style.RESET_ALL}" if ts else ""
-            print(f"  {num:2}. {item['label']}{ts_str}")
-            num += 1
+            print(f"  {item['label']}{ts_str}")
     print()
     print(f"   0. Exit")
     print()

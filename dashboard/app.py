@@ -11,7 +11,8 @@ Run: python -m streamlit run dashboard/app.py
 import os
 import sys
 import json
-from datetime import datetime
+import re
+from datetime import datetime, date as _date
 from collections import defaultdict
 
 import streamlit as st
@@ -166,7 +167,7 @@ def load_sheet_data():
         start_row  = business["data_start_row"]
         end_row    = business["data_end_row"]
         service    = get_sheets_service()
-        rows       = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
+        rows       = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
         return rows, sheet_name
     except Exception as e:
         return [], f"error: {e}"
@@ -230,6 +231,24 @@ def _safe_float(v, default=0.0):
         return default
 
 
+def _parse_sale_expiry(sale_str):
+    """Return datetime.date parsed from 'ends MM/DD' or 'ends MM/DD/YY', or None."""
+    if not sale_str:
+        return None
+    m = re.search(r'ends\s+(\d{1,2}/\d{1,2}(?:/\d{2,4})?)', sale_str, re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        parts = m.group(1).split('/')
+        month, day = int(parts[0]), int(parts[1])
+        year = int(parts[2]) if len(parts) > 2 else _date.today().year
+        if year < 100:
+            year += 2000
+        return _date(year, month, day)
+    except Exception:
+        return None
+
+
 # Column indices based on col_map.yaml
 A_STATUS   = 0
 B_SCORE    = 1
@@ -253,6 +272,7 @@ W_LIMIT    = 22
 X_SALE     = 23
 Y_SHIP     = 24
 AV_NOTES   = 47
+AW_REGULAR = 48
 
 
 def parse_rows(rows):
@@ -284,8 +304,9 @@ def parse_rows(rows):
         summary  = safe(row, T_SUMMARY)
         sugg_s   = safe(row, V_SUGG)
         limit_s  = safe(row, W_LIMIT)
-        sale_val = safe(row, X_SALE)
-        ship_val = safe(row, Y_SHIP)
+        sale_val         = safe(row, X_SALE)
+        ship_val         = safe(row, Y_SHIP)
+        regular_price_s  = safe(row, AW_REGULAR)
 
         if not status:
             continue
@@ -321,12 +342,13 @@ def parse_rows(rows):
             "sold_90d": sold90, "avg_price": avg_s, "comp_count": comp_s,
             "last_checked": checked, "costco_url": url, "summary": summary,
             "sugg_price": sugg_s, "purch_limit": limit_s,
-            "sale_val": sale_val, "ship_val": ship_val,
+            "sale_val": sale_val, "ship_val": ship_val, "regular_price": regular_price_s,
         })
 
         if sale_val:
             sale_items.append({"title": title, "sale": sale_val, "stock": stock,
-                                "score": score, "url": url})
+                                "score": score, "url": url, "cost": cost,
+                                "regular_price": regular_price_s})
         if ship_val:
             ship_items.append({"title": title, "ship": ship_val, "score": score})
 
@@ -539,6 +561,28 @@ with left_col:
 
     import pandas as pd
 
+    scored_rows = [p for p in products if p["status"] == "SCORED"]
+    if scored_rows:
+        st.markdown("## 🟢 Needs Your Decision")
+        st.markdown("<h3>SCORED — Tier 1 products awaiting your APPROVED or PAUSED call</h3>", unsafe_allow_html=True)
+        df_scored = pd.DataFrame([{
+            "Score": f"{p['score']:.1f}" if p["score"] else "—",
+            "Title": p["title"][:55],
+            "Category": p["category"],
+            "Cost": f"${p['cost']:,.2f}" if p["cost"] else "—",
+            "eBay": f"${p['price']:,.2f}" if p["price"] else "—",
+            "Net": f"${p['price'] * p['margin']:,.2f}" if p["price"] and p["margin"] else "—",
+            "Sold 90d": p["sold_90d"] or "—",
+            "SALE": "🔥" if p["sale_val"] else "",
+        } for p in scored_rows])
+        st.dataframe(df_scored, use_container_width=True, height=min(200, 60 + len(scored_rows) * 35), hide_index=True)
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{os.getenv('GOOGLE_SHEET_ID', '')}/edit"
+        st.markdown(
+            f'<a href="{sheet_url}" target="_blank" style="font-size:0.8rem;color:#4A9EFF;">'
+            f'→ Open Sheet — change status to APPROVED or PAUSED_DEMAND</a>',
+            unsafe_allow_html=True
+        )
+
     pending_rows = [p for p in products if p["status"] == "PENDING" and p["score"] is not None]
     pending_rows.sort(key=lambda x: -x["score"])
 
@@ -583,16 +627,60 @@ with right_col:
     # ── Sale alerts ──────────────────────────────────────────────────────────
     st.markdown("## Sale Opportunities")
     if sale_items:
-        for item in sale_items[:8]:
+        today = _date.today()
+        shown = 0
+        for item in sale_items:
+            if shown >= 8:
+                break
+            expiry = _parse_sale_expiry(item["sale"])
+            days_since_expiry = (today - expiry).days if expiry else None
+            if expiry and expiry < today and days_since_expiry is not None and days_since_expiry > 3:
+                continue
             score_str = f"Score {item['score']:.1f}" if item["score"] else ""
-            st.markdown(
-                f'<div class="alert-card sale">'
-                f'<b style="color:#F5A623;">{item["sale"]}</b> &nbsp;'
-                f'<span style="color:#E5E7EB;">{item["title"][:50]}</span><br>'
-                f'<span style="color:#6B7280; font-size:0.75rem;">{item["stock"]} &nbsp;|&nbsp; {score_str}</span>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+            regular_price = item.get("regular_price", "")
+            if expiry is None or expiry >= today:
+                price_line = ""
+                if regular_price:
+                    try:
+                        reg = float(str(regular_price).replace("$", "").replace(",", ""))
+                        sale_cost = item.get("cost")
+                        if sale_cost:
+                            price_line = (
+                                f'<br><span style="color:#39D353;font-size:0.75rem;">'
+                                f'Was ${reg:,.2f} → Now ${sale_cost:,.2f}</span>'
+                            )
+                    except (ValueError, TypeError):
+                        pass
+                st.markdown(
+                    f'<div class="alert-card sale">'
+                    f'<b style="color:#F5A623;">{item["sale"]}</b> &nbsp;'
+                    f'<span style="color:#E5E7EB;">{item["title"][:50]}</span><br>'
+                    f'<span style="color:#6B7280; font-size:0.75rem;">{item["stock"]} &nbsp;|&nbsp; {score_str}</span>'
+                    f'{price_line}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                if regular_price:
+                    try:
+                        reg = float(str(regular_price).replace("$", "").replace(",", ""))
+                        reprice_note = f"reprice to ${reg:,.2f}"
+                    except (ValueError, TypeError):
+                        reprice_note = "check Costco"
+                else:
+                    reprice_note = "check Costco"
+                st.markdown(
+                    f'<div class="alert-card" style="background:#1A1A1A;border-left-color:#888;">'
+                    f'<b style="color:#888;">⚠️ Sale ended {expiry}</b> &nbsp;'
+                    f'<span style="color:#9CA3AF;">{item["title"][:50]}</span><br>'
+                    f'<span style="color:#6B7280; font-size:0.75rem;">{reprice_note}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            shown += 1
+        if shown == 0:
+            st.markdown('<div style="color:#6B7280; font-size:0.85rem; margin:4px 0 12px;">No active sales detected.</div>',
+                        unsafe_allow_html=True)
     else:
         st.markdown('<div style="color:#6B7280; font-size:0.85rem; margin:4px 0 12px;">No active sales detected.</div>',
                     unsafe_allow_html=True)

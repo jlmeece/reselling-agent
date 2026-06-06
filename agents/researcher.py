@@ -465,6 +465,16 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
         new_products = [p for p in discovered if p["url"] not in existing_urls]
         logger.info(f"  {len(discovered)} found, {len(new_products)} are new.")
 
+        # Skip OOS precious metals — worthless rows that clog the PENDING queue
+        new_products_filtered = []
+        for p in new_products:
+            if (p.get("category") == "Precious Metals"
+                    and p.get("stock_status", "").upper() in ("OUT OF STOCK", "OOS")):
+                logger.info(f"  Skipping OOS precious metals: {p['title']}")
+            else:
+                new_products_filtered.append(p)
+        new_products = new_products_filtered
+
         if add_limit is not None and len(new_products) > add_limit:
             logger.info(f"  Capping at {add_limit} new products (found {len(new_products)}).")
             new_products = new_products[:add_limit]
@@ -1034,6 +1044,14 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 (COL["free_shipping"], free_ship_val),       # col Y — free ship badge
                 (COL["fee_rate"],      fee_rate),            # col AA — needed for =H*AA (eBay fees formula)
             ]
+            if on_sale and sale_savings and live_price:
+                try:
+                    reg_price = round(
+                        float(str(live_price).replace("$", "").replace(",", "")) + float(sale_savings), 2
+                    )
+                    updates.append((COL["regular_price"], f"${reg_price:,.2f}"))
+                except (ValueError, TypeError):
+                    pass
             if ebay_data.get("sold_90d") is not None:
                 updates.append((COL["sold_90d"],   ebay_data["sold_90d"]))
             if ebay_data.get("avg_sold_price") is not None:

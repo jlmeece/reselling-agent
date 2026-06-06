@@ -70,3 +70,4 @@ columns:
   image_urls:       "AT"
   perf_score:       "AU"  # Composite performance score (0–10) — written by rotation engine
   full_notes:       "AV"  # Full research narrative, eBay comps, community signals (hidden)
+  regular_price:    "AW"  # Costco regular price before sale (agent writes once when sale detected; blank if no sale)
