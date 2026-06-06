@@ -249,6 +249,44 @@ def _parse_sale_expiry(sale_str):
         return None
 
 
+def _pricing_str(p):
+    """Compact pricing summary for tables: cost → eBay = net (margin%)"""
+    cost  = p.get("cost")
+    price = p.get("price")
+    margin = p.get("margin")
+    sale_val = p.get("sale_val", "")
+    regular_price = p.get("regular_price", "")
+
+    if cost is None or price is None:
+        return "—"
+
+    net     = price * margin if margin is not None else None
+    net_pct = margin * 100   if margin is not None else None
+    net_part = f" = ${net:,.2f} net ({net_pct:.0f}%)" if net is not None else ""
+
+    if sale_val:
+        reg_part = ""
+        if regular_price:
+            try:
+                reg = float(str(regular_price).replace("$", "").replace(",", ""))
+                reg_part = f" (${reg:,.2f} reg)"
+            except (ValueError, TypeError):
+                pass
+        return f"🔥 ${cost:,.2f} sale{reg_part} → ${price:,.2f}{net_part}"
+    return f"${cost:,.2f} → ${price:,.2f}{net_part}"
+
+
+def _ready_note(p, today=None):
+    """Return expiry warning if sale ends within 7 days."""
+    if today is None:
+        today = _date.today()
+    if p.get("sale_val"):
+        expiry = _parse_sale_expiry(p["sale_val"])
+        if expiry and (expiry - today).days <= 7:
+            return "⚠️ Sale expires soon"
+    return ""
+
+
 # Column indices based on col_map.yaml
 A_STATUS   = 0
 B_SCORE    = 1
@@ -348,6 +386,7 @@ def parse_rows(rows):
         if sale_val:
             sale_items.append({"title": title, "sale": sale_val, "stock": stock,
                                 "score": score, "url": url, "cost": cost,
+                                "price": price, "margin": margin,
                                 "regular_price": regular_price_s})
         if ship_val:
             ship_items.append({"title": title, "ship": ship_val, "score": score})
@@ -569,11 +608,9 @@ with left_col:
             "Score": f"{p['score']:.1f}" if p["score"] else "—",
             "Title": p["title"][:55],
             "Category": p["category"],
-            "Cost": f"${p['cost']:,.2f}" if p["cost"] else "—",
-            "eBay": f"${p['price']:,.2f}" if p["price"] else "—",
-            "Net": f"${p['price'] * p['margin']:,.2f}" if p["price"] and p["margin"] else "—",
+            "Pricing": _pricing_str(p),
+            "Ship": "FREE 📦" if p["ship_val"] else "",
             "Sold 90d": p["sold_90d"] or "—",
-            "SALE": "🔥" if p["sale_val"] else "",
         } for p in scored_rows])
         st.dataframe(df_scored, use_container_width=True, height=min(200, 60 + len(scored_rows) * 35), hide_index=True)
         sheet_url = f"https://docs.google.com/spreadsheets/d/{os.getenv('GOOGLE_SHEET_ID', '')}/edit"
@@ -582,6 +619,21 @@ with left_col:
             f'→ Open Sheet — change status to APPROVED or PAUSED_DEMAND</a>',
             unsafe_allow_html=True
         )
+
+    ready_rows = [p for p in products if p["status"] == "READY"]
+    if ready_rows:
+        today_d = _date.today()
+        st.markdown("## 📤 Ready to List")
+        st.markdown("<h3>READY — export CSV and list on eBay</h3>", unsafe_allow_html=True)
+        df_ready = pd.DataFrame([{
+            "Title": p["title"][:55],
+            "Category": p["category"],
+            "Pricing": _pricing_str(p),
+            "Ship": "FREE 📦" if p["ship_val"] else "",
+            "Sold 90d": p["sold_90d"] or "—",
+            "Note": _ready_note(p, today_d),
+        } for p in ready_rows])
+        st.dataframe(df_ready, use_container_width=True, height=min(200, 60 + len(ready_rows) * 35), hide_index=True)
 
     pending_rows = [p for p in products if p["status"] == "PENDING" and p["score"] is not None]
     pending_rows.sort(key=lambda x: -x["score"])
@@ -614,12 +666,10 @@ with left_col:
             "Score": f"{p['score']:.1f}" if p["score"] else "—",
             "Title": p["title"][:50],
             "Category": p["category"],
-            "Cost": f"${p['cost']:,.0f}" if p["cost"] else "—",
-            "eBay": f"${p['price']:,.0f}" if p["price"] else "—",
-            "Margin": f"{p['margin']*100:.1f}%" if p["margin"] else "—",
+            "Pricing": _pricing_str(p),
+            "Ship": "FREE 📦" if p["ship_val"] else "",
             "Stock": p["stock"][:20],
             "SALE": "🔥" if p["sale_val"] else "",
-            "FREE SHIP": "📦" if p["ship_val"] else "",
         } for p in all_rows])
         st.dataframe(df_all, use_container_width=True, height=400, hide_index=True)
 
@@ -639,24 +689,36 @@ with right_col:
             score_str = f"Score {item['score']:.1f}" if item["score"] else ""
             regular_price = item.get("regular_price", "")
             if expiry is None or expiry >= today:
-                price_line = ""
-                if regular_price:
-                    try:
-                        reg = float(str(regular_price).replace("$", "").replace(",", ""))
-                        sale_cost = item.get("cost")
-                        if sale_cost:
-                            price_line = (
-                                f'<br><span style="color:#39D353;font-size:0.75rem;">'
-                                f'Was ${reg:,.2f} → Now ${sale_cost:,.2f}</span>'
-                            )
-                    except (ValueError, TypeError):
-                        pass
+                sale_cost   = item.get("cost")
+                sale_price  = item.get("price")
+                sale_margin = item.get("margin")
+                card_price_parts = []
+                if sale_cost is not None:
+                    after_part = ""
+                    if regular_price:
+                        try:
+                            reg = float(str(regular_price).replace("$", "").replace(",", ""))
+                            after_part = f" → ${reg:,.2f} after"
+                        except (ValueError, TypeError):
+                            pass
+                    card_price_parts.append(f"${sale_cost:,.2f} sale{after_part}")
+                if sale_price is not None:
+                    card_price_parts.append(f"eBay ${sale_price:,.2f}")
+                if sale_price is not None and sale_margin is not None:
+                    net = sale_price * sale_margin
+                    card_price_parts.append(f"Net ${net:,.2f} ({sale_margin*100:.0f}%)")
+                card_price_line = ""
+                if card_price_parts:
+                    card_price_line = (
+                        f'<div style="font-size:0.75rem;color:#39D353;margin:3px 0;">'
+                        f'{" &nbsp;|&nbsp; ".join(card_price_parts)}</div>'
+                    )
                 st.markdown(
                     f'<div class="alert-card sale">'
                     f'<b style="color:#F5A623;">{item["sale"]}</b> &nbsp;'
                     f'<span style="color:#E5E7EB;">{item["title"][:50]}</span><br>'
+                    f'{card_price_line}'
                     f'<span style="color:#6B7280; font-size:0.75rem;">{item["stock"]} &nbsp;|&nbsp; {score_str}</span>'
-                    f'{price_line}'
                     f'</div>',
                     unsafe_allow_html=True
                 )
