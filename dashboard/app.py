@@ -250,7 +250,7 @@ def _parse_sale_expiry(sale_str):
 
 
 def _pricing_str(p):
-    """Compact pricing summary for tables: cost → eBay = net (margin%)"""
+    """Compact pricing summary for tables: cost → eBay = net (margin%) [ads X%]"""
     cost  = p.get("cost")
     price = p.get("price")
     margin = p.get("margin")
@@ -263,6 +263,11 @@ def _pricing_str(p):
     net     = price * margin if margin is not None else None
     net_pct = margin * 100   if margin is not None else None
     net_part = f" = ${net:,.2f} net ({net_pct:.0f}%)" if net is not None else ""
+
+    ad_cost = _safe_float(p.get("ad_cost", 0))
+    if ad_cost > 0 and price:
+        ad_pct = (ad_cost / price) * 100
+        net_part += f" [ads {ad_pct:.0f}%]"
 
     if sale_val:
         reg_part = ""
@@ -309,6 +314,8 @@ V_SUGG     = 21
 W_LIMIT    = 22
 X_SALE     = 23
 Y_SHIP     = 24
+AB_FEERATE = 27
+AE_ADCOST  = 30
 AV_NOTES   = 47
 AW_REGULAR = 48
 
@@ -344,6 +351,8 @@ def parse_rows(rows):
         limit_s  = safe(row, W_LIMIT)
         sale_val         = safe(row, X_SALE)
         ship_val         = safe(row, Y_SHIP)
+        fee_rate_s       = safe(row, AB_FEERATE)
+        ad_cost_s        = safe(row, AE_ADCOST)
         regular_price_s  = safe(row, AW_REGULAR)
 
         if not status:
@@ -380,7 +389,9 @@ def parse_rows(rows):
             "sold_90d": sold90, "avg_price": avg_s, "comp_count": comp_s,
             "last_checked": checked, "costco_url": url, "summary": summary,
             "sugg_price": sugg_s, "purch_limit": limit_s,
-            "sale_val": sale_val, "ship_val": ship_val, "regular_price": regular_price_s,
+            "sale_val": sale_val, "ship_val": ship_val,
+            "fee_rate": fee_rate_s, "ad_cost": ad_cost_s,
+            "regular_price": regular_price_s,
         })
 
         if sale_val:
@@ -481,7 +492,7 @@ st.markdown(
 
 # ── KPI row ───────────────────────────────────────────────────────────────────
 
-kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
+kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
 tier1_count = sum(1 for p in products if p["score"] and p["score"] >= 7.0)
 avg_score   = (
@@ -494,9 +505,8 @@ avg_margin = sum(avg_margin_all) / len(avg_margin_all) if avg_margin_all else 0
 kpi1.metric("Tier 1 Products",    tier1_count)
 kpi2.metric("Avg Score",          f"{avg_score:.1f}")
 kpi3.metric("On Sale 🔥",         len(sale_items))
-kpi4.metric("Free Ship 📦",       len(ship_items))
-kpi5.metric("Avg Margin",         f"{avg_margin * 100:.1f}%")
-kpi6.metric("Live on eBay",       n_active)
+kpi4.metric("Avg Margin",         f"{avg_margin * 100:.1f}%")
+kpi5.metric("Live on eBay",       n_active)
 
 # ── Sheet Health Bar ──────────────────────────────────────────────────────────
 
@@ -594,16 +604,52 @@ st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
 left_col, right_col = st.columns([3, 2], gap="large")
 
 with left_col:
-    # ── Opportunity table ──────────────────────────────────────────────────────
-    st.markdown("## Opportunity Queue")
-    st.markdown("<h3>PENDING — sorted by score</h3>", unsafe_allow_html=True)
-
     import pandas as pd
+    today_d = _date.today()
 
+    # ── 1. ACTIVE — Live listings ──────────────────────────────────────────────
+    active_rows = [p for p in products if p["status"] == "ACTIVE"]
+    if active_rows:
+        st.markdown("## 🟢 Live on eBay")
+        for p in active_rows:
+            expiry = _parse_sale_expiry(p["sale_val"]) if p["sale_val"] else None
+            sale_status = ""
+            if p["sale_val"] and expiry:
+                days_left = (expiry - today_d).days
+                if days_left < 0:
+                    reg = p.get("regular_price", "")
+                    try:
+                        reg_f = float(str(reg).replace("$", "").replace(",", ""))
+                        sale_status = (
+                            f'<span style="color:#FF4444;">⚠️ Sale ended {expiry} '
+                            f'— reprice Costco to ${reg_f:,.2f}</span>'
+                        )
+                    except (ValueError, TypeError):
+                        sale_status = f'<span style="color:#FF4444;">⚠️ Sale ended {expiry} — check Costco price</span>'
+                elif days_left == 0:
+                    sale_status = '<span style="color:#FF9500;">⚠️ Sale ends TODAY</span>'
+                elif days_left <= 3:
+                    sale_status = f'<span style="color:#FF9500;">⚠️ Sale ends in {days_left}d ({expiry})</span>'
+            pricing = _pricing_str(p)
+            ship = "FREE 📦" if p["ship_val"] else ""
+            ship_part = f" &nbsp;|&nbsp; {ship}" if ship else ""
+            sale_div = f'<div style="margin-top:4px;">{sale_status}</div>' if sale_status else ""
+            st.markdown(
+                f'<div class="alert-card" style="border-left-color:#78FF55;">'
+                f'<div style="font-size:0.68rem;color:#78FF55;text-transform:uppercase;'
+                f'letter-spacing:0.1em;margin-bottom:3px;">ACTIVE — Live on eBay</div>'
+                f'<div style="font-size:0.92rem;color:#F9FAFB;margin-bottom:4px;">{p["title"][:70]}</div>'
+                f'<div style="font-size:0.82rem;color:#39D353;margin-bottom:3px;">{pricing}{ship_part}</div>'
+                f'{sale_div}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    # ── 2. SCORED — Needs decision ─────────────────────────────────────────────
     scored_rows = [p for p in products if p["status"] == "SCORED"]
     if scored_rows:
-        st.markdown("## 🟢 Needs Your Decision")
-        st.markdown("<h3>SCORED — Tier 1 products awaiting your APPROVED or PAUSED call</h3>", unsafe_allow_html=True)
+        st.markdown("## 🟡 Needs Your Decision")
+        st.markdown("<h3>SCORED — awaiting your APPROVED or PAUSED call</h3>", unsafe_allow_html=True)
         df_scored = pd.DataFrame([{
             "Score": f"{p['score']:.1f}" if p["score"] else "—",
             "Title": p["title"][:55],
@@ -620,9 +666,23 @@ with left_col:
             unsafe_allow_html=True
         )
 
+    # ── 3. APPROVED — Waiting for daily sweep ─────────────────────────────────
+    approved_rows = [p for p in products if p["status"] == "APPROVED"]
+    if approved_rows:
+        st.markdown("## ✅ Approved — Pending Copy Generation")
+        st.markdown("<h3>APPROVED — agent will promote to READY on next daily sweep</h3>", unsafe_allow_html=True)
+        df_approved = pd.DataFrame([{
+            "Title": p["title"][:55],
+            "Category": p["category"],
+            "Pricing": _pricing_str(p),
+            "Ship": "FREE 📦" if p["ship_val"] else "",
+            "Sold 90d": p["sold_90d"] or "—",
+        } for p in approved_rows])
+        st.dataframe(df_approved, use_container_width=True, height=min(200, 60 + len(approved_rows) * 35), hide_index=True)
+
+    # ── 4. READY — Export now ─────────────────────────────────────────────────
     ready_rows = [p for p in products if p["status"] == "READY"]
     if ready_rows:
-        today_d = _date.today()
         st.markdown("## 📤 Ready to List")
         st.markdown("<h3>READY — export CSV and list on eBay</h3>", unsafe_allow_html=True)
         df_ready = pd.DataFrame([{
@@ -635,29 +695,25 @@ with left_col:
         } for p in ready_rows])
         st.dataframe(df_ready, use_container_width=True, height=min(200, 60 + len(ready_rows) * 35), hide_index=True)
 
+    # ── 5. PENDING — Research queue ───────────────────────────────────────────
     pending_rows = [p for p in products if p["status"] == "PENDING" and p["score"] is not None]
     pending_rows.sort(key=lambda x: -x["score"])
-
     if pending_rows:
+        st.markdown("## Opportunity Queue")
+        st.markdown("<h3>PENDING — sorted by score</h3>", unsafe_allow_html=True)
         df_pending = pd.DataFrame([{
             "Score": f"{p['score']:.1f}",
             "Tier":  ("T1 🟢" if p["score"] >= 7 else ("T2 🟡" if p["score"] >= 4 else "T3 🔴")),
             "Title": p["title"][:55],
             "Category": p["category"],
-            "Cost":  f"${p['cost']:,.0f}" if p["cost"] else "—",
-            "eBay":  f"${p['price']:,.0f}" if p["price"] else "—",
-            "Margin": f"{p['margin']*100:.1f}%" if p["margin"] else "—",
+            "Pricing": _pricing_str(p),
+            "Ship": "FREE 📦" if p["ship_val"] else "",
             "Sold 90d": p["sold_90d"] or "—",
             "SALE": "🔥" if p["sale_val"] else "",
-            "SHIP": "📦" if p["ship_val"] else "",
         } for p in pending_rows])
-
         st.dataframe(df_pending, use_container_width=True, height=380, hide_index=True)
-    else:
-        st.markdown('<div style="color:#6B7280; font-size:0.85rem;">No PENDING products in queue.</div>',
-                    unsafe_allow_html=True)
 
-    # ── All products table (collapsed) ────────────────────────────────────────
+    # ── 6. Full product table (collapsed) ─────────────────────────────────────
     with st.expander("Full product table (all statuses)"):
         all_rows = [p for p in products if p["score"] is not None]
         all_rows.sort(key=lambda x: -(x["score"] or 0))
@@ -674,92 +730,107 @@ with left_col:
         st.dataframe(df_all, use_container_width=True, height=400, hide_index=True)
 
 with right_col:
-    # ── Sale alerts ──────────────────────────────────────────────────────────
-    st.markdown("## Sale Opportunities")
-    if sale_items:
-        today = _date.today()
-        shown = 0
-        for item in sale_items:
-            if shown >= 8:
-                break
-            expiry = _parse_sale_expiry(item["sale"])
-            days_since_expiry = (today - expiry).days if expiry else None
-            if expiry and expiry < today and days_since_expiry is not None and days_since_expiry > 3:
-                continue
-            score_str = f"Score {item['score']:.1f}" if item["score"] else ""
-            regular_price = item.get("regular_price", "")
-            if expiry is None or expiry >= today:
-                sale_cost   = item.get("cost")
-                sale_price  = item.get("price")
-                sale_margin = item.get("margin")
-                card_price_parts = []
-                if sale_cost is not None:
-                    after_part = ""
-                    if regular_price:
-                        try:
-                            reg = float(str(regular_price).replace("$", "").replace(",", ""))
-                            after_part = f" → ${reg:,.2f} after"
-                        except (ValueError, TypeError):
-                            pass
-                    card_price_parts.append(f"${sale_cost:,.2f} sale{after_part}")
-                if sale_price is not None:
-                    card_price_parts.append(f"eBay ${sale_price:,.2f}")
-                if sale_price is not None and sale_margin is not None:
-                    net = sale_price * sale_margin
-                    card_price_parts.append(f"Net ${net:,.2f} ({sale_margin*100:.0f}%)")
-                card_price_line = ""
-                if card_price_parts:
-                    card_price_line = (
-                        f'<div style="font-size:0.75rem;color:#39D353;margin:3px 0;">'
-                        f'{" &nbsp;|&nbsp; ".join(card_price_parts)}</div>'
-                    )
-                st.markdown(
-                    f'<div class="alert-card sale">'
-                    f'<b style="color:#F5A623;">{item["sale"]}</b> &nbsp;'
-                    f'<span style="color:#E5E7EB;">{item["title"][:50]}</span><br>'
-                    f'{card_price_line}'
-                    f'<span style="color:#6B7280; font-size:0.75rem;">{item["stock"]} &nbsp;|&nbsp; {score_str}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-            else:
+    # ── Sales & Alerts ────────────────────────────────────────────────────────
+    st.markdown("## 🔥 Sales & Alerts")
+    today = _date.today()
+    shown = 0
+
+    for item in sale_items:
+        if shown >= 8:
+            break
+        expiry = _parse_sale_expiry(item["sale"])
+        days_since_expiry = (today - expiry).days if expiry else None
+        if expiry and expiry < today and days_since_expiry is not None and days_since_expiry > 3:
+            continue
+        score_str = f"Score {item['score']:.1f}" if item["score"] else ""
+        regular_price = item.get("regular_price", "")
+        if expiry is None or expiry >= today:
+            sale_cost   = item.get("cost")
+            sale_price  = item.get("price")
+            sale_margin = item.get("margin")
+            card_price_parts = []
+            if sale_cost is not None:
+                after_part = ""
                 if regular_price:
                     try:
                         reg = float(str(regular_price).replace("$", "").replace(",", ""))
-                        reprice_note = f"reprice to ${reg:,.2f}"
+                        after_part = f" → ${reg:,.2f} after"
                     except (ValueError, TypeError):
-                        reprice_note = "check Costco"
-                else:
-                    reprice_note = "check Costco"
-                st.markdown(
-                    f'<div class="alert-card" style="background:#1A1A1A;border-left-color:#888;">'
-                    f'<b style="color:#888;">⚠️ Sale ended {expiry}</b> &nbsp;'
-                    f'<span style="color:#9CA3AF;">{item["title"][:50]}</span><br>'
-                    f'<span style="color:#6B7280; font-size:0.75rem;">{reprice_note}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
+                        pass
+                card_price_parts.append(f"${sale_cost:,.2f} sale{after_part}")
+            if sale_price is not None:
+                card_price_parts.append(f"eBay ${sale_price:,.2f}")
+            if sale_price is not None and sale_margin is not None:
+                net = sale_price * sale_margin
+                card_price_parts.append(f"Net ${net:,.2f} ({sale_margin*100:.0f}%)")
+            card_price_line = ""
+            if card_price_parts:
+                card_price_line = (
+                    f'<div style="font-size:0.75rem;color:#39D353;margin:3px 0;">'
+                    f'{" &nbsp;|&nbsp; ".join(card_price_parts)}</div>'
                 )
-            shown += 1
-        if shown == 0:
-            st.markdown('<div style="color:#6B7280; font-size:0.85rem; margin:4px 0 12px;">No active sales detected.</div>',
-                        unsafe_allow_html=True)
-    else:
-        st.markdown('<div style="color:#6B7280; font-size:0.85rem; margin:4px 0 12px;">No active sales detected.</div>',
-                    unsafe_allow_html=True)
-
-    # ── Free ship alerts ──────────────────────────────────────────────────────
-    if ship_items:
-        st.markdown("## Free Shipping")
-        for item in ship_items[:5]:
-            score_str = f"Score {item['score']:.1f}" if item["score"] else ""
             st.markdown(
-                f'<div class="alert-card ship">'
-                f'<b style="color:#2DD4BF;">📦 FREE SHIP</b> &nbsp;'
+                f'<div class="alert-card sale">'
+                f'<b style="color:#F5A623;">{item["sale"]}</b> &nbsp;'
                 f'<span style="color:#E5E7EB;">{item["title"][:50]}</span><br>'
-                f'<span style="color:#6B7280; font-size:0.75rem;">{score_str}</span>'
+                f'{card_price_line}'
+                f'<span style="color:#6B7280; font-size:0.75rem;">{item["stock"]} &nbsp;|&nbsp; {score_str}</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
+        else:
+            if regular_price:
+                try:
+                    reg = float(str(regular_price).replace("$", "").replace(",", ""))
+                    reprice_note = f"reprice to ${reg:,.2f}"
+                except (ValueError, TypeError):
+                    reprice_note = "check Costco"
+            else:
+                reprice_note = "check Costco"
+            st.markdown(
+                f'<div class="alert-card" style="background:#1A1A1A;border-left-color:#888;">'
+                f'<b style="color:#888;">⚠️ Sale ended {expiry}</b> &nbsp;'
+                f'<span style="color:#9CA3AF;">{item["title"][:50]}</span><br>'
+                f'<span style="color:#6B7280; font-size:0.75rem;">{reprice_note}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        shown += 1
+
+    # ACTIVE reprice alerts — listings whose sale recently ended (within 3 days)
+    sale_item_titles = {item["title"] for item in sale_items}
+    for p in products:
+        if p["status"] != "ACTIVE" or p["title"] in sale_item_titles:
+            continue
+        if not p.get("sale_val"):
+            continue
+        expiry = _parse_sale_expiry(p["sale_val"])
+        if not expiry:
+            continue
+        days_since = (today - expiry).days
+        if 0 < days_since <= 3:
+            reg = p.get("regular_price", "")
+            try:
+                reg_f = float(str(reg).replace("$", "").replace(",", ""))
+                reprice_note = f"reprice to ${reg_f:,.2f}"
+            except (ValueError, TypeError):
+                reprice_note = "check Costco price"
+            st.markdown(
+                f'<div class="alert-card" style="background:#1A1A1A;border-left-color:#78FF55;">'
+                f'<b style="color:#78FF55;">⚠️ ACTIVE — Sale ended {expiry}</b> &nbsp;'
+                f'<span style="color:#9CA3AF;">{p["title"][:50]}</span><br>'
+                f'<span style="color:#6B7280; font-size:0.75rem;">{reprice_note}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            shown += 1
+
+    if shown == 0:
+        st.markdown(
+            '<div style="color:#6B7280; font-size:0.85rem; margin:4px 0 12px;">'
+            'No active Costco sales detected.</div>',
+            unsafe_allow_html=True
+        )
 
     # ── AUDIT_REVIEW queue ────────────────────────────────────────────────────
     audit_review_rows = [
