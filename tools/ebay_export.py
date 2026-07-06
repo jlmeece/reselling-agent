@@ -109,6 +109,31 @@ def _parse_brand_from_notes(notes: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+# Known Costco brand prefixes — ordered longest-first to avoid short-prefix shadowing
+_TITLE_BRAND_MAP = [
+    ("kirkland signature", "Kirkland Signature"),
+    ("kirkland",           "Kirkland Signature"),
+    ("polywood",           "POLYWOOD"),
+    ("henredon",           "Henredon"),
+    ("cuisinart",          "Cuisinart"),
+    ("vitamix",            "Vitamix"),
+    ("kitchenaid",         "KitchenAid"),
+    ("nature made",        "Nature Made"),
+    ("ninja",              "Ninja"),
+    ("instant pot",        "Instant Pot"),
+    ("pamp suisse",        "PAMP Suisse"),
+]
+
+
+def _brand_from_title(title: str) -> str:
+    """Fallback: infer brand from product title when notes parsing returns empty."""
+    t = title.lower()
+    for prefix, brand in _TITLE_BRAND_MAP:
+        if prefix in t:
+            return brand
+    return ""
+
+
 def _parse_quantity_from_notes(notes: str) -> str:
     """Extract purchase_limit from notes if present, default to 1."""
     m = re.search(r"list max (\d+) on eBay", notes, re.IGNORECASE)
@@ -327,7 +352,7 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             continue
 
         title      = _safe(row, _COL["title"])
-        brand      = _parse_brand_from_notes(notes)
+        brand      = _parse_brand_from_notes(notes) or _brand_from_title(title)
         quantity   = _parse_quantity_from_notes(notes)
         cat_id     = _ebay_category_id(title, category, config)
         cat_config = config["categories"].get(category, {})
