@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import yaml
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -107,6 +108,98 @@ def _parse_brand_from_notes(notes: str) -> str:
     """Extract brand written by costco_scraper into notes field."""
     m = re.search(r"brand[:\s]+([^\n|]+)", notes, re.IGNORECASE)
     return m.group(1).strip() if m else ""
+
+
+_TITLE_BRAND_MAP = [
+    ("kirkland signature", "Kirkland Signature"),
+    ("kirkland",           "Kirkland Signature"),
+    ("polywood",           "POLYWOOD"),
+    ("henredon",           "Henredon"),
+    ("cuisinart",          "Cuisinart"),
+    ("vitamix",            "Vitamix"),
+    ("kitchenaid",         "KitchenAid"),
+    ("nature made",        "Nature Made"),
+    ("ninja",              "Ninja"),
+    ("instant pot",        "Instant Pot"),
+    ("pamp suisse",        "PAMP Suisse"),
+]
+
+
+def _brand_from_title(title: str) -> str:
+    """Fallback: infer brand from product title when notes parsing returns empty."""
+    t = title.lower()
+    for prefix, brand in _TITLE_BRAND_MAP:
+        if prefix in t:
+            return brand
+    return ""
+
+
+_CAT_CACHE_PATH = Path(__file__).parent.parent / "data" / "ebay_category_cache.json"
+
+
+def _load_cat_cache() -> dict:
+    if _CAT_CACHE_PATH.exists():
+        try:
+            return json.loads(_CAT_CACHE_PATH.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _save_cat_cache(cache: dict) -> None:
+    try:
+        _CAT_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _CAT_CACHE_PATH.write_text(json.dumps(cache, indent=2))
+    except Exception:
+        pass
+
+
+def _serper_category_lookup(title: str) -> str:
+    """
+    Uses Serper to find a real eBay browse URL for this product title,
+    then extracts the category ID from the URL pattern /b/Name/CATID/...
+    Results cached in data/ebay_category_cache.json so each title only hits the API once.
+    Returns category ID string, or "" on failure (falls back to categories.yaml).
+    """
+    serper_key = os.getenv("SERPER_API_KEY", "")
+    if not serper_key:
+        return ""
+
+    cache = _load_cat_cache()
+    cache_key = title.lower().strip()
+    if cache_key in cache:
+        cached = cache[cache_key]
+        if cached:
+            logger.debug(f"  Category cache hit: {title[:40]} → {cached}")
+        return cached
+
+    try:
+        query = f"{title} site:ebay.com/b/"
+        payload = json.dumps({"q": query, "num": 5}).encode()
+        req = urllib.request.Request(
+            "https://google.serper.dev/search",
+            data=payload,
+            headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+
+        for result in data.get("organic", []):
+            link = result.get("link", "")
+            m = re.search(r"ebay\.com/b/[^/]+/(\d+)/", link)
+            if m:
+                cat_id = m.group(1)
+                logger.info(f"  Serper category: '{title[:40]}' → {cat_id}")
+                cache[cache_key] = cat_id
+                _save_cat_cache(cache)
+                return cat_id
+
+    except Exception as e:
+        logger.warning(f"  Serper category lookup failed for '{title[:40]}': {e}")
+
+    cache[cache_key] = ""
+    _save_cat_cache(cache)
+    return ""
 
 
 # Known Costco brand prefixes — ordered longest-first to avoid short-prefix shadowing
@@ -352,10 +445,13 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             continue
 
         title      = _safe(row, _COL["title"])
-        brand      = _parse_brand_from_notes(notes) or _brand_from_title(title)
+        brand      = _parse_brand_from_notes(notes) or _brand_from_title(title) or _brand_from_title(title)
         quantity   = _parse_quantity_from_notes(notes)
         cat_id     = _ebay_category_id(title, category, config)
         cat_config = config["categories"].get(category, {})
+        live_cat   = _serper_category_lookup(title)
+        if live_cat:
+            cat_id = live_cat
         logger.debug(f"  {title[:40]} → eBay category: {cat_id} ({category})")
         if not cat_id:
             logger.warning(f"  Skipping {title[:40]} — no eBay category ID configured for '{category}'")

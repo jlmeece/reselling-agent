@@ -178,8 +178,8 @@ categories:
     ebay_category_id: "261940"                  # Patio Furniture Sets (leaf)
     ebay_category_map:
       "sectional": "261940"                     # Patio Furniture Sets (leaf)
-      "chair": "261920"                     # Outdoor Chairs (leaf)
-      "adirondack": "261920"                 # Outdoor Chairs (leaf)
+      "chair": "79682"                      # Patio Chairs (leaf, verified Jul 2026)
+      "adirondack": "79682"                  # Patio Chairs (leaf, verified Jul 2026)
       "table": "20563"                          # Outdoor Tables (leaf)
       "default": "261940"
     ebay_item_specifics:
@@ -326,9 +326,9 @@ categories:
     ebay_category_map:
       "blender": "14070"                    # Blenders (leaf)
       "vitamix": "14070"                    # Blenders (leaf)
-      "air fryer": "261940"                 # Air Fryers (leaf)
-      "convection oven": "183321"         # Countertop Ovens (leaf)
-      "10-in-1": "183321"                 # Countertop Ovens (leaf)
+      "air fryer": "185033"                  # Air Fryers (leaf, verified Jul 2026)
+      "convection oven": "185033"            # Air Fryers/Countertop Ovens (leaf, verified Jul 2026)
+      "10-in-1": "185033"                    # Air Fryers/Countertop Ovens (leaf, verified Jul 2026)
       "coffee": "30063"                     # Coffee Makers (leaf)
       "stand mixer": "116174"               # Stand Mixers (leaf)
       "food processor": "14070"             # Food Processors (leaf)
