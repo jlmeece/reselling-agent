@@ -1,0 +1,31 @@
+{
+  "slug": "kirkland-signature-chewable-vitamin-c-500-mg-500-tablets",
+  "title": "Kirkland Signature Chewable Vitamin C 500 mg., 500 Tablets",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-chewable-vitamin-c-500-mg-500-tablets/100369190",
+  "brand": "Kirkland Signature",
+  "model": "98501",
+  "first_researched": "2026-06-02",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "98501",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

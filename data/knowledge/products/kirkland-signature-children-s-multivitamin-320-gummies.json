@@ -1,0 +1,31 @@
+{
+  "slug": "kirkland-signature-children-s-multivitamin-320-gummies",
+  "title": "Kirkland Signature Children's Multivitamin, 320 Gummies",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-childrens-multivitamin-320-gummies/100405668",
+  "brand": "Kirkland Signature",
+  "model": "897980",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "897980",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

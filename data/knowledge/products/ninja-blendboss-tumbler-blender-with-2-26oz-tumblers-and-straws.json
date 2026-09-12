@@ -19,6 +19,18 @@
       },
       "intent_phrases_seen": [],
       "top_links": []
+    },
+    {
+      "brand": "Ninja",
+      "model": "2030272",
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

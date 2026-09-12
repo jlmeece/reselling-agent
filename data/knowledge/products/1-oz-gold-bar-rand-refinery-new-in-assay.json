@@ -209,6 +209,46 @@
         "https://reddit.com/r/Gold/comments/1t06593/gold_bars_in_south_africa_spotlight_on_rand/",
         "https://reddit.com/r/Pmsforsale/comments/1sr9v8b/wts_gold_silver_at_spot/"
       ]
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-06-03",
+      "signal_strength": 0.02,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 10,
+        "reddit:r/Pmsforsale": 10,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1kfaj9m/pro_tip_after_overnight_price_jump_gold_on_costco/",
+        "https://reddit.com/r/Gold/comments/1j9ubg6/question_on_costco_gold/",
+        "https://reddit.com/r/Pmsforsale/comments/1j92bdq/wts_1_oz_gold_2930/",
+        "https://reddit.com/r/Pmsforsale/comments/1h3i2fi/wts_1oz_gold_bars/",
+        "https://reddit.com/r/Pmsforsale/comments/1gy759d/wts_1oz_maple_leafs_gold_bars_and_100g_bar_under/"
+      ]
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-06-03",
+      "signal_strength": 0.02,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 10,
+        "reddit:r/Pmsforsale": 10,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1kfaj9m/pro_tip_after_overnight_price_jump_gold_on_costco/",
+        "https://reddit.com/r/Gold/comments/1j9ubg6/question_on_costco_gold/",
+        "https://reddit.com/r/Pmsforsale/comments/1j92bdq/wts_1_oz_gold_2930/",
+        "https://reddit.com/r/Pmsforsale/comments/1h3i2fi/wts_1oz_gold_bars/",
+        "https://reddit.com/r/Pmsforsale/comments/1gy759d/wts_1oz_maple_leafs_gold_bars_and_100g_bar_under/"
+      ]
     }
   ]
 }

@@ -1,0 +1,77 @@
+{
+  "slug": "kirkland-signature-energy-shot-48-bottles-2-ounces-each",
+  "title": "Kirkland Signature Energy Shot, 48 Bottles, 2 Ounces Each",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-energy-shot-48-bottles-2-ounces-each/4000099948",
+  "brand": "Kirkland Signature",
+  "model": "1711796",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "1711796",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1,
+        "reddit:r/vitamins": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/cug8d3/alpha_gpc_vs_nacetyl_lcarnitine/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1711796",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/cug8d3/alpha_gpc_vs_nacetyl_lcarnitine/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1711796",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/cug8d3/alpha_gpc_vs_nacetyl_lcarnitine/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1711796",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/cug8d3/alpha_gpc_vs_nacetyl_lcarnitine/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1711796",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/cug8d3/alpha_gpc_vs_nacetyl_lcarnitine/"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "slug": "kirkland-signature-coq10-300-mg-100-softgels",
+  "title": "Kirkland Signature CoQ10 300 mg., 100 Softgels",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-coq10-300-mg-100-softgels/100029983",
+  "brand": "Kirkland Signature",
+  "model": "648220",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0,
+        "reddit:r/vitamins": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "648220",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "648220",
+      "date": "2026-06-06",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "648220",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

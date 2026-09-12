@@ -18,6 +18,53 @@
       },
       "intent_phrases_seen": [],
       "top_links": []
+    },
+    {
+      "brand": "Henredon",
+      "model": "1934175",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Henredon",
+      "model": "1934175",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Henredon",
+      "model": "1934175",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Henredon",
+      "model": "1934175",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

@@ -78,16 +78,16 @@
     "categories": [
       "Small Appliances"
     ],
-    "consecutive_misses": 2,
-    "freshness_avg": 0.44297279532245515,
-    "hit_rate": 0.5272508070321426,
-    "intent_rate": 0.3109807883690464,
-    "last_run": "2026-05-13",
-    "runs": 36,
-    "runs_since_yield": 2,
+    "consecutive_misses": 7,
+    "freshness_avg": 0.2615710059099566,
+    "hit_rate": 0.3113363290444099,
+    "intent_rate": 0.18363104572403818,
+    "last_run": "2026-06-03",
+    "runs": 41,
+    "runs_since_yield": 7,
     "status": "active",
     "type": "reddit",
-    "weight": 0.268,
+    "weight": 0.148,
     "yields": 20
   },
   "reddit:r/Costco": {
@@ -96,7 +96,8 @@
       "Outdoor Furniture",
       "Watches",
       "Precious Metals",
-      "Small Appliances"
+      "Small Appliances",
+      "Pharmacy"
     ],
     "consecutive_misses": 10,
     "demoted_reason": "freshness<0.1 for 7 consecutive runs; retired after 10 dry runs",
@@ -115,17 +116,35 @@
     "categories": [
       "Precious Metals"
     ],
-    "consecutive_misses": 0,
+    "consecutive_misses": 9,
+    "demoted_reason": "freshness<0.1 for 3 consecutive runs",
     "freshness_avg": 0.0,
-    "hit_rate": 1.0,
+    "hit_rate": 0.3874204889999999,
     "intent_rate": 0.0,
-    "last_run": "2026-05-12",
-    "runs": 44,
-    "runs_since_yield": 0,
-    "status": "active",
+    "last_run": "2026-06-03",
+    "runs": 53,
+    "runs_since_yield": 9,
+    "status": "demoted",
     "type": "reddit",
-    "weight": 0.15,
+    "weight": 0.086,
     "yields": 44
+  },
+  "reddit:r/EngagementRings": {
+    "categories": [
+      "Jewelry"
+    ],
+    "consecutive_misses": 10,
+    "demoted_reason": "freshness<0.1 for 3 consecutive runs; retired after 10 dry runs",
+    "freshness_avg": 0.0,
+    "hit_rate": 0.0,
+    "intent_rate": 0.0,
+    "last_run": "2026-06-01",
+    "runs": 10,
+    "runs_since_yield": 10,
+    "status": "retired",
+    "type": "reddit",
+    "weight": 0.05,
+    "yields": 0
   },
   "reddit:r/Gold": {
     "categories": [
@@ -133,47 +152,47 @@
       "Precious Metals"
     ],
     "consecutive_misses": 0,
-    "freshness_avg": 0.7837980057543541,
-    "hit_rate": 0.8306122372787627,
-    "intent_rate": 0.07948114894387628,
-    "last_run": "2026-05-12",
-    "runs": 161,
+    "freshness_avg": 0.30365940666657665,
+    "hit_rate": 0.6511826101359222,
+    "intent_rate": 0.03940196979011838,
+    "last_run": "2026-06-03",
+    "runs": 170,
     "runs_since_yield": 0,
     "status": "active",
     "type": "reddit",
-    "weight": 0.404,
-    "yields": 126
+    "weight": 0.201,
+    "yields": 131
   },
   "reddit:r/HomeImprovement": {
     "categories": [
       "Outdoor Furniture"
     ],
-    "consecutive_misses": 2,
-    "freshness_avg": 0.6379641096306296,
-    "hit_rate": 0.7387103253519002,
-    "intent_rate": 0.09488520148009391,
-    "last_run": "2026-05-23",
-    "runs": 34,
-    "runs_since_yield": 2,
+    "consecutive_misses": 11,
+    "freshness_avg": 0.24716036731754806,
+    "hit_rate": 0.28619151547718225,
+    "intent_rate": 0.03676047115628152,
+    "last_run": "2026-06-01",
+    "runs": 43,
+    "runs_since_yield": 11,
     "status": "active",
     "type": "reddit",
-    "weight": 0.334,
+    "weight": 0.123,
     "yields": 30
   },
   "reddit:r/KitchenConfidential": {
     "categories": [
       "Small Appliances"
     ],
-    "consecutive_misses": 3,
-    "freshness_avg": 0.2678229796467298,
-    "hit_rate": 0.3235625536237694,
-    "intent_rate": 0.09226386242201236,
-    "last_run": "2026-05-13",
-    "runs": 36,
-    "runs_since_yield": 3,
+    "consecutive_misses": 8,
+    "freshness_avg": 0.15814679125159747,
+    "hit_rate": 0.19106045228929955,
+    "intent_rate": 0.054480888121574075,
+    "last_run": "2026-06-03",
+    "runs": 41,
+    "runs_since_yield": 8,
     "status": "active",
     "type": "reddit",
-    "weight": 0.14,
+    "weight": 0.094,
     "yields": 9
   },
   "reddit:r/PatioFurniture": {
@@ -199,33 +218,50 @@
       "Precious Metals"
     ],
     "consecutive_misses": 0,
-    "freshness_avg": 0.8876793956608587,
-    "hit_rate": 0.8877809745128108,
-    "intent_rate": 0.02370246146714216,
-    "last_run": "2026-05-12",
-    "runs": 161,
+    "freshness_avg": 0.3439051855421544,
+    "hit_rate": 0.8074750502706497,
+    "intent_rate": 0.009182819212103874,
+    "last_run": "2026-06-03",
+    "runs": 170,
     "runs_since_yield": 0,
     "status": "active",
     "type": "reddit",
-    "weight": 0.435,
-    "yields": 107
+    "weight": 0.236,
+    "yields": 114
   },
   "reddit:r/Silverbugs": {
     "categories": [
       "Jewelry",
       "Precious Metals"
     ],
-    "consecutive_misses": 0,
-    "freshness_avg": 0.7237203737971194,
-    "hit_rate": 0.7781650635869288,
-    "intent_rate": 0.1955587235446568,
-    "last_run": "2026-05-12",
-    "runs": 161,
-    "runs_since_yield": 0,
+    "consecutive_misses": 8,
+    "freshness_avg": 0.2803841011157428,
+    "hit_rate": 0.344523810457564,
+    "intent_rate": 0.07576345630388677,
+    "last_run": "2026-06-03",
+    "runs": 170,
+    "runs_since_yield": 8,
     "status": "active",
     "type": "reddit",
-    "weight": 0.407,
-    "yields": 93
+    "weight": 0.144,
+    "yields": 94
+  },
+  "reddit:r/Supplements": {
+    "categories": [
+      "Pharmacy"
+    ],
+    "consecutive_misses": 10,
+    "demoted_reason": "freshness<0.1 for 3 consecutive runs; retired after 10 dry runs",
+    "freshness_avg": 0.0,
+    "hit_rate": 0.1654053477693782,
+    "intent_rate": 0.0,
+    "last_run": "2026-06-06",
+    "runs": 57,
+    "runs_since_yield": 10,
+    "status": "retired",
+    "type": "reddit",
+    "weight": 0.062,
+    "yields": 19
   },
   "reddit:r/WallStreetSilver": {
     "categories": [
@@ -298,7 +334,8 @@
     "categories": [
       "Jewelry",
       "Precious Metals",
-      "Small Appliances"
+      "Small Appliances",
+      "Pharmacy"
     ],
     "consecutive_misses": 15,
     "demoted_reason": "freshness<0.1 for 14 consecutive runs; retired after 10 dry runs",
@@ -316,7 +353,8 @@
   "reddit:r/frugal": {
     "categories": [
       "Outdoor Furniture",
-      "Small Appliances"
+      "Small Appliances",
+      "Pharmacy"
     ],
     "consecutive_misses": 10,
     "demoted_reason": "freshness<0.1 for 5 consecutive runs; retired after 10 dry runs",
@@ -333,7 +371,8 @@
   },
   "reddit:r/frugalmalefashion": {
     "categories": [
-      "Watches"
+      "Watches",
+      "Jewelry"
     ],
     "consecutive_misses": 10,
     "demoted_reason": "freshness<0.1 for 3 consecutive runs; retired after 10 dry runs",
@@ -364,20 +403,38 @@
     "weight": 1.0,
     "yields": 0
   },
+  "reddit:r/jewelry": {
+    "categories": [
+      "Jewelry"
+    ],
+    "consecutive_misses": 10,
+    "demoted_reason": "freshness<0.1 for 3 consecutive runs; retired after 10 dry runs",
+    "freshness_avg": 0.0,
+    "hit_rate": 0.0,
+    "intent_rate": 0.0,
+    "last_run": "2026-06-01",
+    "runs": 10,
+    "runs_since_yield": 10,
+    "status": "retired",
+    "type": "reddit",
+    "weight": 0.05,
+    "yields": 0
+  },
   "reddit:r/malelivingspace": {
     "categories": [
       "Outdoor Furniture"
     ],
-    "consecutive_misses": 9,
-    "freshness_avg": 0.19138684578090925,
-    "hit_rate": 0.20587548100238445,
-    "intent_rate": 0.20736688608551748,
-    "last_run": "2026-05-23",
-    "runs": 34,
-    "runs_since_yield": 9,
-    "status": "active",
+    "consecutive_misses": 17,
+    "demoted_reason": "freshness<0.1 for 16 consecutive runs; retired after 10 dry runs",
+    "freshness_avg": 0.08238576153400828,
+    "hit_rate": 0.08862264391450445,
+    "intent_rate": 0.08926464489962052,
+    "last_run": "2026-06-01",
+    "runs": 42,
+    "runs_since_yield": 17,
+    "status": "retired",
     "type": "reddit",
-    "weight": 0.116,
+    "weight": 0.071,
     "yields": 7
   },
   "reddit:r/patio": {
@@ -394,6 +451,23 @@
     "status": "active",
     "type": "reddit",
     "weight": 1.0,
+    "yields": 0
+  },
+  "reddit:r/vitamins": {
+    "categories": [
+      "Pharmacy"
+    ],
+    "consecutive_misses": 10,
+    "demoted_reason": "freshness<0.1 for 3 consecutive runs; retired after 10 dry runs",
+    "freshness_avg": 0.0,
+    "hit_rate": 0.0,
+    "intent_rate": 0.0,
+    "last_run": "2026-05-31",
+    "runs": 10,
+    "runs_since_yield": 10,
+    "status": "retired",
+    "type": "reddit",
+    "weight": 0.05,
     "yields": 0
   },
   "web:search": {

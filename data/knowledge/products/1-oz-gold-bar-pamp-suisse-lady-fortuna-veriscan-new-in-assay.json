@@ -106,6 +106,29 @@
         "https://reddit.com",
         "https://reddit.com"
       ]
+    },
+    {
+      "brand": "PAMP",
+      "model": "1943308",
+      "date": "2026-06-03",
+      "signal_strength": 0.04,
+      "by_source": {
+        "reddit:r/Silverbugs": 1,
+        "reddit:r/Gold": 10,
+        "reddit:r/Pmsforsale": 10,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [
+        "Just bought costco gold bullion for $2699",
+        "Best Way To Get Costco Gold Alerts?"
+      ],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1fzt8i9/just_bought_costco_gold_bullion_for_2699/",
+        "https://reddit.com/r/Gold/comments/18jvrbn/best_way_to_get_costco_gold_alerts/",
+        "https://reddit.com/r/Gold/comments/1jzl4zs/costco_gold_price_question/",
+        "https://reddit.com/r/Gold/comments/1j9ubg6/question_on_costco_gold/",
+        "https://reddit.com/r/Pmsforsale/comments/1h8xeuc/wts_50_gram_and_1oz_pamp_gold_bars/"
+      ]
     }
   ]
 }

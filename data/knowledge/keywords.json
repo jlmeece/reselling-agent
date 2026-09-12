@@ -321,25 +321,147 @@
       "mentions": 2
     }
   },
+  "Pharmacy": {
+    "alpha": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-01",
+      "mentions": 8
+    },
+    "cholesterol": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 4
+    },
+    "hangover": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 3
+    },
+    "pregnant": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-01",
+      "mentions": 2
+    },
+    "prevention": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 3
+    },
+    "regimen": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 7
+    },
+    "rice": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 4
+    },
+    "share": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 3
+    },
+    "should": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-01",
+      "mentions": 2
+    },
+    "stack": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 3
+    },
+    "success": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 4
+    },
+    "take": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 4
+    },
+    "vitamin": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 7
+    },
+    "wanted": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 3
+    },
+    "weekly": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 7
+    },
+    "what": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 2
+    },
+    "with": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 4
+    },
+    "woman": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-01",
+      "mentions": 2
+    },
+    "yeast": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-02",
+      "mentions": 4
+    }
+  },
   "Precious Metals": {
+    "after": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
+    "already": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
     "ases": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "available": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 4
+    },
     "bars": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 2
+      "last_seen": "2026-06-03",
+      "mentions": 17
     },
     "below": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "best": {
+      "intent_hits": 1,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
     "black": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
+      "last_seen": "2026-06-03",
+      "mentions": 4
+    },
+    "bought": {
+      "intent_hits": 1,
+      "last_seen": "2026-06-03",
       "mentions": 1
     },
     "buffalo": {
@@ -350,6 +472,16 @@
     "bulk": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
+      "mentions": 1
+    },
+    "bullion": {
+      "intent_hits": 1,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
+    "buyers": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
       "mentions": 1
     },
     "canada": {
@@ -366,6 +498,11 @@
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 3
+    },
+    "cheaper": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
     },
     "coins": {
       "intent_hits": 0,
@@ -388,9 +525,9 @@
       "mentions": 1
     },
     "costco": {
-      "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 1
+      "intent_hits": 2,
+      "last_seen": "2026-06-03",
+      "mentions": 31
     },
     "costcocanada": {
       "intent_hits": 0,
@@ -420,6 +557,11 @@
     "cripple": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
+      "mentions": 1
+    },
+    "cyber": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
       "mentions": 1
     },
     "date": {
@@ -452,6 +594,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "drop": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 3
+    },
     "eagle": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -472,6 +619,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "evening": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "featuring": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -482,6 +634,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "flag": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 3
+    },
     "flair": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -489,8 +646,8 @@
     },
     "fortuna": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 1
+      "last_seen": "2026-06-03",
+      "mentions": 12
     },
     "fractional": {
       "intent_hits": 0,
@@ -502,10 +659,15 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "frenzy": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
     "friday": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 1
+      "last_seen": "2026-06-03",
+      "mentions": 3
     },
     "frugal": {
       "intent_hits": 0,
@@ -548,9 +710,9 @@
       "mentions": 1
     },
     "gold": {
-      "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 7
+      "intent_hits": 2,
+      "last_seen": "2026-06-03",
+      "mentions": 68
     },
     "goldrestockalerts": {
       "intent_hits": 0,
@@ -561,6 +723,11 @@
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
+    },
+    "gram": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
     },
     "grams": {
       "intent_hits": 0,
@@ -577,6 +744,16 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "included": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
+    "item": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "jewelry": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -587,6 +764,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "just": {
+      "intent_hits": 1,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
     "komsco": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -594,8 +776,8 @@
     },
     "lady": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 1
+      "last_seen": "2026-06-03",
+      "mentions": 11
     },
     "larger": {
       "intent_hits": 0,
@@ -612,10 +794,25 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "links": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "lion": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
+    },
+    "list": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
+    "live": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 5
     },
     "loafs": {
       "intent_hits": 0,
@@ -632,6 +829,21 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "maple": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
+    "maples": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 3
+    },
+    "market": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "mega": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -639,8 +851,18 @@
     },
     "metals": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 2
+      "last_seen": "2026-06-03",
+      "mentions": 3
+    },
+    "monday": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
+    "more": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 3
     },
     "morgans": {
       "intent_hits": 0,
@@ -677,6 +899,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "numbers": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "odds": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -692,10 +919,15 @@
       "last_seen": "2026-05-12",
       "mentions": 2
     },
+    "overnight": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "pamp": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 1
+      "last_seen": "2026-06-03",
+      "mentions": 15
     },
     "pandas": {
       "intent_hits": 0,
@@ -706,6 +938,11 @@
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
+    },
+    "perth": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
     },
     "physical": {
       "intent_hits": 0,
@@ -719,8 +956,33 @@
     },
     "precious": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 1
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
+    "premium": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 4
+    },
+    "price": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 6
+    },
+    "queens": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 3
+    },
+    "question": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 6
+    },
+    "rand": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 14
     },
     "read": {
       "intent_hits": 0,
@@ -731,6 +993,11 @@
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
+    },
+    "refinery": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 4
     },
     "rhodium": {
       "intent_hits": 0,
@@ -757,6 +1024,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "selling": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "series": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -777,6 +1049,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "shipping": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 1
+    },
     "sigma": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -784,8 +1061,8 @@
     },
     "silver": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 7
+      "last_seen": "2026-06-03",
+      "mentions": 15
     },
     "silverbugs": {
       "intent_hits": 0,
@@ -802,6 +1079,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "skus": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "snow": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -814,8 +1096,8 @@
     },
     "spot": {
       "intent_hits": 0,
-      "last_seen": "2026-05-12",
-      "mentions": 2
+      "last_seen": "2026-06-03",
+      "mentions": 9
     },
     "stack": {
       "intent_hits": 0,
@@ -827,10 +1109,20 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "suisse": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 10
+    },
     "tested": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
+    },
+    "than": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
     },
     "things": {
       "intent_hits": 0,
@@ -847,6 +1139,11 @@
       "last_seen": "2026-05-12",
       "mentions": 1
     },
+    "under": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
+    },
     "unicorn": {
       "intent_hits": 0,
       "last_seen": "2026-05-12",
@@ -856,6 +1153,11 @@
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
+    },
+    "veriscan": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 9
     },
     "video": {
       "intent_hits": 0,
@@ -886,6 +1188,11 @@
       "intent_hits": 0,
       "last_seen": "2026-05-12",
       "mentions": 1
+    },
+    "website": {
+      "intent_hits": 0,
+      "last_seen": "2026-06-03",
+      "mentions": 2
     },
     "well": {
       "intent_hits": 0,

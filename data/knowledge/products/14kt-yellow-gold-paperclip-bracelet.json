@@ -38,6 +38,78 @@
         "https://www.youtube.com/watch?v=-4qoigR-XbA",
         "https://reddit.com/r/Silverbugs/comments/1t7d7og/be_vigilant_when_buying_pms_from_places_and/"
       ]
+    },
+    {
+      "brand": null,
+      "model": "RWB1502-7.5",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "RWB1502-7.5",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "RWB1502-7.5",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "RWB1502-7.5",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "RWB1502-7.5",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "RWB1502-7.5",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "RWB1502-7.5",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

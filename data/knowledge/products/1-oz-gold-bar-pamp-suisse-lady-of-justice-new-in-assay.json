@@ -33,6 +33,40 @@
         "https://www.youtube.com/watch?v=lC2w_pSs0Rk",
         "https://reddit.com/r/Pmsforsale/comments/1swnkqj/wts_wtt_palladium_gold_and_silver_including_110s/"
       ]
+    },
+    {
+      "brand": "PAMP",
+      "model": "2006565",
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 2,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1jgmpnu/wts_premium_silver_bars_and_rounds_slabs_ase_gold/",
+        "https://reddit.com/r/Pmsforsale/comments/1jgmpnu/wts_premium_silver_bars_and_rounds_slabs_ase_gold/"
+      ]
+    },
+    {
+      "brand": "PAMP",
+      "model": "2006565",
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 2,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Pmsforsale/comments/1jgmpnu/wts_premium_silver_bars_and_rounds_slabs_ase_gold/",
+        "https://reddit.com/r/Pmsforsale/comments/1jgmpnu/wts_premium_silver_bars_and_rounds_slabs_ase_gold/"
+      ]
     }
   ]
 }

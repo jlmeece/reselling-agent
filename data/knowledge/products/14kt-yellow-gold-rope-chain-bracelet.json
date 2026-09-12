@@ -36,6 +36,66 @@
         "https://www.youtube.com/watch?v=74N5NvKHZfk",
         "https://www.youtube.com/watch?v=0yzKNZQLhp8"
       ]
+    },
+    {
+      "brand": null,
+      "model": "1687180",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1687180",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1687180",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1687180",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1687180",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1687180",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

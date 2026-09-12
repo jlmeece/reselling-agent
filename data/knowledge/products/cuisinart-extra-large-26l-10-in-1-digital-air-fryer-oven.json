@@ -21,6 +21,18 @@
       "top_links": [
         "https://reddit.com/r/Frugal/comments/1spmn6e/homemade_granola_bars_save_me_each_month/"
       ]
+    },
+    {
+      "brand": "Cuisinart",
+      "model": "1965335",
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

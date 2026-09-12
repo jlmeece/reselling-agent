@@ -215,6 +215,9 @@ def run_item(item, category=None, add_limit=None):
     result = subprocess.run(cmd)
     if result.returncode != 0:
         print(f"{Fore.RED}Command exited with code {result.returncode}{Style.RESET_ALL}")
+    elif item.get("script", "").endswith("setup_costco_session.py"):
+        print("\nUploading cookies to Gist...")
+        subprocess.run([sys.executable, "tools/cookie_sync.py", "upload"])
     input("\nPress Enter to return to menu...")
 
 

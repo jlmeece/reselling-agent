@@ -425,6 +425,28 @@ def load_run_history():
         return []
 
 
+def load_last_research_run():
+    """Read the last line of the research cron log for the most recent run timestamp.
+
+    /home/hermes/logs/research.log only exists on the Hermes VPS (it's the
+    redirect target in deploy/crontab.txt for `--mode research`), so this
+    quietly returns None when run locally on Windows.
+    """
+    path = "/home/hermes/logs/research.log"
+    try:
+        if not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        if not lines:
+            return None
+        last_line = lines[-1]
+        match = re.match(r"^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})", last_line)
+        return match.group(1) if match else last_line[:40]
+    except Exception:
+        return None
+
+
 # ── Header ────────────────────────────────────────────────────────────────────
 
 st.markdown("""
@@ -1035,10 +1057,14 @@ else:
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 
+last_research_run = load_last_research_run()
+research_run_str = f" · Last research run: {last_research_run}" if last_research_run else ""
+
 st.markdown(
     f'<div style="margin-top:2rem; font-family:\'Barlow Condensed\',sans-serif; '
     f'font-size:0.7rem; color:#374151; letter-spacing:0.1em; text-transform:uppercase;">'
     f'JA_LIQUIDATIONS · WAT Framework · Last load: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+    f'{research_run_str}'
     f'</div>',
     unsafe_allow_html=True
 )

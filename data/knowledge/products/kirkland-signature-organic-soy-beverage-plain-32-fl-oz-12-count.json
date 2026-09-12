@@ -1,0 +1,22 @@
+{
+  "slug": "kirkland-signature-organic-soy-beverage-plain-32-fl-oz-12-count",
+  "title": "Kirkland Signature, Organic Soy Beverage, Plain, 32 fl oz, 12-Count",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-organic-soy-beverage-plain-32-fl-oz-12-count/100129024",
+  "brand": "Kirkland Signature",
+  "model": "49100",
+  "first_researched": "2026-06-06",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "49100",
+      "date": "2026-06-06",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

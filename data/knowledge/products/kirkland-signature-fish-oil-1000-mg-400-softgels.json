@@ -1,0 +1,48 @@
+{
+  "slug": "kirkland-signature-fish-oil-1000-mg-400-softgels",
+  "title": "Kirkland Signature Fish Oil 1000 mg., 400 Softgels",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-fish-oil-1000-mg-400-softgels/11072245",
+  "brand": "Kirkland Signature",
+  "model": "926628",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 2
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/100c9jl/weekly_vitamin_regimen/",
+        "https://reddit.com/r/Supplements/comments/cv0fce/success_with_red_yeast_rice_and_cholesterol/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "926628",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 2
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/100c9jl/weekly_vitamin_regimen/",
+        "https://reddit.com/r/Supplements/comments/cv0fce/success_with_red_yeast_rice_and_cholesterol/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "926628",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

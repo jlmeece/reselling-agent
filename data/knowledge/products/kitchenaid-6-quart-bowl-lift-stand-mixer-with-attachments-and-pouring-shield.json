@@ -24,6 +24,18 @@
         "https://reddit.com/r/BuyItForLife/comments/1t7bjub/whats_a_good_commercial_mixer_for_baking_a_lot/",
         "https://reddit.com/r/BuyItForLife/comments/1sux7z5/what_are_good_stand_mixers_on_the_market_worth/"
       ]
+    },
+    {
+      "brand": "KitchenAid",
+      "model": "2303478",
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

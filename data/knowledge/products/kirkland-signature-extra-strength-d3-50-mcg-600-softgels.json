@@ -1,0 +1,43 @@
+{
+  "slug": "kirkland-signature-extra-strength-d3-50-mcg-600-softgels",
+  "title": "Kirkland Signature Extra Strength D3 50 mcg., 600 Softgels",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-extra-strength-d3-50-mcg-600-softgels/11467951",
+  "brand": "Kirkland Signature",
+  "model": "393914",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0,
+        "reddit:r/vitamins": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "393914",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-06-06",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

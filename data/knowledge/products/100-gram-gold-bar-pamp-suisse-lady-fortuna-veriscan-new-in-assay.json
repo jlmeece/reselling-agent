@@ -1,0 +1,51 @@
+{
+  "slug": "100-gram-gold-bar-pamp-suisse-lady-fortuna-veriscan-new-in-assay",
+  "title": "100 Gram Gold Bar PAMP Suisse Lady Fortuna Veriscan (New In Assay)",
+  "category": "Precious Metals",
+  "costco_url": "https://www.costco.com/p/-/100-gram-gold-bar-pamp-suisse-lady-fortuna-veriscan-new-in-assay/4000239966",
+  "brand": null,
+  "model": null,
+  "first_researched": "2026-06-03",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-06-03",
+      "signal_strength": 0.01,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 4,
+        "reddit:r/Pmsforsale": 1,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1j9ubg6/question_on_costco_gold/",
+        "https://reddit.com/r/Gold/comments/193gihj/costco_100g_bars_are_live/",
+        "https://reddit.com/r/Gold/comments/1857788/list_and_links_to_all_of_the_costco_usa_gold_skus/",
+        "https://reddit.com/r/Gold/comments/17g61jy/costco_gold_bar_item_numbers/",
+        "https://reddit.com/r/Pmsforsale/comments/ol4tmm/wts_gold_queens_beasts_black_flag_series_maples/"
+      ]
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-06-03",
+      "signal_strength": 0.01,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 4,
+        "reddit:r/Pmsforsale": 1,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Gold/comments/1j9ubg6/question_on_costco_gold/",
+        "https://reddit.com/r/Gold/comments/193gihj/costco_100g_bars_are_live/",
+        "https://reddit.com/r/Gold/comments/1857788/list_and_links_to_all_of_the_costco_usa_gold_skus/",
+        "https://reddit.com/r/Gold/comments/17g61jy/costco_gold_bar_item_numbers/",
+        "https://reddit.com/r/Pmsforsale/comments/ol4tmm/wts_gold_queens_beasts_black_flag_series_maples/"
+      ]
+    }
+  ]
+}

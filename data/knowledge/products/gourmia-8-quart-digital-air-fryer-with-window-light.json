@@ -21,6 +21,18 @@
       "top_links": [
         "https://reddit.com/r/BuyItForLife/comments/1so2ogg/dreo_vs_levoit_fan/"
       ]
+    },
+    {
+      "brand": "Gourmia",
+      "model": "6232432",
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0,
+        "reddit:r/KitchenConfidential": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

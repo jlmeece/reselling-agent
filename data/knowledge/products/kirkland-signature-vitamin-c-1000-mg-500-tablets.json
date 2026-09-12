@@ -1,0 +1,37 @@
+{
+  "slug": "kirkland-signature-vitamin-c-1000-mg-500-tablets",
+  "title": "Kirkland Signature Vitamin C 1000 mg., 500 Tablets",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-vitamin-c-1000-mg-500-tablets/10015954",
+  "brand": "Kirkland Signature",
+  "model": "98268",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0,
+        "reddit:r/vitamins": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "98268",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 2
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/100c9jl/weekly_vitamin_regimen/",
+        "https://reddit.com/r/Supplements/comments/by7tjz/wanted_to_share_my_hangover_prevention_stack/"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "slug": "kirkland-signature-turmeric-1000-mg-320-vegetarian-capsules",
+  "title": "Kirkland Signature Turmeric 1000 mg, 320 Vegetarian Capsules",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-turmeric-1000-mg-320-vegetarian-capsules/4000257742",
+  "brand": "Kirkland Signature",
+  "model": "1820336",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1820336",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

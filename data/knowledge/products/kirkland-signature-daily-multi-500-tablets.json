@@ -1,0 +1,41 @@
+{
+  "slug": "kirkland-signature-daily-multi-500-tablets",
+  "title": "Kirkland Signature Daily Multi, 500 Tablets",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-daily-multi-500-tablets/11491625",
+  "brand": "Kirkland Signature",
+  "model": "416076",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "416076",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 3
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/10w7w9n/howwhen_to_take_what/",
+        "https://reddit.com/r/Supplements/comments/cv0fce/success_with_red_yeast_rice_and_cholesterol/",
+        "https://reddit.com/r/Supplements/comments/by7tjz/wanted_to_share_my_hangover_prevention_stack/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "416076",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 3
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/10w7w9n/howwhen_to_take_what/",
+        "https://reddit.com/r/Supplements/comments/cv0fce/success_with_red_yeast_rice_and_cholesterol/",
+        "https://reddit.com/r/Supplements/comments/by7tjz/wanted_to_share_my_hangover_prevention_stack/"
+      ]
+    }
+  ]
+}

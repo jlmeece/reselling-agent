@@ -1,0 +1,39 @@
+{
+  "slug": "1-oz-gold-bar-argor-heraeus-origin-traced-new-in-assay",
+  "title": "1 oz Gold Bar Argor Heraeus Origin Traced (New in Assay)",
+  "category": "Precious Metals",
+  "costco_url": "https://www.costco.com/p/-/1-oz-gold-bar-argor-heraeus-origin-traced-new-in-assay/4000412455",
+  "brand": "Argor-Heraeus",
+  "model": "1999612",
+  "first_researched": "2026-06-03",
+  "research_runs": [
+    {
+      "brand": "Argor-Heraeus",
+      "model": "1999612",
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-06-03",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

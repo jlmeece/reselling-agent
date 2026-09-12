@@ -1,0 +1,31 @@
+{
+  "slug": "kirkland-signature-calcium-500-mg-with-d3-zinc-240-adult-gummies",
+  "title": "Kirkland Signature Calcium 500 mg with D3 & Zinc, 240 Adult Gummies",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-calcium-500-mg-with-d3--zinc-240-adult-gummies/100316316",
+  "brand": "Kirkland Signature",
+  "model": "1051972",
+  "first_researched": "2026-06-02",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1051972",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

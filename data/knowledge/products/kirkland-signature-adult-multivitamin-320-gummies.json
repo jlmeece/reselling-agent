@@ -1,0 +1,33 @@
+{
+  "slug": "kirkland-signature-adult-multivitamin-320-gummies",
+  "title": "Kirkland Signature Adult Multivitamin, 320 Gummies",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-adult-multivitamin-320-gummies/100121461",
+  "brand": "Kirkland Signature",
+  "model": "870735",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "870735",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "870735",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

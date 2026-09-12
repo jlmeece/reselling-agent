@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/18kt-yellow-gold-high-polish--textured-paperclip-bracelet/100803977",
   "brand": null,
-  "model": null,
+  "model": "1598083",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -35,6 +35,69 @@
         "https://www.youtube.com/watch?v=XwLu4qVLwas",
         "https://www.youtube.com/watch?v=XwLu4qVLwas"
       ]
+    },
+    {
+      "brand": null,
+      "model": "1598083",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1598083",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1598083",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1598083",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1598083",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1598083",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

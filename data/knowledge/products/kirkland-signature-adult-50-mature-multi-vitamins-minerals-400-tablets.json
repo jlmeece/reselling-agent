@@ -1,0 +1,42 @@
+{
+  "slug": "kirkland-signature-adult-50-mature-multi-vitamins-minerals-400-tablets",
+  "title": "Kirkland Signature Adult 50+ Mature Multi Vitamins & Minerals, 400 Tablets",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-adult-50-mature-multi-vitamins--minerals-400-tablets/11491606",
+  "brand": "Kirkland Signature",
+  "model": "424976",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "424976",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "424976",
+      "date": "2026-06-02",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "424976",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

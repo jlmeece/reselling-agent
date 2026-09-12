@@ -20,6 +20,54 @@
       "top_links": [
         "https://reddit.com/r/HomeImprovement/comments/1szps0a/looked_at_way_too_many_styles_and_ended_up_going/"
       ]
+    },
+    {
+      "brand": "Polywood",
+      "model": "2764127",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Polywood",
+      "model": "2764127",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Polywood",
+      "model": "2764127",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Polywood",
+      "model": "2764127",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

@@ -1,0 +1,93 @@
+{
+  "slug": "kirkland-signature-calcium-citrate-magnesium-and-zinc-500-tablets",
+  "title": "Kirkland Signature Calcium Citrate, Magnesium and Zinc, 500 Tablets",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-calcium-citrate-magnesium-and-zinc-500-tablets/11672433",
+  "brand": "Kirkland Signature",
+  "model": "588153",
+  "first_researched": "2026-05-31",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "588153",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1,
+        "reddit:r/vitamins": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/100c9jl/weekly_vitamin_regimen/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "588153",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/100c9jl/weekly_vitamin_regimen/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "588153",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/100c9jl/weekly_vitamin_regimen/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "588153",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 1
+      },
+      "intent_phrases_seen": [],
+      "top_links": [
+        "https://reddit.com/r/Supplements/comments/100c9jl/weekly_vitamin_regimen/"
+      ]
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "588153",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Supplements": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "588153",
+      "date": "2026-06-06",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

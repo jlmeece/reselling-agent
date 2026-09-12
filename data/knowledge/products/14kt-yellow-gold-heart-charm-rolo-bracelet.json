@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-heart-charm-rolo-bracelet/4000408514",
   "brand": null,
-  "model": null,
+  "model": "1999393",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -36,6 +36,54 @@
         "https://www.youtube.com/watch?v=XwLu4qVLwas",
         "https://www.youtube.com/watch?v=XwLu4qVLwas"
       ]
+    },
+    {
+      "brand": null,
+      "model": "1999393",
+      "date": "2026-05-31",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/jewelry": 0,
+        "reddit:r/EngagementRings": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1999393",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1999393",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1999393",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1999393",
+      "date": "2026-07-03",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

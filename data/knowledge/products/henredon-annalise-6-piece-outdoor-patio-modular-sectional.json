@@ -22,6 +22,18 @@
         "https://reddit.com/r/malelivingspace/comments/1t3vxz2/thomasville_tisdale_modular_sectional_6piece_dark/",
         "https://reddit.com/r/HomeImprovement/comments/1st0crp/concrete_patio_touching_stucco_solutions/"
       ]
+    },
+    {
+      "brand": "Henredon",
+      "model": "1934028",
+      "date": "2026-06-01",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0,
+        "reddit:r/malelivingspace": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }
