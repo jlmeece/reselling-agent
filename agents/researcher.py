@@ -58,6 +58,7 @@ from tools.community_signals import get_community_signals
 from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_alert
 from tools.tier_scorer import score_product
+from tools.mpt_engine import rank_products as _mpt_rank_products, sharpe_label as _sharpe_label
 from skills.research_gold import run_pass3 as gold_pass3
 from skills.research_outdoor import run_pass3 as outdoor_pass3
 from skills.research_watches import run_pass3 as watches_pass3
@@ -1086,6 +1087,35 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             if costco_data.get("image_urls"):
                 updates.append((COL["image_urls"], ",".join(costco_data["image_urls"][:5])))
             seed_formula_row(service, sheet_name, sheet_row, ad_rate=cat_config.get("ad_rate", 0.0))
+
+            # ── MPT scoring — compute Sharpe ratio and write to hidden cols AX–BA ──────
+            try:
+                _mpt_input = [{
+                    "title":          title,
+                    "category":       category,
+                    "costco_cost":    float(str(costco_cost or 0).replace("$", "").replace(",", "")),
+                    "ebay_price":     float(str(ebay_price or 0).replace("$", "").replace(",", "")),
+                    "fee_rate":       fee_rate or 0.0,
+                    "ship_cost":      cart_est.get("shipping") or 0.0,
+                    "ad_cost":        0.0,
+                    "sold_90d":       ebay_data.get("sold_90d") or 0,
+                    "avg_sold_price": ebay_data.get("avg_sold_price") or 0.0,
+                    "sold_range":     ebay_data.get("sold_range", ""),
+                    "active_count":   ebay_data.get("active_count") or 0,
+                }]
+                _mpt_result = _mpt_rank_products(_mpt_input)[0]
+                _sharpe = _mpt_result["sharpe"]
+                _label  = _sharpe_label(_sharpe)
+                updates += [
+                    (COL["mpt_sharpe"], f"{_sharpe:.4f} {_label}"),
+                    (COL["mpt_mu"],     f"{_mpt_result['mu']:.4f}"),
+                    (COL["mpt_sigma"],  f"{_mpt_result['sigma']:.4f}"),
+                    (COL["mpt_rank"],   _mpt_result["mpt_rank"]),
+                ]
+                logger.info(f"  MPT → μ={_mpt_result['mu']:.1%}  σ={_mpt_result['sigma']:.1%}  Sharpe={_sharpe:.2f}  {_label}")
+            except Exception as _mpt_err:
+                logger.warning(f"  MPT scoring failed (non-fatal): {_mpt_err}")
+
             write_row_partial(service, sheet_name, sheet_row, updates)
 
             # 3g. Listing copy — generate immediately for Tier 1/2 so it's ready before

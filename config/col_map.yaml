@@ -71,3 +71,7 @@ columns:
   perf_score:       "AU"  # Composite performance score (0–10) — written by rotation engine
   full_notes:       "AV"  # Full research narrative, eBay comps, community signals (hidden)
   regular_price:    "AW"  # Costco regular price before sale (agent writes once when sale detected; blank if no sale)
+  mpt_sharpe:       "AX"  # Sharpe ratio (risk-adjusted return vs 25% hurdle) — written by mpt_engine
+  mpt_mu:           "AY"  # Annualized return μ (e.g. 0.42 = 42%) — written by mpt_engine
+  mpt_sigma:        "AZ"  # Price volatility σ (Bayesian-shrunk) — written by mpt_engine
+  mpt_rank:         "BA"  # Rank within this research run (1 = best Sharpe) — written by mpt_engine
