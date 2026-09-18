@@ -4,7 +4,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.mpt_engine import rank_products, sharpe_label, HURDLE_RATE, _parse_sold_range
+from tools.mpt_engine import rank_products, sharpe_label, HURDLE_RATE, _parse_sold_range, rank_rows_by_sharpe
 
 
 def _p(**kwargs):
@@ -139,6 +139,40 @@ def test_no_sales_pessimistic():
     assert r["beats_hurdle"] is True
 
 
+def test_rank_rows_by_sharpe_normal():
+    """3 rows with distinct sharpe text, arbitrary input order → sorted descending, ranks 1-2-3."""
+    rows = [
+        (10, "0.5000 ⚠️ Marginal"),
+        (4,  "2.1000 🔥 Strong"),
+        (7,  "1.2000 ✅ Good"),
+    ]
+    result = rank_rows_by_sharpe(rows)
+    assert result == [(4, 1), (7, 2), (10, 3)], f"Got {result}"
+
+
+def test_rank_rows_by_sharpe_skips_blank():
+    """Blank/None/empty-string cells are excluded; remaining rows still get contiguous ranks."""
+    rows = [
+        (4, "1.0000 ✅ Good"),
+        (5, ""),
+        (6, None),
+        (7, "2.0000 🔥 Strong"),
+        (8, "   "),
+    ]
+    result = rank_rows_by_sharpe(rows)
+    assert result == [(7, 1), (4, 2)], f"Got {result}"
+
+
+def test_rank_rows_by_sharpe_parses_label_suffix():
+    """Leading float (including negative sign) parses correctly; emoji/label suffix is ignored."""
+    rows = [
+        (4, "1.2345 🔥 Strong"),
+        (5, "-0.5 ❌ Below hurdle"),
+    ]
+    result = rank_rows_by_sharpe(rows)
+    assert result == [(4, 1), (5, 2)], f"Got {result}"
+
+
 if __name__ == "__main__":
     tests = [
         test_beats_hurdle,
@@ -150,6 +184,9 @@ if __name__ == "__main__":
         test_sharpe_labels,
         test_precious_metals_tight_sigma,
         test_no_sales_pessimistic,
+        test_rank_rows_by_sharpe_normal,
+        test_rank_rows_by_sharpe_skips_blank,
+        test_rank_rows_by_sharpe_parses_label_suffix,
     ]
     print(f"Running {len(tests)} tests...\n")
     passed = 0

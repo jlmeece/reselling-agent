@@ -58,7 +58,7 @@ from tools.community_signals import get_community_signals
 from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_alert
 from tools.tier_scorer import score_product
-from tools.mpt_engine import rank_products as _mpt_rank_products, sharpe_label as _sharpe_label
+from tools.mpt_engine import rank_products as _mpt_rank_products, sharpe_label as _sharpe_label, rank_rows_by_sharpe
 from skills.research_gold import run_pass3 as gold_pass3
 from skills.research_outdoor import run_pass3 as outdoor_pass3
 from skills.research_watches import run_pass3 as watches_pass3
@@ -1110,7 +1110,6 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     (COL["mpt_sharpe"], f"{_sharpe:.4f} {_label}"),
                     (COL["mpt_mu"],     f"{_mpt_result['mu']:.4f}"),
                     (COL["mpt_sigma"],  f"{_mpt_result['sigma']:.4f}"),
-                    (COL["mpt_rank"],   _mpt_result["mpt_rank"]),
                 ]
                 logger.info(f"  MPT → μ={_mpt_result['mu']:.1%}  σ={_mpt_result['sigma']:.1%}  Sharpe={_sharpe:.2f}  {_label}")
             except Exception as _mpt_err:
@@ -1184,6 +1183,20 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             researched_count += 1
 
             time.sleep(random.uniform(4, 6))   # pause between products — longer gap reduces Costco rate-limit hits
+
+    # ── Step 3b: Re-rank MPT Sharpe across the full portfolio ─────
+    try:
+        _sharpe_col_values = read_sheet(service, f"'{sheet_name}'!{COL['mpt_sharpe']}{start_row}:{COL['mpt_sharpe']}{end_row}")
+        _rows_with_sharpe = [
+            (start_row + i, (vals[0] if vals else ""))
+            for i, vals in enumerate(_sharpe_col_values)
+        ]
+        _ranked = rank_rows_by_sharpe(_rows_with_sharpe)
+        for _row, _rank in _ranked:
+            write_row_partial(service, sheet_name, _row, [(COL["mpt_rank"], _rank)])
+        logger.info(f"MPT re-rank: {len(_ranked)} row(s) ranked across full portfolio.")
+    except Exception as _rerank_err:
+        logger.warning(f"MPT re-rank failed (non-fatal): {_rerank_err}")
 
     # ── Step 4: Update Tier 2 watchlist ──────────────────────────
     tier2_watchlist = [

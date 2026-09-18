@@ -123,6 +123,37 @@ def rank_products(products):
     return results
 
 
+_SHARPE_LEAD_RE = re.compile(r"-?\d+\.?\d*")
+
+
+def rank_rows_by_sharpe(rows):
+    """
+    rows: list of (sheet_row, cell_text) — cell_text is the mpt_sharpe column's
+    raw cell content (e.g. "1.2345 🔥 Strong") or blank/None.
+
+    Parses the leading float out of each cell, sorts descending, and assigns
+    rank 1 = highest Sharpe. Rows with blank/unparseable cells are omitted
+    (no rank assigned).
+
+    Returns: list of (sheet_row, rank) for parseable rows only.
+    """
+    parsed = []
+    for row, text in rows:
+        if not text:
+            continue
+        m = _SHARPE_LEAD_RE.match(str(text).strip())
+        if not m:
+            continue
+        try:
+            sharpe = float(m.group())
+        except ValueError:
+            continue
+        parsed.append((row, sharpe))
+
+    parsed.sort(key=lambda x: x[1], reverse=True)
+    return [(row, rank) for rank, (row, _sharpe) in enumerate(parsed, 1)]
+
+
 if __name__ == "__main__":
     # Smoke test — run with: python tools/mpt_engine.py
     test_products = [
