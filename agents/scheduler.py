@@ -1129,6 +1129,10 @@ def main():
         _run_results["status"] = "error"
         _run_results["errors"] = traceback.format_exc()[-600:]
         logger.error(f"Scheduler [{args.mode}] failed: {e}")
+        token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if token and chat_id:
+            _send_telegram(token, chat_id, f"💥 Scheduler [{args.mode}] CRASHED — {str(e)[:200]}")
         raise
     finally:
         _release_lock()

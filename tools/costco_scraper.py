@@ -25,6 +25,7 @@ import socket
 import random
 import sys
 import subprocess
+import urllib.request
 from datetime import datetime
 from contextlib import contextmanager
 from loguru import logger
@@ -50,6 +51,57 @@ CHROME_PID_FILE  = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "chrome_agent.pid"
 )
+# Dedupe file for the expired-cookie Telegram alert — avoids re-alerting on
+# every make_browser() call (session refreshes every ~20 products) or on
+# every scheduled run while cookies stay stale.
+_COOKIE_EXPIRY_ALERT_TS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", ".cookie_expiry_alert_ts"
+)
+_COOKIE_EXPIRY_ALERT_INTERVAL_SEC = 86400  # don't re-alert within 24h
+
+
+def _send_telegram(token: str, chat_id: str, text: str) -> None:
+    """Fire-and-forget Telegram message. Logs on failure, never raises."""
+    url     = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
+    req     = urllib.request.Request(url, data=payload,
+                                     headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        logger.warning(f"  Telegram message failed (non-fatal): {e}")
+
+
+def _alert_cookie_expiry(expired_count: int, total: int) -> None:
+    """Warns via Telegram when too many Costco cookies are expired.
+    Independent of the 50% error-log threshold above; throttled to at most
+    once per 24h so a persistently stale cookie file doesn't spam every run."""
+    last_ts = 0.0
+    if os.path.exists(_COOKIE_EXPIRY_ALERT_TS_PATH):
+        try:
+            with open(_COOKIE_EXPIRY_ALERT_TS_PATH) as f:
+                last_ts = float(f.read().strip())
+        except Exception:
+            last_ts = 0.0
+    if time.time() - last_ts < _COOKIE_EXPIRY_ALERT_INTERVAL_SEC:
+        return  # already alerted within 24h
+
+    token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        _send_telegram(token, chat_id,
+            f"⚠️ Costco cookies mostly expired ({expired_count}/{total} expired) — "
+            "research/discovery/active will return CHECK FAILED until you refresh. "
+            "Run .\\run.ps1 cookies.")
+    else:
+        logger.warning("  Cookie-expiry Telegram alert skipped — TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set")
+
+    try:
+        with open(_COOKIE_EXPIRY_ALERT_TS_PATH, "w") as f:
+            f.write(str(time.time()))
+    except Exception as e:
+        logger.warning(f"  Cookie-expiry alert timestamp write failed (non-fatal): {e}")
 
 
 def _debug_port_open():
@@ -103,6 +155,10 @@ def _load_cookies():
             )
         else:
             logger.info(f"  Loaded {len(out)} Costco cookies ({expired_count} expired)")
+
+        if out and (expired_count > len(out) * 0.2 or expired_count > 10):
+            _alert_cookie_expiry(expired_count, len(out))
+
         return out
     except Exception as e:
         logger.warning(f"  Failed to load cookies: {e}")
