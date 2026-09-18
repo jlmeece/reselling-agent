@@ -32,7 +32,7 @@ Analyze a new Costco product URL through a 3-pass research process and assign it
 ## Tools Used
 
 1. `tools/costco_scraper.py` — `scrape_costco(url)` for current price, stock, title
-2. `tools/ebay_comps.py` — `get_ebay_comps(title, category)` for fee rate and comp data
+2. `tools/ebay_research.py` — `get_ebay_comps(title, category)` for fee rate and comp data
 3. `skills/research_gold.py` OR `skills/research_outdoor.py` — category-specific 3-pass research
 4. `tools/tier_scorer.py` — `score_product()` and `assign_tier()` for final Tier decision
 5. `tools/sheet_writer.py` — write Tier, scores, and reasoning to sheet

@@ -59,7 +59,7 @@ def test_build_message_lists_removed_and_flagged_products_with_reasons():
     assert "• Gold Bar 1oz — Negative net profit ($-2.50)" in text
     assert "Flagged for review: 1 rows" in text
     assert "• Silver Coin 5pk — Borderline net ($0.75) — below $1 floor" in text
-    assert "Substitutes queued: 1" in text
+    assert "Categories needing discovery: 1" in text
 
 
 def test_build_message_caps_removed_at_8_and_flagged_at_5_with_more_line():
@@ -83,7 +83,7 @@ def test_build_message_include_health_false_omits_category_health_block():
     assert "Category Health" not in text
     assert "Auto-removed: 0 rows" in text
     assert "Flagged for review: 0 rows" in text
-    assert "Substitutes queued: 0" in text
+    assert "Categories needing discovery: 0" in text
 
 
 def test_build_message_include_health_true_lists_categories_by_score_desc():

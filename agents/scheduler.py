@@ -3,15 +3,18 @@ Costco -> eBay Monitoring Agent
 ================================
 WAT Framework: Agent layer for monitoring and status management.
 
-Five run modes (--mode flag):
-  active    3x/day  ACTIVE listings — stock/price, reprice alerts, URGENT SMS
-  daily     1x/day  APPROVED->READY (copy+stock verify), PAUSED_OOS stock check
-  research  1x/day  PENDING rows — full research + scoring (calls researcher.py logic)
-  discovery 1x/day  Find new Costco products, add as PENDING
-  audit     every 2 days  Graveyard pass — remove junk, flag borderline rows
+Eight run modes (--mode flag):
+  active        3x/day  ACTIVE listings — stock/price, reprice alerts, URGENT SMS
+  daily         1x/day  APPROVED->READY (copy+stock verify), PAUSED_OOS stock check
+  research      1x/day  PENDING rows — full research + scoring (calls researcher.py logic)
+  discovery     1x/day  Find new Costco products, add as PENDING
+  rotation      1x/week  Score all active products, flag underperformers, send weekly digest
+  refresh-notes one-shot  Retroactively reformat Col T summary line
+  recheck       one-shot  Retry Costco scrape for CHECK FAILED and empty-price rows
+  audit         every 2 days  Graveyard pass — remove junk, flag borderline rows
 
-Run locally:  python agents/scheduler.py --mode active
-Run in cloud: GitHub Actions handles scheduling (.github/workflows/run_agent.yml)
+Run locally: python agents/scheduler.py --mode active
+Scheduled via Windows Task Scheduler.
 """
 
 import argparse

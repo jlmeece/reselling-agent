@@ -8,22 +8,28 @@ Extends the global WAT framework at `C:\Users\jorda\.claude\CLAUDE.md`. Read tha
 
 Costco→eBay reselling automation. Source products from Costco, research and score them, generate eBay listings, and monitor active sales.
 
-**Orchestration (Phase 2+):** Hermes Agent running on Hostinger VPS handles scheduling and Telegram-based control. GitHub Actions remains as a fallback.
+**Orchestration (Phase 2+):** Hermes Agent running on Hostinger VPS handles scheduling and Telegram-based control.
 
 ---
 
 ## Run Modes
 
-| Mode | Command | What it does |
-|------|---------|-------------|
-| `discovery` | `python agents/scheduler.py --mode discovery` | Find new Costco products, add as PENDING |
-| `research` | `python agents/scheduler.py --mode research` | Score PENDING rows, fill tier/price/comps |
-| `daily` | `python agents/scheduler.py --mode daily` | APPROVED→READY, PAUSED_OOS recheck |
-| `active` | `python agents/scheduler.py --mode active` | Check ACTIVE listings for stock/price changes |
-| `rotation` | `python agents/scheduler.py --mode rotation` | Weekly digest — score all ACTIVE products |
-| `export` | `python tools/ebay_export.py` | Generate Seller Hub CSV from READY products |
+All modes run via `python agents/scheduler.py --mode <mode>`.
 
-**Note:** `active` mode requires a real Chrome session (Costco cookies). Run locally only — not compatible with CI.
+| Mode | What it does |
+|------|-------------|
+| `active` | Check ACTIVE listings for stock/price changes |
+| `daily` | APPROVED→READY, PAUSED_OOS recheck |
+| `research` | Score PENDING rows, fill tier/price/comps |
+| `discovery` | Find new Costco products, add as PENDING |
+| `rotation` | Score all active products, flag underperformers, send weekly digest (1x/week) |
+| `refresh-notes` | Retroactively reformat Col T summary line (one-shot) |
+| `recheck` | Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot) |
+| `audit` | Graveyard pass — remove junk, flag borderline rows (every 2 days) |
+
+`python tools/ebay_export.py` is a separate standalone script (not a scheduler mode) that generates the Seller Hub CSV from READY products.
+
+**Note:** `active` mode requires a real Chrome session (Costco cookies). Run locally only.
 
 ---
 
@@ -37,7 +43,7 @@ Costco→eBay reselling automation. Source products from Costco, research and sc
 - `tools/listing_copy.py` — Claude-powered listing copy generation
 - `tools/ebay_export.py` — generates Seller Hub CSV for READY products
 - `config/categories.yaml` — fee rates, discovery URLs, eBay category IDs, purchase limits
-- `config/col_map.yaml` — Google Sheet column map (A–AV, 48 cols)
+- `config/col_map.yaml` — Google Sheet column map (A–BA, 53 cols)
 - `skills/scoring.py` — category-specific scoring (extends shared base_scoring)
 - `deploy/` — VPS deployment (Docker Compose, Hermes skills, .env.template)
 
@@ -47,7 +53,7 @@ Costco→eBay reselling automation. Source products from Costco, research and sc
 
 - **Sheet ID:** `1KXxULBBp4dmZb1OMGYPkf_YIE1HFd4byQCsAb-_tSic`
 - **Tab:** Product Tracker, data rows 4–500
-- **Run Log tab** is the source of truth for GitHub Actions run history (not `data/run_history.json`)
+- **Windows Task Scheduler** is the scheduler; the Run Log tab records every run (not `data/run_history.json`, which is local only)
 
 ---
 
@@ -55,8 +61,11 @@ Costco→eBay reselling automation. Source products from Costco, research and sc
 
 - **Precious Metals** — gold/silver bars and coins. Spot-price scoring. eBay cat 3229. Priority.
 - **Jewelry** — fashion rings, necklaces, earrings, bracelets. Markup scoring. eBay cat 67.
-- **Outdoor Furniture** — future
-- **Watches** — future
+- **Outdoor Furniture** — implemented
+- **Watches** — implemented
+- **Pharmacy** — implemented
+- **Small Appliances** — implemented
+- **Toys** — unbuilt stub (`config/categories.yaml` has the key but `discovery_urls: []`, not yet active)
 
 ---
 
@@ -64,5 +73,13 @@ Costco→eBay reselling automation. Source products from Costco, research and sc
 
 - Costco scraper blocks after ~14 product pages — session refresh runs every 20 products
 - YouTube API quota exhausts daily — Reddit/DDG fallback handles it automatically
-- Active monitor must run locally (Chrome CDP) — GitHub Actions guard prevents crash
+- Active monitor must run locally (Chrome CDP) — pre-scans for active/approved rows and skips the browser launch entirely if there's nothing to check
 - `data/run_history.json` is local only — cloud runs write to Sheet Run Log tab instead
+
+---
+
+## Recent Changes
+
+- Run-lock file (`data/.scheduler_lock`) prevents overlapping scheduler runs (45-min staleness before it's reclaimed)
+- Telegram alerts fire on scheduler crash and on expired/aging Costco cookies
+- Dashboard shows per-category average margins and MPT (Sharpe-ratio) rotation ranking

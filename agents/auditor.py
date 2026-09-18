@@ -7,7 +7,7 @@ Reviews all non-protected rows and:
   - Flags borderline rows as AUDIT_REVIEW for manual decision
   - Writes removed rows to Graveyard tab (append-only)
   - Appends summary row to Audit Log tab
-  - Queues substitute placeholder PENDING rows for removed products
+  - Logs which categories need a discovery run to refill removed products
   - Sends Telegram notification on completion
 """
 
@@ -118,7 +118,7 @@ def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, 
     if len(to_flag) > 5:
         lines.append(f"…and {len(to_flag) - 5} more")
 
-    lines.append(f"Substitutes queued: {n_subs}")
+    lines.append(f"Categories needing discovery: {n_subs}")
 
     if include_health:
         health_lines = "\n".join(
