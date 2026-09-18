@@ -37,5 +37,6 @@ data/chrome_agent.pid
 data/run_history.json
 data/spot_history.json
 data/rotation_log.json
+data/.cookie_warn_ts
 data/exports/
 data/CostcoAgentProfile/

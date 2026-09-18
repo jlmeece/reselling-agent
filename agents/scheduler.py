@@ -165,6 +165,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
 
             # Detect price change
             price_changed = False
+            old = None
             if new_price and costco_cost:
                 try:
                     old = float(str(costco_cost).replace("$", "").replace(",", ""))
@@ -172,7 +173,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
                         price_changed = True
                         logger.info(f"  Price: ${old} -> ${new_price}")
                 except (ValueError, TypeError):
-                    pass
+                    old = None
 
             # Compute margin inline (avoid formula column)
             margin = None
@@ -185,6 +186,16 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
                     margin = (p - c - p * f - s) / p
             except (ValueError, TypeError):
                 pass
+
+            # Margin as it stood BEFORE this price change (using old Costco cost),
+            # for price-change alert detail only — does not affect status/margin logic.
+            margin_before = None
+            if price_changed and old is not None:
+                try:
+                    if p > 0:
+                        margin_before = (p - old - p * f - s) / p
+                except (NameError, ZeroDivisionError):
+                    margin_before = None
 
             try:
                 demand_int = int(demand) if demand else None
@@ -229,6 +240,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
             # Collect items needing action
             if reason_code != "ok" and reason_code != "ebay_url_detected":
                 reprice_note = ""
+                item_reason = notes
                 if price_changed and new_price:
                     try:
                         f_rate = float(str(fee_rate).replace("%", "")) / (100 if "%" in str(fee_rate) else 1)
@@ -236,14 +248,26 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
                         suggested = suggest_reprice(new_price, f_rate, s_cost)
                         if suggested:
                             reprice_note = f"Suggested new eBay price: ${suggested:.2f}"
+                        else:
+                            reprice_note = "Margin no longer supports profitable resale — consider ending listing"
                     except (ValueError, TypeError):
-                        pass
+                        reprice_note = "Margin no longer supports profitable resale — consider ending listing"
+
+                    if old is not None:
+                        price_detail = f"Costco ${old:.2f} -> ${new_price:.2f}"
+                    else:
+                        price_detail = f"Costco price changed to ${new_price:.2f}"
+                    if margin_before is not None and margin is not None:
+                        price_detail += f" | Margin {margin_before:.1%} -> {margin:.1%}"
+                    elif margin is not None:
+                        price_detail += f" | Margin now {margin:.1%}"
+                    item_reason = f"{notes} | {price_detail}" if notes else price_detail
 
                 urgent_items.append({
                     "title":        title,
                     "row":          sheet_row,
                     "category":     category,
-                    "reason":       notes,
+                    "reason":       item_reason,
                     "reprice_note": reprice_note,
                 })
 
@@ -933,6 +957,9 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
 _COOKIES_PATH     = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                   "data", "costco_cookies.json")
 _COOKIE_WARN_DAYS = 25
+_COOKIE_WARN_TS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                     "data", ".cookie_warn_ts")
+_COOKIE_WARN_INTERVAL_SEC = 7 * 86400  # don't re-warn within 7 days
 
 
 def _send_telegram(token: str, chat_id: str, text: str) -> None:
@@ -951,14 +978,26 @@ def _send_telegram(token: str, chat_id: str, text: str) -> None:
 def _check_cookie_age() -> None:
     """
     Warns if costco_cookies.json is older than 25 days.
-    Sends email alert and Telegram message (if TELEGRAM_BOT_TOKEN and
-    TELEGRAM_CHAT_ID are set). Never blocks the run.
+    Sends a Telegram message (if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are
+    set), at most once per _COOKIE_WARN_INTERVAL_SEC (7 days), so a stale
+    cookie file doesn't re-alert on every scheduled run. Never blocks the run.
     """
     if not os.path.exists(_COOKIES_PATH):
         return  # no cookies file — rotation/refresh-notes mode, or first run
 
     age_days = (time.time() - os.path.getmtime(_COOKIES_PATH)) / 86400
     if age_days < _COOKIE_WARN_DAYS:
+        return
+
+    last_warn_ts = 0.0
+    if os.path.exists(_COOKIE_WARN_TS_PATH):
+        try:
+            with open(_COOKIE_WARN_TS_PATH) as f:
+                last_warn_ts = float(f.read().strip())
+        except Exception:
+            last_warn_ts = 0.0
+    if time.time() - last_warn_ts < _COOKIE_WARN_INTERVAL_SEC:
+        logger.info(f"Cookie age: {age_days:.0f} days — warning already sent within last 7 days, skipping.")
         return
 
     subject = "⚠️ Costco cookies need refresh — run .\\run.ps1 cookies on your laptop"
@@ -971,17 +1010,17 @@ def _check_cookie_age() -> None:
     )
     logger.warning(f"Cookie age: {age_days:.0f} days — {subject}")
 
-    try:
-        from tools.alert_sender import send_alert
-        send_alert(subject, body, urgent=False)
-    except Exception as e:
-        logger.warning(f"Cookie age email failed (non-fatal): {e}")
-
     token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     if token and chat_id:
         tg_text = f"<b>{subject}</b>\n\n{body}"
         _send_telegram(token, chat_id, tg_text)
+
+    try:
+        with open(_COOKIE_WARN_TS_PATH, "w") as f:
+            f.write(str(time.time()))
+    except Exception as e:
+        logger.warning(f"Cookie warn timestamp write failed (non-fatal): {e}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

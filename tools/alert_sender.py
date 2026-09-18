@@ -118,7 +118,8 @@ def _sms_urgent(items):
     lines = [f"⚠ URGENT: {len(items)} listing(s) need action"]
     for item in items[:3]:  # cap at 3 items for SMS length
         title_short = item['title'][:30]
-        lines.append(f"- {title_short}: {item['reason'][:40]}")
+        reason = item.get('reason') or item['title']
+        lines.append(f"- {title_short}: {reason[:40]}")
     return "\n".join(lines)
 
 
@@ -142,13 +143,16 @@ def send_alert(subject, body, urgent=False):
 
     # Wrap plain text in pre-formatted block inside routine template
     summary_rows = []
-    product_rows = [{"title": line, "row": ""} for line in body.splitlines() if line.strip()][:8]
+    body_lines = [line.strip() for line in body.splitlines() if line.strip()]
+    product_rows = [{"title": line, "row": ""} for line in body_lines][:8]
     html_body = _html_routine(subject, summary_rows, product_rows, sheet_url, run_time)
 
     _send_email(subject, html_body, urgent=urgent, plain_fallback=body)
 
     if urgent:
-        sms_text = f"{'URGENT — ' if urgent else ''}{subject[:130]}\nCheck sheet now."
+        detail_lines = [ln[:70] for ln in body_lines[:3]]
+        detail = "\n".join(detail_lines) if detail_lines else "See email for details."
+        sms_text = f"URGENT — {subject[:130]}\n{detail}"
         _send_sms(sms_text)
 
 
