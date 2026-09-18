@@ -11,6 +11,7 @@ Reviews all non-protected rows and:
   - Sends Telegram notification on completion
 """
 
+import html
 import json
 import os
 import sys
@@ -87,6 +88,49 @@ def _send_telegram(text: str) -> None:
         logger.info("Telegram audit notification sent.")
     except Exception as e:
         logger.warning(f"Telegram notification failed (non-fatal): {e}")
+
+
+def _truncate(s: str, n: int) -> str:
+    """Truncate to n chars with a trailing ellipsis. Truncate BEFORE html.escape()
+    — escaping first and then slicing could cut an entity like '&amp;' in half."""
+    s = (s or "").strip()
+    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+
+
+def _fmt_line(product_dict: dict, reason: str) -> str:
+    title      = html.escape(_truncate(product_dict.get("title", ""), 45))
+    reason_txt = html.escape(_truncate(reason, 60))
+    return f"• {title} — {reason_txt}"
+
+
+def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=True):
+    """Pure string-builder for the audit Telegram message — no I/O, easy to unit test."""
+    lines = [
+        f"🧹 <b>Audit Complete — {run_date}</b>",
+        f"Auto-removed: {len(to_remove)} rows",
+    ]
+    lines += [_fmt_line(p, r) for _, p, r in to_remove[:8]]
+    if len(to_remove) > 8:
+        lines.append(f"…and {len(to_remove) - 8} more")
+
+    lines.append(f"Flagged for review: {len(to_flag)} rows")
+    lines += [_fmt_line(p, r) for _, p, r in to_flag[:5]]
+    if len(to_flag) > 5:
+        lines.append(f"…and {len(to_flag) - 5} more")
+
+    lines.append(f"Substitutes queued: {n_subs}")
+
+    if include_health:
+        health_lines = "\n".join(
+            f"• {html.escape(cat)}: {score}/100"
+            for cat, score in sorted(category_health.items(), key=lambda x: -x[1])
+        )
+        lines.append(f"\n<b>Category Health:</b>\n{health_lines or '(no data)'}")
+
+    text = "\n".join(lines) + "\n"
+    if to_flag:
+        text += "\n⚠️ Filter col A = AUDIT_REVIEW to see rows needing your decision."
+    return text
 
 
 def run_audit(config, COL, service, sheet_name, start_row, end_row):
@@ -319,19 +363,11 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
     append_audit_log(service, audit_summary)
 
     # ── Telegram ──────────────────────────────────────────────────────────────
-    health_lines = "\n".join(
-        f"• {cat}: {score}/100"
-        for cat, score in sorted(category_health.items(), key=lambda x: -x[1])
-    )
-    tg_text = (
-        f"🧹 <b>Audit Complete — {run_date}</b>\n"
-        f"Auto-removed: {len(to_remove)} rows\n"
-        f"Flagged for review: {len(to_flag)} rows\n"
-        f"Substitutes queued: {n_subs}\n"
-        f"\n<b>Category Health:</b>\n{health_lines or '(no data)'}\n"
-    )
-    if to_flag:
-        tg_text += "\n⚠️ Filter col A = AUDIT_REVIEW to see rows needing your decision."
+    tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=True)
+    if len(tg_text) > 4096:
+        tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=False)
+    if len(tg_text) > 4096:
+        tg_text = tg_text[:4096 - 15] + "\n[truncated]"
     _send_telegram(tg_text)
 
     logger.info(f"Audit complete. Removed: {len(to_remove)} | Flagged: {len(to_flag)}")
