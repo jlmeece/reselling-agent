@@ -247,11 +247,12 @@ def send_sale_expiry_alert(products: list, hours_remaining: float):
             price_note = "Recalculate eBay price after sale ends"
 
         savings = f"${p.get('sale_savings', 0):.0f} off" if p.get("sale_savings") else "ON SALE"
+        status_suffix = f" ({p['status']})" if p.get("status") and p["status"] != "ACTIVE" else ""
         ebay_link = f'  <a href="{p["ebay_url"]}">Edit eBay listing &#x2192;</a>' if p.get("ebay_url") else ""
         rows += f"""
         <tr>
           <td style="padding:12px;border-bottom:1px solid #f2f2f2">
-            <b>{p['title'][:60]}</b><br>
+            <b>{p['title'][:60]}{status_suffix}</b><br>
             <span style="color:#e63946">&#x23F0; Sale ends {p.get('sale_expires','?')} ({savings})</span><br>
             <span style="color:#1d1d1f;font-size:14px;margin-top:4px;display:block">
               Current: Costco ${p.get('costco_cost','?')} &#x2192; eBay ${p.get('current_ebay_price','?')} &#x2192; net ${p.get('net_profit','?')}

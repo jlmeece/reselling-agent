@@ -34,6 +34,7 @@ Thumbs.db
 
 # Runtime data files — machine-specific, causes merge conflicts between Windows and VPS
 data/chrome_agent.pid
+data/.scheduler_lock
 data/run_history.json
 data/spot_history.json
 data/rotation_log.json

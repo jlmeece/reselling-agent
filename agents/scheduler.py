@@ -282,6 +282,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
 
     SALE_WARN_HOURS   = int(business.get("sale_warn_hours",   48))
     SALE_URGENT_HOURS = int(business.get("sale_urgent_hours", 24))
+    SALE_EXPIRY_STATUSES = {"ACTIVE", "READY", "APPROVED", "LISTED"}
 
     expiring = []
     for row in all_data:
@@ -289,7 +290,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
             continue
         status    = safe_get(row, col_to_idx(COL["status"]))
         sale_info = safe_get(row, col_to_idx(COL["sale_info"]))
-        if status != "ACTIVE" or not sale_info:
+        if status not in SALE_EXPIRY_STATUSES or not sale_info:
             continue
 
         exp_match = _re.search(r'ends?\s+(\d{1,2}/\d{1,2}/\d{2,4})', sale_info, _re.IGNORECASE)
@@ -320,6 +321,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
 
                 expiring.append({
                     "title":               safe_get(row, col_to_idx(COL["title"])),
+                    "status":              status,
                     "sale_expires":        exp_str,
                     "sale_savings":        savings,
                     "costco_url":          safe_get(row, col_to_idx(COL["costco_url"])),
@@ -1025,6 +1027,39 @@ def _check_cookie_age() -> None:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+LOCK_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", ".scheduler_lock"
+)
+LOCK_STALE_MINUTES = 45
+
+
+def _acquire_lock(mode: str) -> bool:
+    if os.path.exists(LOCK_FILE):
+        age_min = (time.time() - os.path.getmtime(LOCK_FILE)) / 60
+        if age_min < LOCK_STALE_MINUTES:
+            try:
+                held_by = open(LOCK_FILE).read().strip()
+            except Exception:
+                held_by = "?"
+            logger.warning(f"Scheduler [{mode}] skipped — another run in progress "
+                            f"(started {held_by}, {age_min:.0f}m ago), exiting.")
+            return False
+        logger.warning(f"Scheduler [{mode}]: lock is {age_min:.0f}m old — "
+                        f"previous run likely crashed. Reclaiming.")
+
+    with open(LOCK_FILE, "w") as f:
+        f.write(f"{mode} {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    return True
+
+
+def _release_lock() -> None:
+    try:
+        os.remove(LOCK_FILE)
+    except OSError:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
@@ -1051,6 +1086,10 @@ def main():
     parser.add_argument("--add-limit", type=int, default=None,
                         help="Max new products to add to sheet during discovery")
     args = parser.parse_args()
+
+    if not _acquire_lock(args.mode):
+        return
+
     _check_cookie_age()
 
     config     = load_config()
@@ -1092,6 +1131,7 @@ def main():
         logger.error(f"Scheduler [{args.mode}] failed: {e}")
         raise
     finally:
+        _release_lock()
         log_run_end(args.mode, _run_start, _run_results, service)
         # Heartbeat ping — tells healthchecks.io this run completed successfully
         _hc_key = f"HEALTHCHECK_URL_{args.mode.upper()}"
