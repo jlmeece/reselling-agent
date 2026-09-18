@@ -166,11 +166,23 @@ def load_sheet_data():
         sheet_name = business["sheet_name"]
         start_row  = business["data_start_row"]
         end_row    = business["data_end_row"]
+        fee_rate_map = {
+            cat: v["fee_rate"] for cat, v in config.get("categories", {}).items()
+            if v.get("fee_rate") is not None
+        }
+        sale_warn_hours   = business.get("sale_warn_hours", 48)
+        sale_urgent_hours = business.get("sale_urgent_hours", 24)
         service    = get_sheets_service()
-        rows       = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
-        return rows, sheet_name
+        rows       = read_sheet(service, f"'{sheet_name}'!A{start_row}:BA{end_row}")
+        return {
+            "rows": rows, "sheet_name": sheet_name, "fee_rate_map": fee_rate_map,
+            "sale_warn_hours": sale_warn_hours, "sale_urgent_hours": sale_urgent_hours,
+        }
     except Exception as e:
-        return [], f"error: {e}"
+        return {
+            "rows": [], "sheet_name": f"error: {e}", "fee_rate_map": {},
+            "sale_warn_hours": 48, "sale_urgent_hours": 24,
+        }
 
 
 @st.cache_data(ttl=300)
@@ -231,6 +243,33 @@ def _safe_float(v, default=0.0):
         return default
 
 
+_SHARPE_NUM_RE = re.compile(r'-?\d+\.?\d*')
+
+
+def _parse_sharpe(sharpe_s):
+    """Parse the leading float out of a mpt_sharpe cell like '1.2345 🔥 Strong'.
+    Returns None on blank/unparseable input (unresearched rows leave this cell empty)."""
+    if not sharpe_s:
+        return None
+    m = _SHARPE_NUM_RE.match(sharpe_s.strip())
+    if not m:
+        return None
+    try:
+        return float(m.group(0))
+    except ValueError:
+        return None
+
+
+def _parse_mpt_rank(rank_s):
+    """Parse mpt_rank cell (raw int or numeric string) to int, or None if blank/unparseable."""
+    if not rank_s:
+        return None
+    try:
+        return int(float(rank_s))
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_sale_expiry(sale_str):
     """Return datetime.date parsed from 'ends MM/DD' or 'ends MM/DD/YY', or None."""
     if not sale_str:
@@ -281,14 +320,25 @@ def _pricing_str(p):
     return f"${cost:,.2f} → ${price:,.2f}{net_part}"
 
 
-def _ready_note(p, today=None):
-    """Return expiry warning if sale ends within 7 days."""
-    if today is None:
-        today = _date.today()
+def _hours_until_expiry(expiry_date, now=None):
+    """Hours remaining until sale expiry. Expiry date is treated as end-of-day
+    (23:59:59), matching agents/scheduler.py's alert-trigger convention."""
+    if expiry_date is None:
+        return None
+    if now is None:
+        now = datetime.now()
+    exp_dt = datetime(expiry_date.year, expiry_date.month, expiry_date.day, 23, 59, 59)
+    return (exp_dt - now).total_seconds() / 3600
+
+
+def _ready_note(p, now=None, warn_hours=48):
+    """Return expiry warning if sale ends within warn_hours (config-driven)."""
     if p.get("sale_val"):
         expiry = _parse_sale_expiry(p["sale_val"])
-        if expiry and (expiry - today).days <= 7:
-            return "⚠️ Sale expires soon"
+        if expiry:
+            hours_left = _hours_until_expiry(expiry, now=now)
+            if hours_left is not None and 0 < hours_left <= warn_hours:
+                return "⚠️ Sale expires soon"
     return ""
 
 
@@ -318,9 +368,14 @@ AB_FEERATE = 27
 AE_ADCOST  = 30
 AV_NOTES   = 47
 AW_REGULAR = 48
+AX_SHARPE  = 49
+AY_MU      = 50
+AZ_SIGMA   = 51
+BA_RANK    = 52
 
 
-def parse_rows(rows):
+def parse_rows(rows, fee_rate_map=None):
+    fee_rate_map = fee_rate_map or {}
     pipeline = defaultdict(int)
     products = []
     sale_items = []
@@ -328,6 +383,7 @@ def parse_rows(rows):
     cat_stats  = defaultdict(lambda: {"count": 0, "score_sum": 0.0, "score_n": 0,
                                        "t1": 0, "margin_sum": 0.0, "margin_n": 0})
     top_pending = []
+    top_ranked = []
 
     for row in rows:
         if not row or not row[0]:
@@ -354,6 +410,10 @@ def parse_rows(rows):
         fee_rate_s       = safe(row, AB_FEERATE)
         ad_cost_s        = safe(row, AE_ADCOST)
         regular_price_s  = safe(row, AW_REGULAR)
+        sharpe_s         = safe(row, AX_SHARPE)
+        mu_s             = safe(row, AY_MU)
+        sigma_s          = safe(row, AZ_SIGMA)
+        rank_s           = safe(row, BA_RANK)
 
         if not status:
             continue
@@ -368,9 +428,15 @@ def parse_rows(rows):
         try:
             cost  = float(cost_s.replace("$", "").replace(",", ""))
             price = float(price_s.replace("$", "").replace(",", ""))
-            margin = (price - cost - price * 0.1325) / price if price > 0 else None
+            fee_rate = fee_rate_map.get(category, 0.1325)
+            margin = (price - cost - price * fee_rate) / price if price > 0 else None
         except (ValueError, TypeError):
             cost = price = margin = None
+
+        sharpe_val = _parse_sharpe(sharpe_s)
+        mu_val     = _safe_float(mu_s, default=None)
+        sigma_val  = _safe_float(sigma_s, default=None)
+        rank_val   = _parse_mpt_rank(rank_s)
 
         if score is not None:
             cat = cat_stats[category or "Unknown"]
@@ -392,6 +458,8 @@ def parse_rows(rows):
             "sale_val": sale_val, "ship_val": ship_val,
             "fee_rate": fee_rate_s, "ad_cost": ad_cost_s,
             "regular_price": regular_price_s,
+            "sharpe_raw": sharpe_s, "sharpe": sharpe_val,
+            "mpt_mu": mu_val, "mpt_sigma": sigma_val, "mpt_rank": rank_val,
         })
 
         if sale_val:
@@ -406,8 +474,15 @@ def parse_rows(rows):
             top_pending.append({"score": score, "title": title, "url": url,
                                  "summary": summary})
 
+        if status in ("PENDING", "WATCH") and sharpe_val is not None:
+            top_ranked.append({
+                "title": title, "score": score, "sharpe": sharpe_val,
+                "mpt_rank": rank_val, "status": status, "url": url,
+            })
+
     top_pending.sort(key=lambda x: -x["score"])
-    return pipeline, products, sale_items, ship_items, cat_stats, top_pending
+    top_ranked.sort(key=lambda x: -x["sharpe"])
+    return pipeline, products, sale_items, ship_items, cat_stats, top_pending, top_ranked
 
 
 def load_run_history():
@@ -468,7 +543,13 @@ with col_hdr_b:
 # ── Load data ─────────────────────────────────────────────────────────────────
 
 with st.spinner("Loading sheet data..."):
-    rows, sheet_name = load_sheet_data()
+    sheet_data = load_sheet_data()
+
+rows              = sheet_data["rows"]
+sheet_name        = sheet_data["sheet_name"]
+fee_rate_map      = sheet_data["fee_rate_map"]
+sale_warn_hours   = sheet_data["sale_warn_hours"]
+sale_urgent_hours = sheet_data["sale_urgent_hours"]
 
 graveyard   = load_graveyard_data()
 audit_log   = load_audit_log()
@@ -478,7 +559,7 @@ if not rows:
     st.error(f"Could not load sheet data: {sheet_name}")
     st.stop()
 
-pipeline, products, sale_items, ship_items, cat_stats, top_pending = parse_rows(rows)
+pipeline, products, sale_items, ship_items, cat_stats, top_pending, top_ranked = parse_rows(rows, fee_rate_map)
 
 total = sum(pipeline.values())
 n_active  = pipeline.get("ACTIVE", 0)
@@ -628,6 +709,19 @@ left_col, right_col = st.columns([3, 2], gap="large")
 with left_col:
     import pandas as pd
     today_d = _date.today()
+    now_dt  = datetime.now()
+
+    # ── 0. Top Opportunities by Sharpe (PENDING/WATCH, MPT-researched) ────────
+    if top_ranked:
+        st.markdown("## 📈 Top Opportunities (by Sharpe)")
+        df_top = pd.DataFrame([{
+            "Sharpe": f"{r['sharpe']:.2f}",
+            "Rank":   f"#{r['mpt_rank']}" if r["mpt_rank"] is not None else "—",
+            "Score":  f"{r['score']:.1f}" if r["score"] is not None else "—",
+            "Status": r["status"],
+            "Title":  r["title"][:55],
+        } for r in top_ranked[:5]])
+        st.dataframe(df_top, use_container_width=True, hide_index=True)
 
     # ── 1. ACTIVE — Live listings ──────────────────────────────────────────────
     active_rows = [p for p in products if p["status"] == "ACTIVE"]
@@ -637,8 +731,8 @@ with left_col:
             expiry = _parse_sale_expiry(p["sale_val"]) if p["sale_val"] else None
             sale_status = ""
             if p["sale_val"] and expiry:
-                days_left = (expiry - today_d).days
-                if days_left < 0:
+                hours_left = _hours_until_expiry(expiry, now=now_dt)
+                if hours_left < 0:
                     reg = p.get("regular_price", "")
                     try:
                         reg_f = float(str(reg).replace("$", "").replace(",", ""))
@@ -648,10 +742,10 @@ with left_col:
                         )
                     except (ValueError, TypeError):
                         sale_status = f'<span style="color:#FF4444;">⚠️ Sale ended {expiry} — check Costco price</span>'
-                elif days_left == 0:
-                    sale_status = '<span style="color:#FF9500;">⚠️ Sale ends TODAY</span>'
-                elif days_left <= 3:
-                    sale_status = f'<span style="color:#FF9500;">⚠️ Sale ends in {days_left}d ({expiry})</span>'
+                elif hours_left <= sale_urgent_hours:
+                    sale_status = f'<span style="color:#FF9500;">⚠️ Sale ends in {hours_left:.0f}h ({expiry})</span>'
+                elif hours_left <= sale_warn_hours:
+                    sale_status = f'<span style="color:#FF9500;">⚠️ Sale ends in {hours_left:.0f}h ({expiry})</span>'
             pricing = _pricing_str(p)
             ship = "FREE 📦" if p["ship_val"] else ""
             ship_part = f" &nbsp;|&nbsp; {ship}" if ship else ""
@@ -713,7 +807,7 @@ with left_col:
             "Pricing": _pricing_str(p),
             "Ship": "FREE 📦" if p["ship_val"] else "",
             "Sold 90d": p["sold_90d"] or "—",
-            "Note": _ready_note(p, today_d),
+            "Note": _ready_note(p, now_dt, sale_warn_hours),
         } for p in ready_rows])
         st.dataframe(df_ready, use_container_width=True, height=min(200, 60 + len(ready_rows) * 35), hide_index=True)
 
@@ -732,6 +826,8 @@ with left_col:
             "Ship": "FREE 📦" if p["ship_val"] else "",
             "Sold 90d": p["sold_90d"] or "—",
             "SALE": "🔥" if p["sale_val"] else "",
+            "Sharpe": f"{p['sharpe']:.2f}" if p["sharpe"] is not None else "—",
+            "Rank": f"#{p['mpt_rank']}" if p["mpt_rank"] is not None else "—",
         } for p in pending_rows])
         st.dataframe(df_pending, use_container_width=True, height=380, hide_index=True)
 
@@ -748,6 +844,8 @@ with left_col:
             "Ship": "FREE 📦" if p["ship_val"] else "",
             "Stock": p["stock"][:20],
             "SALE": "🔥" if p["sale_val"] else "",
+            "Sharpe": f"{p['sharpe']:.2f}" if p["sharpe"] is not None else "—",
+            "Rank": f"#{p['mpt_rank']}" if p["mpt_rank"] is not None else "—",
         } for p in all_rows])
         st.dataframe(df_all, use_container_width=True, height=400, hide_index=True)
 
