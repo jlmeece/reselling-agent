@@ -5,8 +5,11 @@ Secrets loaded from .env — never hardcoded.
 """
 
 import os
+import socket
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+
+socket.setdefaulttimeout(60)  # 60-second cap on all socket reads including Sheets API
 
 
 def get_sheets_service():

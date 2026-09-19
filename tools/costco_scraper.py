@@ -98,6 +98,7 @@ def _alert_cookie_expiry(expired_count: int, total: int) -> None:
         logger.warning("  Cookie-expiry Telegram alert skipped — TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set")
 
     try:
+        os.makedirs(os.path.dirname(_COOKIE_EXPIRY_ALERT_TS_PATH), exist_ok=True)
         with open(_COOKIE_EXPIRY_ALERT_TS_PATH, "w") as f:
             f.write(str(time.time()))
     except Exception as e:

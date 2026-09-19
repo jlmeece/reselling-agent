@@ -1022,6 +1022,7 @@ def _check_cookie_age() -> None:
         _send_telegram(token, chat_id, tg_text)
 
     try:
+        os.makedirs(os.path.dirname(_COOKIE_WARN_TS_PATH), exist_ok=True)
         with open(_COOKIE_WARN_TS_PATH, "w") as f:
             f.write(str(time.time()))
     except Exception as e:
