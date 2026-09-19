@@ -11,6 +11,7 @@ from agents.telegram_bot import (
     _format_net_fragment,
     _format_net_with_ads_line,
     _format_regular_price_line,
+    _is_duplicate_instance,
     _tier_label,
     col_to_idx,
     cookie_age_days,
@@ -169,6 +170,26 @@ def test_parse_logs_arg_case_insensitive():
     mode, err = parse_logs_arg("DAILY")
     assert mode == "daily"
     assert err is None
+
+
+# ── PID lockfile duplicate-instance predicate ───────────────────────────────
+
+def test_is_duplicate_instance_true_when_other_pid_alive():
+    assert _is_duplicate_instance(old_pid=999, current_pid=111, pid_exists_fn=lambda p: True) is True
+
+
+def test_is_duplicate_instance_false_when_other_pid_dead():
+    assert _is_duplicate_instance(old_pid=999, current_pid=111, pid_exists_fn=lambda p: False) is False
+
+
+def test_is_duplicate_instance_false_when_pid_is_self():
+    # os.execv() (used by /restart) keeps the same PID — the file will contain
+    # our own PID, which must never be treated as "another instance".
+    assert _is_duplicate_instance(old_pid=111, current_pid=111, pid_exists_fn=lambda p: True) is False
+
+
+def test_is_duplicate_instance_false_when_no_pid_file():
+    assert _is_duplicate_instance(old_pid=None, current_pid=111, pid_exists_fn=lambda p: True) is False
 
 
 # ── new pure helpers (tier label, fee %, sale-savings, net-with-ads) ───────────

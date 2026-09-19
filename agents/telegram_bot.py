@@ -14,10 +14,12 @@ import sys
 import time
 from datetime import datetime
 
+import psutil
 import yaml
 from dotenv import load_dotenv
 from loguru import logger
 from telegram import Update
+from telegram.error import Conflict
 from telegram.ext import Application, CommandHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -43,6 +45,7 @@ LOG_FILES = {
 }
 
 COOKIES_PATH = os.path.join(_BASE_DIR, "data", "costco_cookies.json")
+PID_FILE = os.path.join(_BASE_DIR, "data", ".telegram_bot.pid")
 
 VALID_MODES = set(LOG_FILES.keys())
 
@@ -100,6 +103,45 @@ def parse_logs_arg(text):
     if mode in VALID_MODES:
         return mode, None
     return None, f"Unknown mode '{mode}'. Valid: {', '.join(sorted(VALID_MODES))}"
+
+
+# ── PID lockfile ─────────────────────────────────────────────────────────────
+
+def _is_duplicate_instance(old_pid, current_pid, pid_exists_fn):
+    """
+    True if old_pid names a *different*, currently-running process — i.e. a
+    real second instance, not a stale leftover file and not ourselves.
+    old_pid=None means no lockfile / unparseable content — never a duplicate.
+    current_pid must be excluded because os.execv() (used by /restart) keeps
+    the same PID across re-exec, and would otherwise find its own PID in the
+    file and refuse to start.
+    """
+    if old_pid is None or old_pid == current_pid:
+        return False
+    return pid_exists_fn(old_pid)
+
+
+def _read_pid_file(path):
+    """Return the integer PID stored in path, or None if missing/unparseable."""
+    try:
+        with open(path) as f:
+            raw = f.read().strip()
+    except OSError:
+        return None
+    return int(raw) if raw.isdigit() else None
+
+
+def _check_and_write_pid_lock():
+    """
+    Exit immediately if another instance is already running (per PID_FILE);
+    otherwise write our own PID so a later launch can detect us in turn.
+    """
+    old_pid = _read_pid_file(PID_FILE)
+    if _is_duplicate_instance(old_pid, os.getpid(), psutil.pid_exists):
+        logger.info(f"Another instance already running (PID {old_pid}), exiting.")
+        sys.exit(0)
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
 
 
 # ── Sheet config / lookup helpers ───────────────────────────────────────────
@@ -792,13 +834,25 @@ async def cmd_restart(update, context):
     if not _authorized(update, context.bot_data["chat_id"]):
         return
     await update.message.reply_text("♻️ Restarting bot — back in a few seconds...")
-    logger.info("Restart requested via /restart — re-executing process")
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    logger.info("Restart requested via /restart — stopping gracefully before re-exec")
+    context.bot_data["_restart_state"]["reexec"] = True
+    context.application.stop_running()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
+    _check_and_write_pid_lock()
+    try:
+        _main_body()
+    finally:
+        try:
+            os.remove(PID_FILE)
+        except OSError:
+            pass
+
+
+def _main_body():
     logger.add(
         os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
         rotation="10 MB",
@@ -826,6 +880,22 @@ def main():
     app = Application.builder().token(token).build()
     app.bot_data["chat_id"] = chat_id
 
+    restart_state = {"conflict": False, "reexec": False}
+    app.bot_data["_restart_state"] = restart_state
+
+    async def _on_error(update, context):
+        error = context.error
+        if isinstance(error, Conflict):
+            restart_state["conflict"] = True
+            logger.warning(
+                f"Telegram Conflict ({error}) — another session is still active. Stopping to wait it out."
+            )
+            context.application.stop_running()
+        else:
+            logger.error("Unhandled error while processing update", exc_info=error)
+
+    app.add_error_handler(_on_error)
+
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("logs", cmd_logs))
@@ -834,13 +904,24 @@ def main():
     app.add_handler(CommandHandler("restart", cmd_restart))
 
     while True:
+        restart_state["conflict"] = False
+        restart_state["reexec"] = False
         try:
             logger.info("Polling for messages...")
-            app.run_polling(allowed_updates=Update.ALL_TYPES)
-            break  # run_polling() returned normally (e.g. clean shutdown) — don't loop forever
+            app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
         except Exception:
             logger.exception("Bot crashed — restarting in 30s")
             time.sleep(30)
+            continue
+
+        if restart_state["conflict"]:
+            logger.warning("Waiting 90s for Telegram to release the previous session before retrying.")
+            time.sleep(90)
+            continue
+        if restart_state["reexec"]:
+            logger.info("Restarting process via os.execv (graceful /restart)")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        break  # clean shutdown (e.g. Ctrl+C) — don't loop forever
 
 
 if __name__ == "__main__":
