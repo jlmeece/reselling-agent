@@ -1,9 +1,10 @@
 """
 Telegram Status Bot
 ===================
-WAT Framework: Persistent Telegram bot for VPS agent monitoring.
-Runs as a systemd service on Hermes VPS. Responds to /help, /status,
-and /logs commands from the authorized TELEGRAM_CHAT_ID only.
+WAT Framework: Persistent Telegram bot for agent monitoring. Runs as a
+systemd service on the Hermes VPS or as a Windows Startup-folder process.
+Responds to /help, /status, /logs, and /lookup commands from the
+authorized TELEGRAM_CHAT_ID only.
 """
 
 import html
@@ -11,7 +12,9 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 
+import yaml
 from dotenv import load_dotenv
 from loguru import logger
 from telegram import Update
@@ -20,19 +23,25 @@ from telegram.ext import Application, CommandHandler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
 
+from tools.sheet_writer import get_sheets_service, read_sheet
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 LOG_FILES = {
-    "daily":    "/home/hermes/logs/daily.log",
-    "rotation": "/home/hermes/logs/rotation.log",
-    "sync":     "/home/hermes/logs/sync.log",
+    "active":        os.path.join(_BASE_DIR, "data", "logs", "active.log"),
+    "audit":         os.path.join(_BASE_DIR, "data", "logs", "audit.log"),
+    "daily":         os.path.join(_BASE_DIR, "data", "logs", "daily.log"),
+    "research":      os.path.join(_BASE_DIR, "data", "logs", "research.log"),
+    "rotation":      os.path.join(_BASE_DIR, "data", "logs", "rotation.log"),
+    "discovery":     os.path.join(_BASE_DIR, "data", "logs", "discovery.log"),
+    "refresh-notes": os.path.join(_BASE_DIR, "data", "logs", "refresh-notes.log"),
+    "recheck":       os.path.join(_BASE_DIR, "data", "logs", "recheck.log"),
 }
 
-COOKIES_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "costco_cookies.json"
-)
+COOKIES_PATH = os.path.join(_BASE_DIR, "data", "costco_cookies.json")
 
 VALID_MODES = set(LOG_FILES.keys())
 
@@ -92,6 +101,192 @@ def parse_logs_arg(text):
     return None, f"Unknown mode '{mode}'. Valid: {', '.join(sorted(VALID_MODES))}"
 
 
+# ── Sheet config / lookup helpers ───────────────────────────────────────────
+
+def col_to_idx(col_letter):
+    """Convert column letter to 0-based index: 'A'->0, 'B'->1, ..., 'Z'->25, 'AA'->26."""
+    col_letter = col_letter.upper()
+    result = 0
+    for ch in col_letter:
+        result = result * 26 + (ord(ch) - ord('A') + 1)
+    return result - 1
+
+
+def safe_get(lst, i, default=""):
+    """Return lst[i] if in range, else default. Rows from Sheets are ragged."""
+    return lst[i] if i < len(lst) else default
+
+
+def _load_col_map():
+    p = os.path.join(_BASE_DIR, "config", "col_map.yaml")
+    with open(p) as f:
+        return yaml.safe_load(f)["columns"]
+
+
+def _load_business_cfg():
+    p = os.path.join(_BASE_DIR, "config", "categories.yaml")
+    with open(p) as f:
+        return yaml.safe_load(f)["business"]
+
+
+def search_products(rows, col_map, term):
+    """
+    Case-insensitive substring match against the title OR category columns.
+    rows: ragged list[list[str]] as returned by tools.sheet_writer.read_sheet.
+    col_map: {field_name: "COLUMN_LETTER"} — config/col_map.yaml's "columns" dict.
+    Returns a list of dicts (one per matching row) with the raw field strings
+    needed for rendering. Never raises on ragged/short rows.
+    """
+    term_lc = term.strip().lower()
+    if not term_lc:
+        return []
+
+    title_i = col_to_idx(col_map["title"])
+    cat_i = col_to_idx(col_map["category"])
+
+    fields = (
+        "status", "stock_status", "costco_cost", "ebay_price",
+        "net_profit", "net_margin", "last_checked", "costco_url", "sale_info",
+    )
+    field_idx = {name: col_to_idx(col_map[name]) for name in fields}
+
+    matches = []
+    for row in rows:
+        if not row:
+            continue
+        title = safe_get(row, title_i)
+        category = safe_get(row, cat_i)
+        if term_lc in title.lower() or term_lc in category.lower():
+            match = {"title": title, "category": category}
+            for name, idx in field_idx.items():
+                match[name] = safe_get(row, idx)
+            matches.append(match)
+    return matches
+
+
+def _format_price(raw):
+    """Strip a leading '$' (caller adds its own); '—' when blank."""
+    raw = (raw or "").strip()
+    if not raw:
+        return "—"
+    return raw[1:] if raw.startswith("$") else raw
+
+
+def _format_net_fragment(net_profit_raw, net_margin_raw):
+    """
+    Render 'net $45.20 (18%)' from the sheet's own pre-formatted net_profit/
+    net_margin strings. Falls back to em-dashes when blank; never raises.
+    Leaves a negative value's own leading '-' alone (e.g. "-$12.50" stays put
+    rather than becoming "$-$12.50").
+    """
+    net = (net_profit_raw or "").strip()
+    margin = (net_margin_raw or "").strip()
+    net_str = net if net else "—"
+    margin_str = margin if margin else "—"
+    if net_str != "—" and not net_str.startswith("$") and not net_str.startswith("-$"):
+        net_str = f"${net_str}"
+    if margin_str != "—" and not margin_str.endswith("%"):
+        margin_str = f"{margin_str}%"
+    return f"net {net_str} ({margin_str})"
+
+
+def _format_sale_line(sale_info_raw, now=None):
+    """
+    Return '🔥 Sale ends MM/DD/YY (Nd left)', or None if sale_info is blank
+    or its expiry date can't be parsed. Reuses the exact regex/parsing
+    convention from agents/scheduler.py's sale-expiry check.
+    """
+    sale_info = (sale_info_raw or "").strip()
+    if not sale_info:
+        return None
+    now = now or datetime.now()
+    exp_match = re.search(r'ends?\s+(\d{1,2}/\d{1,2}/\d{2,4})', sale_info, re.IGNORECASE)
+    if not exp_match:
+        return None
+    exp_str = exp_match.group(1)
+    exp_dt = None
+    for fmt in ("%m/%d/%y", "%m/%d/%Y"):
+        try:
+            exp_dt = datetime.strptime(exp_str, fmt).replace(hour=23, minute=59)
+            break
+        except ValueError:
+            continue
+    if exp_dt is None:
+        return None
+    hours_left = (exp_dt - now).total_seconds() / 3600
+    days_left = max(0, round(hours_left / 24))
+    return f"🔥 Sale ends {exp_str} ({days_left}d left)"
+
+
+def _format_last_checked_line(last_checked_raw, now=None):
+    """
+    Return 'Last checked Nh ago'. last_checked is written as '%Y-%m-%d %H:%M'
+    (agents/scheduler.py:89). Falls back to 'unknown' when missing/
+    unparseable; appends a STALE warning when older than 12 hours.
+    """
+    raw = (last_checked_raw or "").strip()
+    if not raw:
+        return "Last checked unknown"
+    try:
+        checked_dt = datetime.strptime(raw, "%Y-%m-%d %H:%M")
+    except ValueError:
+        return "Last checked unknown"
+    now = now or datetime.now()
+    hours_ago = max(0, (now - checked_dt).total_seconds() / 3600)
+    line = f"Last checked {hours_ago:.0f}h ago"
+    if hours_ago > 12:
+        line += " ⚠️ STALE — price may have changed"
+    return line
+
+
+def format_product_detail(p, now=None):
+    """
+    Render the single-match /lookup card as plain text — no parse_mode is
+    used for /lookup (nothing here needs bold/<pre>), which sidesteps
+    html.escape() entirely for every sheet-derived free-text field.
+    """
+    lines = [
+        f"📦 {p.get('title') or '(untitled)'}",
+        f"{p.get('category') or '—'} · {p.get('status') or '—'}",
+        f"Costco ${_format_price(p.get('costco_cost'))} → eBay ${_format_price(p.get('ebay_price'))}"
+        f"  ·  {_format_net_fragment(p.get('net_profit'), p.get('net_margin'))}",
+        f"Stock: {p.get('stock_status') or '—'}",
+    ]
+    sale_line = _format_sale_line(p.get("sale_info"), now=now)
+    if sale_line:
+        lines.append(sale_line)
+    lines.append(_format_last_checked_line(p.get("last_checked"), now=now))
+    lines.append(p.get("costco_url") or "—")
+    return "\n".join(lines)
+
+
+def _lookup_summary_line(p):
+    return f"• {p.get('title') or '(untitled)'} — {p.get('category') or '—'} · {p.get('status') or '—'}"
+
+
+def format_lookup_reply(matches, term, now=None):
+    """
+    Build the full /lookup reply for any match count:
+      0    -> "No products found matching '<term>'."
+      1    -> format_product_detail() full card
+      2-5  -> one summary line per match + "be more specific"
+      >5   -> "Too many matches — be more specific."
+    """
+    if not matches:
+        return f"No products found matching '{term}'."
+
+    if len(matches) == 1:
+        return format_product_detail(matches[0], now=now)
+
+    if len(matches) <= 5:
+        header = f"Found {len(matches)} matches for '{term}':"
+        lines = [header] + [_lookup_summary_line(p) for p in matches]
+        lines.append("Be more specific.")
+        return "\n".join(lines)
+
+    return "Too many matches — be more specific."
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def _authorized(update, chat_id):
@@ -110,7 +305,8 @@ async def cmd_help(update, context):
     text = (
         "<b>WAT Reselling Agent — Commands</b>\n\n"
         "/status — last run time, pass/fail, cookie age\n"
-        "/logs [mode] — recent log lines (modes: daily, rotation, sync)\n"
+        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck)\n"
+        "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
         "/help — this message"
     )
     await update.message.reply_text(text, parse_mode="HTML")
@@ -171,9 +367,46 @@ async def cmd_logs(update, context):
     await update.message.reply_text(text, parse_mode="HTML")
 
 
+async def cmd_lookup(update, context):
+    if not _authorized(update, context.bot_data["chat_id"]):
+        return
+
+    term = " ".join(context.args).strip() if context.args else ""
+    if not term:
+        await update.message.reply_text("Usage: /lookup <search term>")
+        return
+
+    try:
+        col_map = _load_col_map()
+        cfg = _load_business_cfg()
+        service = get_sheets_service()
+        sheet_name = cfg["sheet_name"]
+        start, end = cfg["data_start_row"], cfg["data_end_row"]
+        rows = read_sheet(service, f"'{sheet_name}'!A{start}:BA{end}")
+    except Exception as e:
+        logger.warning(f"/lookup sheet read failed: {e}")
+        await update.message.reply_text(
+            "Couldn't reach the product sheet right now — try again in a bit."
+        )
+        return
+
+    matches = search_products(rows, col_map, term)
+    text = format_lookup_reply(matches, term)
+    if len(text) > _MAX_MSG:
+        text = text[:_MAX_MSG - 20] + "\n[truncated]"
+    await update.message.reply_text(text)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
+    logger.add(
+        os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
+        rotation="10 MB",
+        retention=3,
+        encoding="utf-8",
+    )
+
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id_raw = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
@@ -197,9 +430,16 @@ def main():
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("logs", cmd_logs))
+    app.add_handler(CommandHandler("lookup", cmd_lookup))
 
-    logger.info("Polling for messages...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    while True:
+        try:
+            logger.info("Polling for messages...")
+            app.run_polling(allowed_updates=Update.ALL_TYPES)
+            break  # run_polling() returned normally (e.g. clean shutdown) — don't loop forever
+        except Exception:
+            logger.exception("Bot crashed — restarting in 30s")
+            time.sleep(30)
 
 
 if __name__ == "__main__":
