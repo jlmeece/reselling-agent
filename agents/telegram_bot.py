@@ -137,6 +137,14 @@ def _load_category_names():
         return list(yaml.safe_load(f)["categories"].keys())
 
 
+_LOOKUP_PRODUCT_FIELDS = (
+    "status", "stock_status", "costco_cost", "ebay_price",
+    "net_profit", "net_margin", "last_checked", "costco_url", "sale_info",
+    "fee_rate", "ebay_fees", "ship_cost", "ad_cost", "ad_budget",
+    "regular_price", "demand_score",
+)
+
+
 def search_products(rows, col_map, term):
     """
     Case-insensitive substring match against the title OR category columns.
@@ -152,11 +160,7 @@ def search_products(rows, col_map, term):
     title_i = col_to_idx(col_map["title"])
     cat_i = col_to_idx(col_map["category"])
 
-    fields = (
-        "status", "stock_status", "costco_cost", "ebay_price",
-        "net_profit", "net_margin", "last_checked", "costco_url", "sale_info",
-    )
-    field_idx = {name: col_to_idx(col_map[name]) for name in fields}
+    field_idx = {name: col_to_idx(col_map[name]) for name in _LOOKUP_PRODUCT_FIELDS}
 
     matches = []
     for row in rows:
@@ -180,7 +184,7 @@ def _format_price(raw):
     return raw[1:] if raw.startswith("$") else raw
 
 
-def _format_net_fragment(net_profit_raw, net_margin_raw):
+def _format_net_fragment(net_profit_raw, net_margin_raw, label="net"):
     """
     Render 'net $45.20 (18%)' from the sheet's own pre-formatted net_profit/
     net_margin strings. Falls back to em-dashes when blank; never raises.
@@ -195,17 +199,95 @@ def _format_net_fragment(net_profit_raw, net_margin_raw):
         net_str = f"${net_str}"
     if margin_str != "—" and not margin_str.endswith("%"):
         margin_str = f"{margin_str}%"
-    return f"net {net_str} ({margin_str})"
+    return f"{label} {net_str} ({margin_str})"
+
+
+def _tier_label(demand_score_raw):
+    """
+    Classify a demand_score cell into 'Tier 1 🥇' / 'Tier 2' / 'Tier 3' using
+    col_map.yaml's documented thresholds (Tier1>=7, Tier2>=4, Tier3<4).
+    Deliberately NOT ~/.claude/skills/base_scoring.py's assign_tier() — that
+    shared skill uses different thresholds (6.0/3.0) tuned for a different
+    project; this sheet's formulas and the business's own convention are
+    authored against 7/4. Returns None if demand_score is blank/unparseable.
+    """
+    score = _parse_currency(demand_score_raw)
+    if score is None:
+        return None
+    if score >= 7:
+        return "Tier 1 🥇"
+    if score >= 4:
+        return "Tier 2"
+    return "Tier 3"
+
+
+def _format_fee_rate_pct(raw):
+    """
+    Render a fee_rate (col AB) cell as 'NN.N%'. Written as a raw Python float
+    (e.g. 0.1325) with no PERCENT number format on the sheet, so it typically
+    reads back as plain '0.1325' — but tolerate an already-'%'-suffixed cell
+    too. Returns None if blank/unparseable.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    if raw.endswith("%"):
+        return raw
+    val = _parse_currency(raw)
+    if val is None:
+        return None
+    pct = val * 100 if 0 < val < 1 else val
+    return f"{pct:.1f}%"
+
+
+def _format_regular_price_line(regular_price_raw, costco_cost_raw):
+    """
+    Render '🏷️ Was $X, now $Y (save $Z)' when regular_price (col AW) is
+    populated and numerically differs from costco_cost — i.e. Costco's own
+    pre-sale price vs the current price. Returns None when regular_price is
+    blank or equals costco_cost. Uses 🏷️ deliberately, distinct from 🔥
+    (reserved for the expiry countdown in _format_sale_line) — these are two
+    different signals (price-delta vs time-remaining) that can coexist.
+    """
+    reg = _parse_currency(regular_price_raw)
+    now_price = _parse_currency(costco_cost_raw)
+    if reg is None or now_price is None or abs(reg - now_price) < 0.01:
+        return None
+    save = reg - now_price
+    return f"🏷️ Was ${reg:,.2f}, now ${now_price:,.2f} (save ${save:,.2f})"
+
+
+def _format_net_with_ads_line(net_profit_raw, ad_budget_raw, ebay_price_raw):
+    """
+    Recompute net profit/margin after subtracting the suggested ad_budget.
+    Margin base mirrors col_map.yaml's net_margin formula (net / ebay_price).
+    Guards ebay_price<=0 (no division by zero) and treats blank ad_budget as
+    $0. Returns None if net_profit itself is unparseable.
+    """
+    net = _parse_currency(net_profit_raw)
+    if net is None:
+        return None
+    ad = _parse_currency(ad_budget_raw) or 0.0
+    price = _parse_currency(ebay_price_raw)
+    net_with_ads = net - ad
+    if price and price > 0:
+        margin_str = f"{net_with_ads / price * 100:.0f}%"
+    else:
+        margin_str = "—"
+    sign = "-" if net_with_ads < 0 else ""
+    return f"Net with ads: {sign}${abs(net_with_ads):,.2f} ({margin_str})"
 
 
 def _parse_sale_expiry_info(sale_info_raw, now=None):
     """
     Parse the 'ends MM/DD/YY' substring out of a sale_info cell (e.g.
-    '🔥 -$150 ends 5/31/26'). Returns (exp_str, days_left) or None if
-    sale_info is blank or its expiry date can't be parsed. Reuses the
-    exact regex/parsing convention from agents/scheduler.py's sale-expiry
-    check. Shared by _format_sale_line (/lookup) and the /dashboard
-    sale-urgency section.
+    '🔥 -$150 ends 5/31/26'). Returns (exp_str, days_left, raw_days_left) or
+    None if sale_info is blank or its expiry date can't be parsed. days_left
+    is clamped to >=0 for display; raw_days_left is the true (possibly
+    negative) signed value, used to detect and filter stale/expired sales.
+    Reuses the exact regex/parsing convention from agents/scheduler.py's
+    sale-expiry check. Shared by _format_sale_line (/lookup) and the
+    /dashboard sale-urgency section.
     """
     sale_info = (sale_info_raw or "").strip()
     if not sale_info:
@@ -225,19 +307,23 @@ def _parse_sale_expiry_info(sale_info_raw, now=None):
     if exp_dt is None:
         return None
     hours_left = (exp_dt - now).total_seconds() / 3600
-    days_left = max(0, round(hours_left / 24))
-    return exp_str, days_left
+    raw_days_left = round(hours_left / 24)
+    days_left = max(0, raw_days_left)
+    return exp_str, days_left, raw_days_left
 
 
 def _format_sale_line(sale_info_raw, now=None):
     """
-    Return '🔥 Sale ends MM/DD/YY (Nd left)', or None if sale_info is blank
-    or its expiry date can't be parsed.
+    Return '🔥 Sale ends MM/DD/YY (Nd left)', or '🔥 Sale ended MM/DD/YY
+    (expired)' if the expiry date is in the past. None if sale_info is
+    blank or its expiry date can't be parsed.
     """
     parsed = _parse_sale_expiry_info(sale_info_raw, now=now)
     if not parsed:
         return None
-    exp_str, days_left = parsed
+    exp_str, days_left, raw_days_left = parsed
+    if raw_days_left < 0:
+        return f"🔥 Sale ended {exp_str} (expired)"
     return f"🔥 Sale ends {exp_str} ({days_left}d left)"
 
 
@@ -268,13 +354,37 @@ def format_product_detail(p, now=None):
     used for /lookup (nothing here needs bold/<pre>), which sidesteps
     html.escape() entirely for every sheet-derived free-text field.
     """
+    tier = _tier_label(p.get("demand_score"))
+    score = _parse_currency(p.get("demand_score"))
+    tier_suffix = f" · Score {score:.1f} ({tier})" if (tier and score is not None) else ""
+
     lines = [
         f"📦 {p.get('title') or '(untitled)'}",
-        f"{p.get('category') or '—'} · {p.get('status') or '—'}",
-        f"Costco ${_format_price(p.get('costco_cost'))} → eBay ${_format_price(p.get('ebay_price'))}"
-        f"  ·  {_format_net_fragment(p.get('net_profit'), p.get('net_margin'))}",
-        f"Stock: {p.get('stock_status') or '—'}",
+        f"{p.get('category') or '—'} · {p.get('status') or '—'}{tier_suffix}",
+        f"Buy ${_format_price(p.get('costco_cost'))}",
     ]
+    savings_line = _format_regular_price_line(p.get("regular_price"), p.get("costco_cost"))
+    if savings_line:
+        lines.append(savings_line)
+    lines.append(f"List ${_format_price(p.get('ebay_price'))}")
+    lines.append(f"Ship ${_format_price(p.get('ship_cost'))}")
+
+    fee_pct = _format_fee_rate_pct(p.get("fee_rate"))
+    fee_line = f"Fees ${_format_price(p.get('ebay_fees'))}"
+    if fee_pct:
+        fee_line += f" ({fee_pct})"
+    lines.append(fee_line)
+
+    ad_budget = _parse_currency(p.get("ad_budget"))
+    if ad_budget is not None and ad_budget > 0:
+        lines.append(f"Ads ${_format_price(p.get('ad_budget'))} (suggested budget)")
+
+    lines.append(_format_net_fragment(p.get("net_profit"), p.get("net_margin"), label="Net without ads:"))
+    net_with_ads_line = _format_net_with_ads_line(p.get("net_profit"), p.get("ad_budget"), p.get("ebay_price"))
+    if net_with_ads_line:
+        lines.append(net_with_ads_line)
+
+    lines.append(f"Stock: {p.get('stock_status') or '—'}")
     sale_line = _format_sale_line(p.get("sale_info"), now=now)
     if sale_line:
         lines.append(sale_line)
@@ -363,6 +473,8 @@ def format_dashboard_reply(counts, total):
         lines.append(f"{emoji[label]} {label}: {n}")
 
     lines.append("")
+    lines.append("Scores: 0–10 · Tier 1 ≥7 🥇 · Tier 2 ≥4 · Tier 3 <4 · Sharpe = risk-adjusted return (higher = better)")
+    lines.append("")
     lines.append(f"Total tracked: {total}")
     lines.append("Last updated: just now")
     return "\n".join(lines)
@@ -371,7 +483,7 @@ def format_dashboard_reply(counts, total):
 _DASHBOARD_PRODUCT_FIELDS = (
     "status", "title", "category", "demand_score", "net_profit", "net_margin",
     "comp_saturation", "suggested_price", "sale_info", "ad_budget",
-    "mpt_sharpe", "mpt_rank",
+    "costco_cost", "ebay_price", "mpt_sharpe", "mpt_rank",
 )
 
 
@@ -448,49 +560,25 @@ def format_top_opportunities(products, n=3):
     lines = ["🏆 Top Ready to List"]
     for i, p in enumerate(ready[:n], start=1):
         title = p["title"] or "(untitled)"
-        price = _format_price(p["suggested_price"])
-        net_frag = _format_net_fragment(p["net_profit"], p["net_margin"])
-        sharpe = _parse_sharpe(p["mpt_sharpe"])
-        sharpe_str = f"{sharpe:.1f}" if sharpe is not None else "—"
-        score = (p["demand_score"] or "").strip() or "—"
+        buy = _format_price(p["costco_cost"])
+        list_price = _format_price(p["ebay_price"])
+        net_frag = _format_net_fragment(p["net_profit"], p["net_margin"], label="Net")
+        ads = _format_price(p["ad_budget"])
+        tier = _tier_label(p["demand_score"])
+        tier_flag = " 🥇" if tier == "Tier 1 🥇" else ""
         sat_flag = " ⚠️ saturated" if (p["comp_saturation"] or "").strip().lower() == "high" else ""
-        lines.append(f"{i}. {title} — ${price} · {net_frag} · Sharpe {sharpe_str} · Score {score}{sat_flag}")
+        lines.append(
+            f"{i}. {title} — Buy ${buy} · List ${list_price} · {net_frag} · Ads ${ads}{tier_flag}{sat_flag}"
+        )
     return "\n".join(lines)
-
-
-def format_ad_budget_section(products):
-    """
-    Sum net_profit and ad_budget across READY rows. The displayed percentage
-    is derived from the actual totals (ad_budget ÷ net_profit) rather than
-    hardcoded, so it stays correct if the sheet's ad_budget formula ever
-    changes from its current fixed 15%. Returns None if there are no READY rows.
-    """
-    ready = [p for p in products if p["status"] == "READY"]
-    if not ready:
-        return None
-
-    total_net = 0.0
-    total_ad = 0.0
-    for p in ready:
-        net_val = _parse_currency(p["net_profit"])
-        if net_val is not None:
-            total_net += net_val
-        ad_val = _parse_currency(p["ad_budget"])
-        if ad_val is not None:
-            total_ad += ad_val
-
-    pct = (total_ad / total_net * 100) if total_net else 15
-    return (
-        "💰 Ad Budget Available\n"
-        f"Total net if all Ready listed: ${total_net:,.0f}\n"
-        f"Suggested ad budget ({pct:.0f}%): ${total_ad:,.0f}"
-    )
 
 
 def format_sale_urgency_section(products, now=None):
     """
-    READY/ACTIVE rows with a parseable sale expiry, soonest first. Returns
-    None if none qualify — the section is skipped entirely per spec.
+    READY/ACTIVE rows with a parseable sale expiry, soonest first. Sales that
+    expired more than 7 days ago are dropped entirely — a stale expired sale
+    is noise, not urgency. Returns None if none qualify — the section is
+    skipped entirely per spec.
     """
     candidates = []
     for p in products:
@@ -499,7 +587,9 @@ def format_sale_urgency_section(products, now=None):
         parsed = _parse_sale_expiry_info(p["sale_info"], now=now)
         if not parsed:
             continue
-        exp_str, days_left = parsed
+        exp_str, days_left, raw_days_left = parsed
+        if raw_days_left < -7:
+            continue
         candidates.append((days_left, p["title"] or "(untitled)", exp_str))
     if not candidates:
         return None
@@ -686,7 +776,6 @@ async def cmd_dashboard(update, context):
     blocks = [format_dashboard_reply(counts, total)]
     for section in (
         format_top_opportunities(products),
-        format_ad_budget_section(products),
         format_sale_urgency_section(products),
         format_category_breakdown(products),
     ):
