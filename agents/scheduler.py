@@ -1147,9 +1147,9 @@ def main():
             try:
                 import urllib.request
                 urllib.request.urlopen(_hc_url, timeout=5)
-                logger.debug(f"Heartbeat ping sent ({_hc_key})")
-            except Exception:
-                pass
+                logger.info(f"Heartbeat ping sent ({_hc_key})")
+            except Exception as e:
+                logger.warning(f"Heartbeat ping FAILED ({_hc_key}): {e}")
         # Run summary email (skip for active monitor — already handled by send_urgent_alert)
         if args.mode != "active":
             try:
