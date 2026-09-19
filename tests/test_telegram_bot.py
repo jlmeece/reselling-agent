@@ -7,10 +7,16 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.telegram_bot import (
+    col_to_idx,
     cookie_age_days,
+    extract_dashboard_products,
     extract_last_timestamp,
+    format_ad_budget_section,
+    format_category_breakdown,
     format_lookup_reply,
     format_product_detail,
+    format_sale_urgency_section,
+    format_top_opportunities,
     has_errors,
     parse_logs_arg,
     read_tail,
@@ -275,3 +281,157 @@ def test_format_product_detail_sale_line_when_parseable():
 def test_format_product_detail_no_sale_line_when_blank():
     p = search_products([_make_row(X="")], _COL, "pamp")[0]
     assert "Sale ends" not in format_product_detail(p)
+
+
+# ── /dashboard sections ──────────────────────────────────────────────────────
+
+_DASH_COL = {
+    "status": "A", "demand_score": "B", "title": "C", "category": "D",
+    "net_profit": "I", "net_margin": "J", "comp_saturation": "N",
+    "suggested_price": "V", "sale_info": "X", "ad_budget": "AH",
+    "mpt_sharpe": "AX", "mpt_rank": "BA",
+}
+
+
+def _make_dash_row(**overrides):
+    row = [""] * (col_to_idx("BA") + 1)  # A..BA
+    defaults = {
+        "A": "READY", "B": "8.2", "C": "PAMP Suisse 1oz Gold Bar", "D": "Precious Metals",
+        "I": "$120.00", "J": "4%", "N": "Low", "V": "$2199.00", "X": "",
+        "AH": "$18.00", "AX": "1.4", "BA": "2 🥈 Good",
+    }
+    defaults.update(overrides)
+    for col, val in defaults.items():
+        row[col_to_idx(col)] = val
+    return row
+
+
+def test_extract_dashboard_products_skips_blank_status():
+    rows = [_make_dash_row(), _make_dash_row(A="")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert len(products) == 1
+
+
+def test_extract_dashboard_products_handles_short_ragged_rows():
+    rows = [["READY", "", "Gold Bar"]]  # only 3 cols, far short of BA
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert len(products) == 1
+    assert products[0]["mpt_rank"] == ""
+
+
+def test_format_top_opportunities_ranks_by_mpt_rank_ascending():
+    rows = [
+        _make_dash_row(C="Second Place", BA="2"),
+        _make_dash_row(C="First Place", BA="1 🥇 Best"),
+        _make_dash_row(C="Third Place", BA="3"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_top_opportunities(products)
+    assert text.index("First Place") < text.index("Second Place") < text.index("Third Place")
+    assert text.startswith("🏆 Top Ready to List")
+
+
+def test_format_top_opportunities_unranked_sorts_after_ranked():
+    rows = [
+        _make_dash_row(C="No Rank", BA=""),
+        _make_dash_row(C="Ranked", BA="1"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_top_opportunities(products)
+    assert text.index("Ranked") < text.index("No Rank")
+
+
+def test_format_top_opportunities_ignores_non_ready_status():
+    rows = [_make_dash_row(A="ACTIVE")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert format_top_opportunities(products) is None
+
+
+def test_format_top_opportunities_flags_saturated_comps():
+    rows = [_make_dash_row(N="High")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert "⚠️ saturated" in format_top_opportunities(products)
+
+
+def test_format_top_opportunities_shows_price_sharpe_and_score():
+    rows = [_make_dash_row(V="$2199.00", AX="1.4", B="8.2")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_top_opportunities(products)
+    assert "$2199.00" in text
+    assert "Sharpe 1.4" in text
+    assert "Score 8.2" in text
+
+
+def test_format_top_opportunities_limits_to_n():
+    rows = [_make_dash_row(C=f"Item {i}", BA=str(i)) for i in range(1, 6)]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_top_opportunities(products, n=3)
+    assert text.count("Item") == 3
+
+
+def test_format_ad_budget_section_sums_ready_rows():
+    rows = [
+        _make_dash_row(I="$100.00", AH="$15.00"),
+        _make_dash_row(I="$50.00", AH="$8.00"),
+        _make_dash_row(A="ACTIVE", I="$999.00", AH="$999.00"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_ad_budget_section(products)
+    assert "Total net if all Ready listed: $150" in text
+    assert "Suggested ad budget (15%): $23" in text
+
+
+def test_format_ad_budget_section_none_when_no_ready():
+    rows = [_make_dash_row(A="ACTIVE")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert format_ad_budget_section(products) is None
+
+
+def test_format_sale_urgency_section_sorts_soonest_first():
+    rows = [
+        _make_dash_row(C="Later Sale", X="🔥 -$50 ends 12/31/26"),
+        _make_dash_row(C="Sooner Sale", X="🔥 -$50 ends 10/01/26"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    now = datetime(2026, 9, 18, 12, 0)
+    text = format_sale_urgency_section(products, now=now)
+    assert text.index("Sooner Sale") < text.index("Later Sale")
+
+
+def test_format_sale_urgency_section_none_when_no_sales():
+    rows = [_make_dash_row(X="")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert format_sale_urgency_section(products) is None
+
+
+def test_format_sale_urgency_section_ignores_pending_status():
+    rows = [_make_dash_row(A="PENDING", X="🔥 -$50 ends 12/31/26")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert format_sale_urgency_section(products) is None
+
+
+def test_format_category_breakdown_counts_ready_and_active():
+    rows = [
+        _make_dash_row(D="Precious Metals", A="READY"),
+        _make_dash_row(D="Precious Metals", A="READY"),
+        _make_dash_row(D="Precious Metals", A="ACTIVE"),
+        _make_dash_row(D="Jewelry", A="READY"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_category_breakdown(products, category_names=["Precious Metals", "Jewelry"])
+    assert "Precious Metals: 2 Ready, 1 Active" in text
+    assert "Jewelry: 1 Ready" in text
+
+
+def test_format_category_breakdown_skips_categories_with_no_ready_or_active():
+    rows = [_make_dash_row(D="Jewelry", A="PENDING")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_category_breakdown(products, category_names=["Precious Metals", "Jewelry"])
+    assert text is None
+
+
+def test_format_category_breakdown_appends_unknown_category():
+    rows = [_make_dash_row(D="New Category", A="READY")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_category_breakdown(products, category_names=["Precious Metals"])
+    assert "New Category: 1 Ready" in text

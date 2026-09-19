@@ -130,6 +130,13 @@ def _load_business_cfg():
         return yaml.safe_load(f)["business"]
 
 
+def _load_category_names():
+    """Category display names in categories.yaml's declared order (matches col D)."""
+    p = os.path.join(_BASE_DIR, "config", "categories.yaml")
+    with open(p) as f:
+        return list(yaml.safe_load(f)["categories"].keys())
+
+
 def search_products(rows, col_map, term):
     """
     Case-insensitive substring match against the title OR category columns.
@@ -191,11 +198,14 @@ def _format_net_fragment(net_profit_raw, net_margin_raw):
     return f"net {net_str} ({margin_str})"
 
 
-def _format_sale_line(sale_info_raw, now=None):
+def _parse_sale_expiry_info(sale_info_raw, now=None):
     """
-    Return '🔥 Sale ends MM/DD/YY (Nd left)', or None if sale_info is blank
-    or its expiry date can't be parsed. Reuses the exact regex/parsing
-    convention from agents/scheduler.py's sale-expiry check.
+    Parse the 'ends MM/DD/YY' substring out of a sale_info cell (e.g.
+    '🔥 -$150 ends 5/31/26'). Returns (exp_str, days_left) or None if
+    sale_info is blank or its expiry date can't be parsed. Reuses the
+    exact regex/parsing convention from agents/scheduler.py's sale-expiry
+    check. Shared by _format_sale_line (/lookup) and the /dashboard
+    sale-urgency section.
     """
     sale_info = (sale_info_raw or "").strip()
     if not sale_info:
@@ -216,6 +226,18 @@ def _format_sale_line(sale_info_raw, now=None):
         return None
     hours_left = (exp_dt - now).total_seconds() / 3600
     days_left = max(0, round(hours_left / 24))
+    return exp_str, days_left
+
+
+def _format_sale_line(sale_info_raw, now=None):
+    """
+    Return '🔥 Sale ends MM/DD/YY (Nd left)', or None if sale_info is blank
+    or its expiry date can't be parsed.
+    """
+    parsed = _parse_sale_expiry_info(sale_info_raw, now=now)
+    if not parsed:
+        return None
+    exp_str, days_left = parsed
     return f"🔥 Sale ends {exp_str} ({days_left}d left)"
 
 
@@ -346,6 +368,188 @@ def format_dashboard_reply(counts, total):
     return "\n".join(lines)
 
 
+_DASHBOARD_PRODUCT_FIELDS = (
+    "status", "title", "category", "demand_score", "net_profit", "net_margin",
+    "comp_saturation", "suggested_price", "sale_info", "ad_budget",
+    "mpt_sharpe", "mpt_rank",
+)
+
+
+def extract_dashboard_products(rows, col_map):
+    """
+    Build one dict of raw string fields per non-blank-status row, keyed by
+    col_map field name. Mirrors search_products()'s field_idx pattern.
+    Never raises on ragged/short rows.
+    """
+    field_idx = {name: col_to_idx(col_map[name]) for name in _DASHBOARD_PRODUCT_FIELDS}
+    products = []
+    for row in rows:
+        status = safe_get(row, field_idx["status"]).strip()
+        if not status:
+            continue
+        p = {name: safe_get(row, idx) for name, idx in field_idx.items()}
+        products.append(p)
+    return products
+
+
+def _parse_currency(raw):
+    """Parse a '$45.20'-style sheet cell to float, or None if blank/unparseable."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw.replace("$", "").replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _parse_mpt_rank(raw):
+    """Parse the leading integer out of an mpt_rank cell ('1 🥇 Best' or '3'). None if blank/unparseable."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    m = re.match(r'-?\d+', raw)
+    return int(m.group(0)) if m else None
+
+
+def _parse_sharpe(raw):
+    """Parse the leading float out of an mpt_sharpe cell ('1.8 🔥 Strong' or '1.8'). None if blank/unparseable."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    m = re.match(r'-?\d+\.?\d*', raw)
+    if not m:
+        return None
+    try:
+        return float(m.group(0))
+    except ValueError:
+        return None
+
+
+def format_top_opportunities(products, n=3):
+    """
+    Top n READY products ranked by mpt_rank ascending (1=best); READY rows
+    with no parsable rank sort after ranked ones, tiebroken by higher Sharpe.
+    Returns None if there are no READY rows.
+    """
+    ready = [p for p in products if p["status"] == "READY"]
+    if not ready:
+        return None
+
+    def sort_key(p):
+        rank = _parse_mpt_rank(p["mpt_rank"])
+        sharpe = _parse_sharpe(p["mpt_sharpe"])
+        rank_key = rank if rank is not None else float("inf")
+        sharpe_key = -(sharpe if sharpe is not None else float("-inf"))
+        return (rank_key, sharpe_key)
+
+    ready.sort(key=sort_key)
+
+    lines = ["🏆 Top Ready to List"]
+    for i, p in enumerate(ready[:n], start=1):
+        title = p["title"] or "(untitled)"
+        price = _format_price(p["suggested_price"])
+        net_frag = _format_net_fragment(p["net_profit"], p["net_margin"])
+        sharpe = _parse_sharpe(p["mpt_sharpe"])
+        sharpe_str = f"{sharpe:.1f}" if sharpe is not None else "—"
+        score = (p["demand_score"] or "").strip() or "—"
+        sat_flag = " ⚠️ saturated" if (p["comp_saturation"] or "").strip().lower() == "high" else ""
+        lines.append(f"{i}. {title} — ${price} · {net_frag} · Sharpe {sharpe_str} · Score {score}{sat_flag}")
+    return "\n".join(lines)
+
+
+def format_ad_budget_section(products):
+    """
+    Sum net_profit and ad_budget across READY rows. The displayed percentage
+    is derived from the actual totals (ad_budget ÷ net_profit) rather than
+    hardcoded, so it stays correct if the sheet's ad_budget formula ever
+    changes from its current fixed 15%. Returns None if there are no READY rows.
+    """
+    ready = [p for p in products if p["status"] == "READY"]
+    if not ready:
+        return None
+
+    total_net = 0.0
+    total_ad = 0.0
+    for p in ready:
+        net_val = _parse_currency(p["net_profit"])
+        if net_val is not None:
+            total_net += net_val
+        ad_val = _parse_currency(p["ad_budget"])
+        if ad_val is not None:
+            total_ad += ad_val
+
+    pct = (total_ad / total_net * 100) if total_net else 15
+    return (
+        "💰 Ad Budget Available\n"
+        f"Total net if all Ready listed: ${total_net:,.0f}\n"
+        f"Suggested ad budget ({pct:.0f}%): ${total_ad:,.0f}"
+    )
+
+
+def format_sale_urgency_section(products, now=None):
+    """
+    READY/ACTIVE rows with a parseable sale expiry, soonest first. Returns
+    None if none qualify — the section is skipped entirely per spec.
+    """
+    candidates = []
+    for p in products:
+        if p["status"] not in ("READY", "ACTIVE"):
+            continue
+        parsed = _parse_sale_expiry_info(p["sale_info"], now=now)
+        if not parsed:
+            continue
+        exp_str, days_left = parsed
+        candidates.append((days_left, p["title"] or "(untitled)", exp_str))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: t[0])
+
+    lines = ["🔥 Sale Expiring Soon"]
+    for days_left, title, exp_str in candidates:
+        lines.append(f"• {title} — sale ends {exp_str} ({days_left}d left)")
+    return "\n".join(lines)
+
+
+def format_category_breakdown(products, category_names=None):
+    """
+    Per-category READY/ACTIVE counts, in categories.yaml's declared order
+    (any category found in the sheet but absent from categories.yaml is
+    appended at the end rather than silently dropped). Categories with zero
+    of both statuses are omitted. Returns None if nothing qualifies.
+    category_names defaults to _load_category_names(); pass explicitly to
+    avoid reading the real config (e.g. in tests).
+    """
+    counts = {}
+    for p in products:
+        if p["status"] not in ("READY", "ACTIVE"):
+            continue
+        cat = (p["category"] or "").strip()
+        if not cat:
+            continue
+        counts.setdefault(cat, {"READY": 0, "ACTIVE": 0})
+        counts[cat][p["status"]] += 1
+
+    known = category_names if category_names is not None else _load_category_names()
+    ordered = known + [c for c in counts if c not in known]
+
+    lines = []
+    for cat in ordered:
+        c = counts.get(cat)
+        if not c or (c["READY"] == 0 and c["ACTIVE"] == 0):
+            continue
+        parts = []
+        if c["READY"]:
+            parts.append(f"{c['READY']} Ready")
+        if c["ACTIVE"]:
+            parts.append(f"{c['ACTIVE']} Active")
+        lines.append(f"{cat}: {', '.join(parts)}")
+
+    if not lines:
+        return None
+    return "\n".join(["📦 Category Breakdown"] + lines)
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def _authorized(update, chat_id):
@@ -366,7 +570,7 @@ async def cmd_help(update, context):
         "/status — last run time, pass/fail, cookie age\n"
         "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, telegram_bot)\n"
         "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
-        "/dashboard — funnel summary (counts by status)\n"
+        "/dashboard — funnel, top Ready opportunities, ad budget, sale urgency, category health\n"
         "/restart — reload bot after a code update\n"
         "/help — this message"
     )
@@ -463,11 +667,12 @@ async def cmd_dashboard(update, context):
         return
 
     try:
+        col_map = _load_col_map()
         cfg = _load_business_cfg()
         service = get_sheets_service()
         sheet_name = cfg["sheet_name"]
         start, end = cfg["data_start_row"], cfg["data_end_row"]
-        rows = read_sheet(service, f"'{sheet_name}'!A{start}:A{end}")
+        rows = read_sheet(service, f"'{sheet_name}'!A{start}:BA{end}")
     except Exception as e:
         logger.warning(f"/dashboard sheet read failed: {e}")
         await update.message.reply_text(
@@ -476,7 +681,19 @@ async def cmd_dashboard(update, context):
         return
 
     counts, total = count_statuses(rows)
-    text = format_dashboard_reply(counts, total)
+    products = extract_dashboard_products(rows, col_map)
+
+    blocks = [format_dashboard_reply(counts, total)]
+    for section in (
+        format_top_opportunities(products),
+        format_ad_budget_section(products),
+        format_sale_urgency_section(products),
+        format_category_breakdown(products),
+    ):
+        if section:
+            blocks.append(section)
+
+    text = "\n\n".join(blocks)
     if len(text) > _MAX_MSG:
         text = text[:_MAX_MSG - 20] + "\n[truncated]"
     await update.message.reply_text(text)
