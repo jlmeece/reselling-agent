@@ -18,6 +18,7 @@ Scheduled via Windows Task Scheduler.
 """
 
 import argparse
+import html
 import json
 import os
 import sys
@@ -966,6 +967,11 @@ _COOKIE_WARN_TS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.absp
                                      "data", ".cookie_warn_ts")
 _COOKIE_WARN_INTERVAL_SEC = 7 * 86400  # don't re-warn within 7 days
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_COOKIE_AUTOREFRESH_TS_PATH = os.path.join(_REPO_ROOT, "data", ".cookie_autorefresh_ts")
+_COOKIE_AUTOREFRESH_INTERVAL_SEC = 86400  # at most one auto-refresh attempt per 24h
+_COOKIE_AUTOREFRESH_TIMEOUT_SEC = 60
+
 
 def _send_telegram(token: str, chat_id: str, text: str) -> None:
     """Fire-and-forget Telegram message. Logs on failure, never raises."""
@@ -980,18 +986,107 @@ def _send_telegram(token: str, chat_id: str, text: str) -> None:
         logger.warning(f"Telegram message failed (non-fatal): {e}")
 
 
+def _tail_output(result, n_lines: int = 3) -> str:
+    """Last few lines of a subprocess result's stdout+stderr, for alert diagnostics."""
+    combined = "\n".join(x for x in (result.stdout, result.stderr) if x)
+    lines = [l for l in combined.strip().splitlines() if l.strip()]
+    return "\n".join(lines[-n_lines:])
+
+
+def _attempt_cookie_autorefresh() -> tuple[bool, str]:
+    """
+    Tries to refresh Costco cookies unattended: runs setup_costco_session.py
+    (exports cookies from the agent's already-running, already-logged-in
+    Chrome via CDP — it does NOT log in itself) and, if that produces fresh
+    cookies, uploads them to the VPS via cookie_sync.py upload.
+
+    Throttled to at most one attempt per _COOKIE_AUTOREFRESH_INTERVAL_SEC (24h)
+    so a closed/unreachable Chrome doesn't retry on every scheduled run.
+    Returns (success, diagnostic) — diagnostic is a short error excerpt for
+    the fallback manual alert, empty on success or when skipped by throttle.
+    Never raises.
+    """
+    last_attempt_ts = 0.0
+    if os.path.exists(_COOKIE_AUTOREFRESH_TS_PATH):
+        try:
+            with open(_COOKIE_AUTOREFRESH_TS_PATH) as f:
+                last_attempt_ts = float(f.read().strip())
+        except Exception:
+            last_attempt_ts = 0.0
+    if time.time() - last_attempt_ts < _COOKIE_AUTOREFRESH_INTERVAL_SEC:
+        logger.info("Cookie auto-refresh already attempted within last 24h, skipping.")
+        return False, ""
+
+    try:
+        os.makedirs(os.path.dirname(_COOKIE_AUTOREFRESH_TS_PATH), exist_ok=True)
+        with open(_COOKIE_AUTOREFRESH_TS_PATH, "w") as f:
+            f.write(str(time.time()))
+    except Exception as e:
+        logger.warning(f"Cookie auto-refresh timestamp write failed (non-fatal): {e}")
+
+    import subprocess
+    mtime_before = os.path.getmtime(_COOKIES_PATH) if os.path.exists(_COOKIES_PATH) else 0.0
+
+    logger.info("Attempting automatic Costco cookie refresh...")
+    try:
+        export_result = subprocess.run(
+            [sys.executable, os.path.join(_REPO_ROOT, "tools", "setup_costco_session.py")],
+            capture_output=True, text=True, timeout=_COOKIE_AUTOREFRESH_TIMEOUT_SEC,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Cookie auto-refresh: setup_costco_session.py timed out.")
+        return False, "setup_costco_session.py timed out — is Chrome open and reachable?"
+    except Exception as e:
+        logger.warning(f"Cookie auto-refresh: setup_costco_session.py failed to run: {e}")
+        return False, f"setup_costco_session.py failed to run: {e}"
+
+    mtime_after = os.path.getmtime(_COOKIES_PATH) if os.path.exists(_COOKIES_PATH) else 0.0
+    if export_result.returncode != 0 or mtime_after <= mtime_before:
+        logger.warning("Cookie auto-refresh: setup_costco_session.py did not produce fresh cookies.")
+        return False, _tail_output(export_result)
+
+    try:
+        upload_result = subprocess.run(
+            [sys.executable, os.path.join(_REPO_ROOT, "tools", "cookie_sync.py"), "upload"],
+            capture_output=True, text=True, timeout=_COOKIE_AUTOREFRESH_TIMEOUT_SEC,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Cookie auto-refresh: cookie_sync.py upload timed out.")
+        return False, "cookie_sync.py upload timed out."
+    except Exception as e:
+        logger.warning(f"Cookie auto-refresh: cookie_sync.py upload failed to run: {e}")
+        return False, f"cookie_sync.py upload failed to run: {e}"
+
+    if upload_result.returncode != 0:
+        logger.warning("Cookie auto-refresh: cookie_sync.py upload failed.")
+        return False, _tail_output(upload_result)
+
+    logger.info("Cookie auto-refresh succeeded — cookies exported and synced to VPS.")
+    token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        _send_telegram(token, chat_id, "✅ Costco cookies auto-refreshed and synced to VPS.")
+    return True, ""
+
+
 def _check_cookie_age() -> None:
     """
     Warns if costco_cookies.json is older than 25 days.
-    Sends a Telegram message (if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are
-    set), at most once per _COOKIE_WARN_INTERVAL_SEC (7 days), so a stale
-    cookie file doesn't re-alert on every scheduled run. Never blocks the run.
+    First tries to auto-refresh the cookies (see _attempt_cookie_autorefresh);
+    only sends a Telegram message telling Jordan to do it manually (if
+    TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set) when that fails, at most
+    once per _COOKIE_WARN_INTERVAL_SEC (7 days), so a stale cookie file
+    doesn't re-alert on every scheduled run. Never blocks the run.
     """
     if not os.path.exists(_COOKIES_PATH):
         return  # no cookies file — rotation/refresh-notes mode, or first run
 
     age_days = (time.time() - os.path.getmtime(_COOKIES_PATH)) / 86400
     if age_days < _COOKIE_WARN_DAYS:
+        return
+
+    autorefreshed, autorefresh_diag = _attempt_cookie_autorefresh()
+    if autorefreshed:
         return
 
     last_warn_ts = 0.0
@@ -1009,6 +1104,11 @@ def _check_cookie_age() -> None:
     body    = (
         f"Costco cookies are {age_days:.0f} days old (warn threshold: {_COOKIE_WARN_DAYS} days).\n\n"
         f"Scraping will likely start returning CHECK FAILED soon.\n\n"
+    )
+    if autorefresh_diag:
+        # truncated in _tail_output() before this escape, per feedback_telegram_html_escaping
+        body += f"Auto-refresh attempted and failed:\n{html.escape(autorefresh_diag)}\n\n"
+    body += (
         f"To fix:\n"
         f"  1. On your Windows laptop: .\\run.ps1 cookies\n"
         f"  2. Upload to VPS:          python tools/cookie_sync.py upload"
