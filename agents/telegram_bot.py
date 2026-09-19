@@ -3,8 +3,8 @@ Telegram Status Bot
 ===================
 WAT Framework: Persistent Telegram bot for agent monitoring. Runs as a
 systemd service on the Hermes VPS or as a Windows Startup-folder process.
-Responds to /help, /status, /logs, and /lookup commands from the
-authorized TELEGRAM_CHAT_ID only.
+Responds to /help, /status, /logs, /lookup, and /dashboard commands from
+the authorized TELEGRAM_CHAT_ID only.
 """
 
 import html
@@ -287,6 +287,64 @@ def format_lookup_reply(matches, term, now=None):
     return "Too many matches — be more specific."
 
 
+# ── Dashboard helpers ────────────────────────────────────────────────────────
+
+# (label, emoji) per canonical status, in the display priority order.
+_DASHBOARD_GROUPS = [
+    ("ACTIVE", "Active", "🟢"),
+    ("READY", "Ready", "✅"),
+    ("APPROVED", "Approved", "🟣"),
+    ("SCORED", "Scored", "🔵"),
+    ("PENDING", "Pending", "⬜️"),
+    ("AUDIT_REVIEW", "Audit Review", "🟡"),
+]
+
+_PAUSED_STATUSES = {"PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL"}
+
+_STATUS_TO_GROUP = {raw: label for raw, label, _ in _DASHBOARD_GROUPS}
+
+
+def count_statuses(rows):
+    """
+    Count non-empty column-A status values from a ragged list[list[str]]
+    (rows as returned by tools.sheet_writer.read_sheet, column A only).
+    Returns (counts: {display_label: int}, total: int).
+    """
+    counts = {}
+    total = 0
+    for row in rows:
+        status = safe_get(row, 0).strip()
+        if not status:
+            continue
+        total += 1
+        if status in _PAUSED_STATUSES:
+            label = "Paused"
+        else:
+            label = _STATUS_TO_GROUP.get(status, "Other")
+        counts[label] = counts.get(label, 0) + 1
+    return counts, total
+
+
+def format_dashboard_reply(counts, total):
+    """Render the /dashboard funnel summary in fixed priority order, skipping 0-count groups."""
+    order = [label for _, label, _ in _DASHBOARD_GROUPS] + ["Paused", "Other"]
+    emoji = {label: em for _, label, em in _DASHBOARD_GROUPS}
+    emoji["Paused"] = "⏸️"
+    emoji["Other"] = "⚪️"
+
+    lines = ["📊 WAT Dashboard", ""]
+    for label in order:
+        n = counts.get(label, 0)
+        if n == 0:
+            continue
+        lines.append(f"{emoji[label]} {label}: {n}")
+
+    lines.append("")
+    lines.append(f"Total tracked: {total}")
+    lines.append("Last updated: just now")
+    return "\n".join(lines)
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def _authorized(update, chat_id):
@@ -307,6 +365,7 @@ async def cmd_help(update, context):
         "/status — last run time, pass/fail, cookie age\n"
         "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck)\n"
         "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
+        "/dashboard — funnel summary (counts by status)\n"
         "/help — this message"
     )
     await update.message.reply_text(text, parse_mode="HTML")
@@ -397,6 +456,30 @@ async def cmd_lookup(update, context):
     await update.message.reply_text(text)
 
 
+async def cmd_dashboard(update, context):
+    if not _authorized(update, context.bot_data["chat_id"]):
+        return
+
+    try:
+        cfg = _load_business_cfg()
+        service = get_sheets_service()
+        sheet_name = cfg["sheet_name"]
+        start, end = cfg["data_start_row"], cfg["data_end_row"]
+        rows = read_sheet(service, f"'{sheet_name}'!A{start}:A{end}")
+    except Exception as e:
+        logger.warning(f"/dashboard sheet read failed: {e}")
+        await update.message.reply_text(
+            "Couldn't reach the product sheet right now — try again in a bit."
+        )
+        return
+
+    counts, total = count_statuses(rows)
+    text = format_dashboard_reply(counts, total)
+    if len(text) > _MAX_MSG:
+        text = text[:_MAX_MSG - 20] + "\n[truncated]"
+    await update.message.reply_text(text)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -431,6 +514,7 @@ def main():
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("logs", cmd_logs))
     app.add_handler(CommandHandler("lookup", cmd_lookup))
+    app.add_handler(CommandHandler("dashboard", cmd_dashboard))
 
     while True:
         try:
