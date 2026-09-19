@@ -39,6 +39,7 @@ LOG_FILES = {
     "discovery":     os.path.join(_BASE_DIR, "data", "logs", "discovery.log"),
     "refresh-notes": os.path.join(_BASE_DIR, "data", "logs", "refresh-notes.log"),
     "recheck":       os.path.join(_BASE_DIR, "data", "logs", "recheck.log"),
+    "telegram_bot":  os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
 }
 
 COOKIES_PATH = os.path.join(_BASE_DIR, "data", "costco_cookies.json")
@@ -363,9 +364,10 @@ async def cmd_help(update, context):
     text = (
         "<b>WAT Reselling Agent — Commands</b>\n\n"
         "/status — last run time, pass/fail, cookie age\n"
-        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck)\n"
+        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, telegram_bot)\n"
         "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
         "/dashboard — funnel summary (counts by status)\n"
+        "/restart — reload bot after a code update\n"
         "/help — this message"
     )
     await update.message.reply_text(text, parse_mode="HTML")
@@ -480,6 +482,14 @@ async def cmd_dashboard(update, context):
     await update.message.reply_text(text)
 
 
+async def cmd_restart(update, context):
+    if not _authorized(update, context.bot_data["chat_id"]):
+        return
+    await update.message.reply_text("♻️ Restarting bot — back in a few seconds...")
+    logger.info("Restart requested via /restart — re-executing process")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -515,6 +525,7 @@ def main():
     app.add_handler(CommandHandler("logs", cmd_logs))
     app.add_handler(CommandHandler("lookup", cmd_lookup))
     app.add_handler(CommandHandler("dashboard", cmd_dashboard))
+    app.add_handler(CommandHandler("restart", cmd_restart))
 
     while True:
         try:
