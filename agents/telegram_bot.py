@@ -2078,25 +2078,20 @@ def _main_body():
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
-    while True:
-        restart_state["conflict"] = False
-        restart_state["reexec"] = False
-        try:
-            logger.info("Polling for messages...")
-            app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-        except Exception:
-            logger.exception("Bot crashed — restarting in 30s")
-            time.sleep(30)
-            continue
+    try:
+        logger.info("Polling for messages...")
+        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    except Exception:
+        logger.exception("Bot crashed — exiting so start_telegram_bot.bat can restart the process")
+        sys.exit(1)
 
-        if restart_state["conflict"]:
-            logger.warning("Waiting 90s for Telegram to release the previous session before retrying.")
-            time.sleep(90)
-            continue
-        if restart_state["reexec"]:
-            logger.info("Restarting process via os.execv (graceful /restart)")
-            os.execv(sys.executable, [sys.executable] + sys.argv)
-        break  # clean shutdown (e.g. Ctrl+C) — don't loop forever
+    if restart_state["reexec"]:
+        logger.info("Restarting process via os.execv (graceful /restart)")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    if restart_state["conflict"]:
+        logger.warning("Conflict — exiting to let the .bat restart after Telegram releases the session")
+        sys.exit(3)
+    # clean shutdown (e.g. Ctrl+C) — return normally, exit code 0
 
 
 if __name__ == "__main__":
