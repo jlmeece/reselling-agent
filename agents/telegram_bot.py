@@ -7,25 +7,40 @@ Responds to /help, /status, /logs, /lookup, and /dashboard commands from
 the authorized TELEGRAM_CHAT_ID only.
 """
 
+import asyncio
 import html
 import os
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import psutil
 import yaml
 from dotenv import load_dotenv
 from loguru import logger
-from telegram import Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.error import Conflict
-from telegram.ext import Application, CommandHandler
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
 
-from tools.sheet_writer import get_sheets_service, read_sheet
+from tools.ebay_export import export_approved_products
+from tools.graveyard_writer import write_to_graveyard
+from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial
+from tools.spot_price import get_spot_price, parse_gold_weight
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -186,14 +201,48 @@ _LOOKUP_PRODUCT_FIELDS = (
     "regular_price", "demand_score",
 )
 
+# Matches config/categories.yaml's "business.data_start_row" — the first real
+# product row in the Product Tracker sheet (rows 1-3 are header/legend). Only
+# used as a fallback default so existing callers/tests that don't care about
+# absolute row numbers don't have to pass it; real handlers pass the actual
+# cfg value explicitly.
+_DEFAULT_DATA_START_ROW = 4
 
-def search_products(rows, col_map, term):
+
+def _extract_rows_by_field(rows, col_map, fields, *, data_start_row, filter_fn=None):
+    """
+    Shared row-extraction helper behind search_products/extract_dashboard_products
+    and the Review/Audit queue extractors. Builds one dict per row that passes
+    filter_fn (or every non-blank row if filter_fn is None), pulling `fields`
+    out via col_map, plus the absolute 1-based sheet row number needed by any
+    write-back action (Approve/Pause/Audit/Keep/Delete).
+
+    rows: ragged list[list[str]] as returned by tools.sheet_writer.read_sheet,
+    starting at data_start_row.
+    filter_fn(row) -> bool: optional predicate over the raw row; callers close
+    over whatever column indices they need. Never raises on ragged/short rows.
+    """
+    field_idx = {name: col_to_idx(col_map[name]) for name in fields}
+    out = []
+    for offset, row in enumerate(rows):
+        if not row:
+            continue
+        if filter_fn and not filter_fn(row):
+            continue
+        item = {name: safe_get(row, idx) for name, idx in field_idx.items()}
+        item["row_num"] = data_start_row + offset
+        out.append(item)
+    return out
+
+
+def search_products(rows, col_map, term, data_start_row=_DEFAULT_DATA_START_ROW):
     """
     Case-insensitive substring match against the title OR category columns.
     rows: ragged list[list[str]] as returned by tools.sheet_writer.read_sheet.
     col_map: {field_name: "COLUMN_LETTER"} — config/col_map.yaml's "columns" dict.
     Returns a list of dicts (one per matching row) with the raw field strings
-    needed for rendering. Never raises on ragged/short rows.
+    needed for rendering, plus row_num (the absolute sheet row, for write-back
+    actions). Never raises on ragged/short rows.
     """
     term_lc = term.strip().lower()
     if not term_lc:
@@ -202,20 +251,58 @@ def search_products(rows, col_map, term):
     title_i = col_to_idx(col_map["title"])
     cat_i = col_to_idx(col_map["category"])
 
-    field_idx = {name: col_to_idx(col_map[name]) for name in _LOOKUP_PRODUCT_FIELDS}
-
-    matches = []
-    for row in rows:
-        if not row:
-            continue
+    def matches_term(row):
         title = safe_get(row, title_i)
         category = safe_get(row, cat_i)
-        if term_lc in title.lower() or term_lc in category.lower():
-            match = {"title": title, "category": category}
-            for name, idx in field_idx.items():
-                match[name] = safe_get(row, idx)
-            matches.append(match)
-    return matches
+        return term_lc in title.lower() or term_lc in category.lower()
+
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category")
+    return _extract_rows_by_field(
+        rows, col_map, fields, data_start_row=data_start_row, filter_fn=matches_term
+    )
+
+
+def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
+    """
+    SCORED rows sorted by demand_score descending (unparseable scores sort
+    last) — feeds the Telegram bot's swipe-style Review queue. Same field set
+    as search_products, so a Review card renders via the same
+    format_product_detail() body as a /lookup card.
+    """
+    status_i = col_to_idx(col_map["status"])
+
+    def is_scored(row):
+        return safe_get(row, status_i) == "SCORED"
+
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category")
+    items = _extract_rows_by_field(
+        rows, col_map, fields, data_start_row=data_start_row, filter_fn=is_scored
+    )
+
+    def sort_key(p):
+        score = _parse_currency(p["demand_score"])
+        return -score if score is not None else float("inf")
+
+    items.sort(key=sort_key)
+    return items
+
+
+def extract_audit_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
+    """
+    AUDIT_REVIEW rows in sheet order (stable/deterministic — no urgency
+    ordering is defined for this queue). Includes tier_summary (col T), where
+    agents/auditor.py writes the human-readable flag reason, so the Audit
+    card can show *why* a row was flagged.
+    """
+    status_i = col_to_idx(col_map["status"])
+
+    def is_flagged(row):
+        return safe_get(row, status_i) == "AUDIT_REVIEW"
+
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category", "tier_summary")
+    return _extract_rows_by_field(
+        rows, col_map, fields, data_start_row=data_start_row, filter_fn=is_flagged
+    )
 
 
 def _format_price(raw):
@@ -369,21 +456,31 @@ def _format_sale_line(sale_info_raw, now=None):
     return f"🔥 Sale ends {exp_str} ({days_left}d left)"
 
 
-def _format_last_checked_line(last_checked_raw, now=None):
+def _hours_since_checked(last_checked_raw, now=None):
     """
-    Return 'Last checked Nh ago'. last_checked is written as '%Y-%m-%d %H:%M'
-    (agents/scheduler.py:89). Falls back to 'unknown' when missing/
-    unparseable; appends a STALE warning when older than 12 hours.
+    Hours since a last_checked cell ('%Y-%m-%d %H:%M', agents/scheduler.py:89),
+    or None if blank/unparseable. Shared by _format_last_checked_line and
+    find_stale_active_items (the Alerts screen's Stale Checks section).
     """
     raw = (last_checked_raw or "").strip()
     if not raw:
-        return "Last checked unknown"
+        return None
     try:
         checked_dt = datetime.strptime(raw, "%Y-%m-%d %H:%M")
     except ValueError:
-        return "Last checked unknown"
+        return None
     now = now or datetime.now()
-    hours_ago = max(0, (now - checked_dt).total_seconds() / 3600)
+    return max(0, (now - checked_dt).total_seconds() / 3600)
+
+
+def _format_last_checked_line(last_checked_raw, now=None):
+    """
+    Return 'Last checked Nh ago'. Falls back to 'unknown' when missing/
+    unparseable; appends a STALE warning when older than 12 hours.
+    """
+    hours_ago = _hours_since_checked(last_checked_raw, now=now)
+    if hours_ago is None:
+        return "Last checked unknown"
     line = f"Last checked {hours_ago:.0f}h ago"
     if hours_ago > 12:
         line += " ⚠️ STALE — price may have changed"
@@ -433,6 +530,27 @@ def format_product_detail(p, now=None):
     lines.append(_format_last_checked_line(p.get("last_checked"), now=now))
     lines.append(p.get("costco_url") or "—")
     return "\n".join(lines)
+
+
+def format_review_card(item, position, total):
+    """
+    Render a Review-queue swipe card: a position counter over the same body
+    a /lookup card uses (format_product_detail) — reused rather than
+    re-implementing the ~15 lines of financial-detail formatting a third
+    time.
+    """
+    return f"Item {position} of {total}\n{format_product_detail(item)}"
+
+
+def format_audit_card(item, position, total):
+    """
+    Render an Audit-queue swipe card: the same body as format_review_card,
+    prefixed with the flag reason from tier_summary (col T) when present —
+    where agents/auditor.py writes why a row was sent to AUDIT_REVIEW.
+    """
+    reason = (item.get("tier_summary") or "").strip()
+    reason_line = f"⚠️ Flagged: {reason}\n" if reason else ""
+    return f"{reason_line}Item {position} of {total}\n{format_product_detail(item)}"
 
 
 def _lookup_summary_line(p):
@@ -526,24 +644,25 @@ _DASHBOARD_PRODUCT_FIELDS = (
     "status", "title", "category", "demand_score", "net_profit", "net_margin",
     "comp_saturation", "suggested_price", "sale_info", "ad_budget",
     "costco_cost", "ebay_price", "mpt_sharpe", "mpt_rank",
+    "stock_status", "last_checked",
 )
 
 
-def extract_dashboard_products(rows, col_map):
+def extract_dashboard_products(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
     """
     Build one dict of raw string fields per non-blank-status row, keyed by
-    col_map field name. Mirrors search_products()'s field_idx pattern.
-    Never raises on ragged/short rows.
+    col_map field name, plus row_num (the absolute sheet row). Never raises
+    on ragged/short rows.
     """
-    field_idx = {name: col_to_idx(col_map[name]) for name in _DASHBOARD_PRODUCT_FIELDS}
-    products = []
-    for row in rows:
-        status = safe_get(row, field_idx["status"]).strip()
-        if not status:
-            continue
-        p = {name: safe_get(row, idx) for name, idx in field_idx.items()}
-        products.append(p)
-    return products
+    status_i = col_to_idx(col_map["status"])
+
+    def has_status(row):
+        return bool(safe_get(row, status_i).strip())
+
+    return _extract_rows_by_field(
+        rows, col_map, _DASHBOARD_PRODUCT_FIELDS,
+        data_start_row=data_start_row, filter_fn=has_status,
+    )
 
 
 def _parse_currency(raw):
@@ -682,6 +801,154 @@ def format_category_breakdown(products, category_names=None):
     return "\n".join(["📦 Category Breakdown"] + lines)
 
 
+# Mirrors tools/status_logic.py's own convention for "still has a stock
+# issue" — the same three values that block a PAUSED_OOS -> WATCH promotion.
+_STOCK_ISSUE_VALUES = {"OUT OF STOCK", "CHECK FAILED", "Limited"}
+
+
+def find_stale_active_items(products, now=None, stale_hours=12):
+    """ACTIVE rows not checked within stale_hours — Alerts screen's Stale Checks section."""
+    out = []
+    for p in products:
+        if (p.get("status") or "").strip() != "ACTIVE":
+            continue
+        hours = _hours_since_checked(p.get("last_checked"), now=now)
+        if hours is not None and hours > stale_hours:
+            out.append(p)
+    return out
+
+
+def find_back_in_stock(products):
+    """PAUSED_OOS rows whose stock_status no longer reads as an out-of-stock signal."""
+    out = []
+    for p in products:
+        if (p.get("status") or "").strip() != "PAUSED_OOS":
+            continue
+        stock = (p.get("stock_status") or "").strip()
+        if stock and stock not in _STOCK_ISSUE_VALUES:
+            out.append(p)
+    return out
+
+
+def _parse_pct(raw):
+    """
+    Parse a percentage-ish sheet cell (e.g. net_margin, col J) to a plain
+    float percentage: '18%' -> 18.0, '0.18' -> 18.0, '18' -> 18.0. None if
+    blank/unparseable. Kept separate from _format_fee_rate_pct, which has its
+    own tested contract of passing an already-'%'-suffixed cell through
+    unchanged as a string rather than reformatting it.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    if raw.endswith("%"):
+        return _parse_currency(raw[:-1])
+    val = _parse_currency(raw)
+    if val is None:
+        return None
+    return val * 100 if 0 < abs(val) < 1 else val
+
+
+def compute_category_roi(products, category_names=None):
+    """
+    Average net_margin per category among rows NOT in a PAUSED_*/REJECTED
+    status. Unlike format_category_breakdown (which omits zero-count
+    categories), every category in category_names always gets a line, even
+    "0 items" — Category ROI exists to surface dead categories, not hide
+    them. Unknown categories found in the sheet but absent from
+    category_names are appended at the end, same convention as
+    format_category_breakdown. category_names defaults to
+    _load_category_names(); pass explicitly to avoid reading the real config
+    (e.g. in tests).
+    """
+    known = category_names if category_names is not None else _load_category_names()
+    by_cat = {c: [] for c in known}
+    for p in products:
+        status = (p.get("status") or "").strip()
+        if status in _PAUSED_STATUSES or status == "REJECTED":
+            continue
+        cat = (p.get("category") or "").strip()
+        by_cat.setdefault(cat, [])
+        margin = _parse_pct(p.get("net_margin"))
+        if margin is not None:
+            by_cat[cat].append(margin)
+
+    lines = ["📈 Category ROI"]
+    for cat, vals in by_cat.items():
+        if not vals:
+            lines.append(f"{cat}: 0 items")
+            continue
+        avg = sum(vals) / len(vals)
+        lines.append(f"{cat}: {avg:.0f}% avg margin ({len(vals)} items)")
+    return "\n".join(lines)
+
+
+# Mirrors tools/spot_price.py's own _KARAT_PURITY table — duplicated rather
+# than importing that module's private constant across module boundaries.
+_GOLD_KARAT_PURITY = {24: 1.0, 22: 22 / 24, 18: 18 / 24, 14: 14 / 24, 10: 10 / 24}
+
+
+def compute_spot_price_impact(products, gold_spot, silver_spot):
+    """
+    For ACTIVE Precious Metals rows, estimate today's melt-based cost from a
+    live spot price and the title's parsed weight/karat, and compare against
+    the row's stored ebay_price/net_margin to flag how much margin may have
+    drifted since the row was last scraped. This is an ESTIMATE, not a live
+    recompute — the sheet's own net_profit/net_margin formulas (protected
+    columns I/J) don't know about live spot and are left untouched here.
+
+    Pure function: caller supplies gold_spot/silver_spot (e.g. from
+    tools.spot_price.get_spot_price) rather than this function fetching them
+    itself, so it stays testable without network access or spot_price's
+    internal cache/history state.
+
+    Coverage is necessarily partial — jewelry/mixed-metal Precious Metals
+    rows routinely have no parseable weight (gemstones, mixed materials) —
+    so results explicitly separate "N items estimated" from "M skipped"
+    rather than presenting silent partial coverage as if it were complete.
+    """
+    estimated = []
+    skipped = 0
+    for p in products:
+        if (p.get("status") or "").strip() != "ACTIVE":
+            continue
+        if (p.get("category") or "").strip() != "Precious Metals":
+            continue
+        title = p.get("title") or ""
+        weight_oz, karat = parse_gold_weight(title)
+        if not weight_oz:
+            skipped += 1
+            continue
+        is_silver = "silver" in title.lower()
+        spot = silver_spot if is_silver else gold_spot
+        ebay_price = _parse_currency(p.get("ebay_price"))
+        if spot is None or not ebay_price or ebay_price <= 0:
+            skipped += 1
+            continue
+        purity = _GOLD_KARAT_PURITY.get(karat or 24, 1.0)
+        est_cost = spot * weight_oz * purity
+        est_margin = (ebay_price - est_cost) / ebay_price * 100
+        estimated.append({
+            "title": title,
+            "stored_margin": _parse_pct(p.get("net_margin")),
+            "est_margin": est_margin,
+        })
+
+    lines = ["🪙 Spot Price Impact"]
+    if gold_spot is not None:
+        lines.append(f"Gold: ${gold_spot:,.2f}/oz")
+    if silver_spot is not None:
+        lines.append(f"Silver: ${silver_spot:,.2f}/oz")
+    lines.append(
+        f"{len(estimated)} Precious Metals items re-estimated · "
+        f"{skipped} skipped (no parseable weight)"
+    )
+    for item in estimated:
+        was = f"{item['stored_margin']:.0f}%" if item["stored_margin"] is not None else "—"
+        lines.append(f"  • {item['title']} — margin ~{item['est_margin']:.0f}% (was {was})")
+    return "\n".join(lines)
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def _authorized(update, chat_id):
@@ -692,6 +959,30 @@ def _authorized(update, chat_id):
     return True
 
 
+# ── Sheet write guard ────────────────────────────────────────────────────────
+
+# config/col_map.yaml's own header comment documents these as formula columns
+# (net_profit, net_margin, comp_saturation, total_cost, ebay_fees, tax_est,
+# site_profit, ad_budget) — never overwrite them with an agent/bot write.
+PROTECTED_COLS = {"I", "J", "N", "Z", "AC", "AF", "AG", "AH"}
+
+
+def safe_write_row(service, sheet_name, row_num, col_value_pairs):
+    """
+    Wraps tools.sheet_writer.write_row_partial with a hard stop against ever
+    writing to a formula column. Raises ValueError rather than silently
+    dropping the offending pair — a silent drop would look like a successful
+    write to the caller while quietly doing nothing, which is worse than a
+    loud failure for a money-affecting sheet. Every bot write-back action
+    (Approve/Pause/Audit/Keep/Delete) must go through this, never
+    write_row_partial directly.
+    """
+    bad = [col for col, _ in col_value_pairs if col.upper() in PROTECTED_COLS]
+    if bad:
+        raise ValueError(f"Refusing to write protected formula column(s): {bad}")
+    return write_row_partial(service, sheet_name, row_num, col_value_pairs)
+
+
 # ── Handlers ─────────────────────────────────────────────────────────────────
 
 async def cmd_help(update, context):
@@ -699,6 +990,8 @@ async def cmd_help(update, context):
         return
     text = (
         "<b>WAT Reselling Agent — Commands</b>\n\n"
+        "/menu — button-driven home screen (Dashboard, Search, Review, Alerts, Operations, Logs)\n"
+        "/start — show the persistent button keyboard\n"
         "/status — last run time, pass/fail, cookie age\n"
         "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, telegram_bot)\n"
         "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
@@ -787,7 +1080,7 @@ async def cmd_lookup(update, context):
         )
         return
 
-    matches = search_products(rows, col_map, term)
+    matches = search_products(rows, col_map, term, data_start_row=start)
     text = format_lookup_reply(matches, term)
     if len(text) > _MAX_MSG:
         text = text[:_MAX_MSG - 20] + "\n[truncated]"
@@ -813,7 +1106,7 @@ async def cmd_dashboard(update, context):
         return
 
     counts, total = count_statuses(rows)
-    products = extract_dashboard_products(rows, col_map)
+    products = extract_dashboard_products(rows, col_map, data_start_row=start)
 
     blocks = [format_dashboard_reply(counts, total)]
     for section in (
@@ -837,6 +1130,882 @@ async def cmd_restart(update, context):
     logger.info("Restart requested via /restart — stopping gracefully before re-exec")
     context.bot_data["_restart_state"]["reexec"] = True
     context.application.stop_running()
+
+
+# ── Sheet context helpers (shared by the button-driven screens below) ─────────
+
+def _sheet_ctx():
+    """col_map, service, sheet_name, data_start_row, data_end_row — no row read."""
+    col_map = _load_col_map()
+    cfg = _load_business_cfg()
+    service = get_sheets_service()
+    return col_map, service, cfg["sheet_name"], cfg["data_start_row"], cfg["data_end_row"]
+
+
+def _read_product_rows():
+    """col_map, service, sheet_name, data_start_row, rows — for screens that need actual row data."""
+    col_map, service, sheet_name, start, end = _sheet_ctx()
+    rows = read_sheet(service, f"'{sheet_name}'!A{start}:BA{end}")
+    return col_map, service, sheet_name, start, rows
+
+
+def _find_by_row_num(items, row_num):
+    return next((p for p in items if p["row_num"] == row_num), None)
+
+
+def _delete_sheet_row(service, sheet_name, row_num, context):
+    """
+    Delete one row via the Sheets API's deleteDimension (a real row removal,
+    not a status write — write_row_partial/safe_write_row don't apply here).
+    Caches the sheet's numeric gid on bot_data since resolving it costs an
+    extra spreadsheets().get() call.
+    """
+    spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
+    gid = context.bot_data.get("sheet_gid")
+    if gid is None:
+        meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        gid = next(
+            s["properties"]["sheetId"] for s in meta["sheets"]
+            if s["properties"]["title"] == sheet_name
+        )
+        context.bot_data["sheet_gid"] = gid
+    body = {"requests": [{"deleteDimension": {"range": {
+        "sheetId": gid, "dimension": "ROWS",
+        "startIndex": row_num - 1, "endIndex": row_num,
+    }}}]}
+    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+
+
+async def _send_screen(update, text, reply_markup=None, parse_mode=None):
+    """
+    Render a screen whether it was reached via an inline button (edit the
+    existing message in place) or via the persistent reply keyboard / a
+    command (send a new message) — every menu:* handler below is callable
+    from either entry point without duplicating rendering logic.
+    """
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+
+
+_SHEET_UNREACHABLE_MSG = "Couldn't reach the product sheet right now — try again in a bit."
+
+
+def _home_inline_kb():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="menu:root")]])
+
+
+# ── Persistent home keyboard (spec Part 2) ─────────────────────────────────────
+
+_HOME_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        ["📊 Dashboard", "🔍 Search"],
+        ["✅ Review", "🚨 Alerts"],
+        ["⚙️ Operations", "📋 Logs"],
+    ],
+    resize_keyboard=True,
+)
+
+
+async def cmd_start(update, context):
+    if not _authorized(update, context.bot_data["chat_id"]):
+        return
+    context.user_data["awaiting_search"] = False
+    context.user_data["queue"] = None
+    await update.message.reply_text(
+        "👋 Welcome to the WAT Reselling Agent. Tap a button below to get started.",
+        reply_markup=_HOME_KEYBOARD,
+    )
+
+
+async def cmd_menu(update, context):
+    if not _authorized(update, context.bot_data["chat_id"]):
+        return
+    await cb_menu_root(update, context, None)
+
+
+# ── Callback data scheme + router ───────────────────────────────────────────
+#
+# callback_data is always "domain:action" or "domain:action:arg". arg, when
+# present, is always a numeric row_num or a short fixed-vocabulary mode/log
+# name — never free text, since titles can contain colons/emoji and would
+# blow past Telegram's 64-byte callback_data limit.
+
+_CALLBACK_ROUTES = {}  # (domain, action) -> async handler(update, context, arg)
+
+
+async def on_callback(update, context):
+    query = update.callback_query
+    if not _authorized(update, context.bot_data["chat_id"]):
+        await query.answer()
+        return
+    await query.answer()  # ack immediately so Telegram clears the tap spinner
+
+    parts = (query.data or "").split(":", 2)
+    if len(parts) < 2:
+        logger.warning(f"Malformed callback_data: {query.data!r}")
+        return
+    domain, action = parts[0], parts[1]
+    arg = parts[2] if len(parts) > 2 else None
+
+    handler = _CALLBACK_ROUTES.get((domain, action))
+    if handler is None:
+        logger.warning(f"No route for callback_data: {query.data!r}")
+        return
+    try:
+        await handler(update, context, arg)
+    except Exception:
+        logger.exception(f"Callback handler failed for {query.data!r}")
+        try:
+            await query.edit_message_text("Something went wrong — back to menu.", reply_markup=_home_inline_kb())
+        except Exception:
+            pass
+
+
+# ── Root menu / Dashboard screens ────────────────────────────────────────────
+
+async def cb_menu_root(update, context, arg):
+    context.user_data["awaiting_search"] = False
+    context.user_data["queue"] = None
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
+         InlineKeyboardButton("🔍 Search", callback_data="menu:search")],
+        [InlineKeyboardButton("✅ Review", callback_data="menu:review"),
+         InlineKeyboardButton("🚨 Alerts", callback_data="menu:alerts")],
+        [InlineKeyboardButton("⚙️ Operations", callback_data="menu:ops"),
+         InlineKeyboardButton("📋 Logs", callback_data="menu:logs")],
+    ])
+    await _send_screen(update, "🏠 Home — tap a screen:", reply_markup=kb)
+
+
+async def cb_menu_dashboard(update, context, arg):
+    context.user_data["awaiting_search"] = False
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"dashboard screen sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+
+    counts, total = count_statuses(rows)
+    products = extract_dashboard_products(rows, col_map, data_start_row=start)
+    blocks = [format_dashboard_reply(counts, total)]
+    for section in (
+        format_top_opportunities(products),
+        format_sale_urgency_section(products),
+        format_category_breakdown(products),
+    ):
+        if section:
+            blocks.append(section)
+    text = "\n\n".join(blocks)
+    if len(text) > _MAX_MSG - 20:
+        text = text[:_MAX_MSG - 40] + "\n[truncated]"
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh", callback_data="menu:dashboard"),
+         InlineKeyboardButton("✅ Review Items", callback_data="menu:review")],
+        [InlineKeyboardButton("📤 Export CSV", callback_data="job:export"),
+         InlineKeyboardButton("💰 Spot Prices", callback_data="menu:spot")],
+        [InlineKeyboardButton("📈 Category ROI", callback_data="menu:roi"),
+         InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+    ])
+    await _send_screen(update, text, reply_markup=kb)
+
+
+# ── Search flow (spec Part 4) ────────────────────────────────────────────────
+#
+# Free text is used in exactly one place in this whole bot: typing a search
+# term. Everything else is button taps, so a single "awaiting_search" flag on
+# context.user_data plus one MessageHandler does the job of a full
+# ConversationHandler with far less state-machine ceremony.
+
+async def cb_menu_search(update, context, arg):
+    context.user_data["queue"] = None
+    context.user_data["awaiting_search"] = True
+    await _send_screen(
+        update, "🔎 Type a product name or category to search.", reply_markup=_home_inline_kb()
+    )
+
+
+def _search_action_kb(row_num, status):
+    rows_ = []
+    if status == "SCORED":
+        rows_.append([
+            InlineKeyboardButton("✅ Approve", callback_data=f"review:approve:{row_num}"),
+            InlineKeyboardButton("⏸️ Pause", callback_data=f"review:pause:{row_num}"),
+            InlineKeyboardButton("🔍 Audit", callback_data=f"review:audit:{row_num}"),
+        ])
+    rows_.append([InlineKeyboardButton("🔍 Search Again", callback_data="menu:search")])
+    rows_.append([InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+    return InlineKeyboardMarkup(rows_)
+
+
+def _search_match_buttons_kb(matches):
+    rows_ = [
+        [InlineKeyboardButton(f"📦 {(m['title'] or '(untitled)')[:40]} — {m['category'] or '—'}",
+                               callback_data=f"search:pick:{m['row_num']}")]
+        for m in matches
+    ]
+    rows_.append([InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+    return InlineKeyboardMarkup(rows_)
+
+
+async def _handle_search_term(update, context, term):
+    if not term:
+        await update.message.reply_text("Empty search — try again from the menu.", reply_markup=_home_inline_kb())
+        return
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"search sheet read failed: {e}")
+        await update.message.reply_text(_SHEET_UNREACHABLE_MSG)
+        return
+
+    matches = search_products(rows, col_map, term, data_start_row=start)
+    if not matches:
+        await update.message.reply_text(f"No products found matching '{term}'.", reply_markup=_home_inline_kb())
+    elif len(matches) == 1:
+        p = matches[0]
+        await update.message.reply_text(
+            format_product_detail(p),
+            reply_markup=_search_action_kb(p["row_num"], (p.get("status") or "").strip()),
+        )
+    elif len(matches) <= 5:
+        await update.message.reply_text(
+            f"Found {len(matches)} matches for '{term}':", reply_markup=_search_match_buttons_kb(matches)
+        )
+    else:
+        await update.message.reply_text("Too many matches — be more specific.", reply_markup=_home_inline_kb())
+
+
+async def cb_search_pick(update, context, arg):
+    row_num = int(arg)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"search:pick sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG)
+        return
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category")
+    items = _extract_rows_by_field(rows, col_map, fields, data_start_row=start)
+    p = _find_by_row_num(items, row_num)
+    if p is None:
+        await _send_screen(
+            update, "This item is no longer available — it may have been removed.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+    await _send_screen(
+        update, format_product_detail(p),
+        reply_markup=_search_action_kb(p["row_num"], (p.get("status") or "").strip()),
+    )
+
+
+# ── Review queue (spec Part 5) ───────────────────────────────────────────────
+
+def _active_queue_item(context, row_num):
+    """
+    The current queue item if row_num matches the queue's current position,
+    else None — None means this tap targets a stale/already-handled card (a
+    row rendered earlier that the user is tapping again, or one reached
+    through Search rather than the swipe queue), so callers fall back to a
+    one-off confirmation instead of advancing queue state that doesn't apply.
+    """
+    q = context.user_data.get("queue")
+    if not q or q["pos"] >= len(q["items"]):
+        return None
+    item = q["items"][q["pos"]]
+    if item["row_num"] != row_num:
+        return None
+    return item
+
+
+def _review_card_kb(row_num):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Approve", callback_data=f"review:approve:{row_num}"),
+         InlineKeyboardButton("⏸️ Pause", callback_data=f"review:pause:{row_num}")],
+        [InlineKeyboardButton("🔍 Send to Audit", callback_data=f"review:audit:{row_num}"),
+         InlineKeyboardButton("⏭️ Skip", callback_data=f"review:skip:{row_num}")],
+        [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
+    ])
+
+
+async def cb_menu_review(update, context, arg):
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"review queue sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    items = extract_review_queue(rows, col_map, data_start_row=start)
+    if not items:
+        await _send_screen(
+            update, "✅ Review queue is empty — nothing to approve right now.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+    context.user_data["queue"] = {
+        "kind": "review", "items": items, "pos": 0,
+        "tally": {"approved": 0, "paused": 0, "audited": 0, "skipped": 0},
+    }
+    await _render_review_position(update, context)
+
+
+async def _render_review_position(update, context):
+    q = context.user_data["queue"]
+    item = q["items"][q["pos"]]
+    text = format_review_card(item, q["pos"] + 1, len(q["items"]))
+    await _send_screen(update, text, reply_markup=_review_card_kb(item["row_num"]))
+
+
+async def _finish_review_queue(update, context):
+    q = context.user_data["queue"]
+    t = q["tally"]
+    text = (
+        f"✅ Review complete — {len(q['items'])} items processed\n"
+        f"  Approved: {t['approved']}\n"
+        f"  Paused: {t['paused']}\n"
+        f"  Sent to Audit: {t['audited']}\n"
+        f"  Skipped: {t['skipped']}"
+    )
+    context.user_data["queue"] = None
+    await _send_screen(update, text, reply_markup=_home_inline_kb())
+
+
+async def _advance_or_finish_review(update, context):
+    q = context.user_data["queue"]
+    q["pos"] += 1
+    if q["pos"] >= len(q["items"]):
+        await _finish_review_queue(update, context)
+    else:
+        await _render_review_position(update, context)
+
+
+async def cb_review_approve(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    col_map, service, sheet_name, start, end = _sheet_ctx()
+    safe_write_row(service, sheet_name, row_num, [(col_map["status"], "APPROVED")])
+    if item is None:
+        await _send_screen(update, "✅ Approved.", reply_markup=_home_inline_kb())
+        return
+    context.user_data["queue"]["tally"]["approved"] += 1
+    await _advance_or_finish_review(update, context)
+
+
+async def cb_review_skip(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    if item is None:
+        await _send_screen(update, "Skipped.", reply_markup=_home_inline_kb())
+        return
+    context.user_data["queue"]["tally"]["skipped"] += 1
+    await _advance_or_finish_review(update, context)
+
+
+async def cb_review_audit(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    col_map, service, sheet_name, start, end = _sheet_ctx()
+    safe_write_row(service, sheet_name, row_num, [
+        (col_map["status"], "AUDIT_REVIEW"),
+        (col_map["tier_summary"], "[AUDIT_REVIEW] Sent to audit via Telegram bot"),
+    ])
+    if item is None:
+        await _send_screen(update, "🔍 Sent to audit.", reply_markup=_home_inline_kb())
+        return
+    context.user_data["queue"]["tally"]["audited"] += 1
+    await _advance_or_finish_review(update, context)
+
+
+async def cb_review_pause(update, context, arg):
+    row_num = int(arg)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Out of Stock", callback_data=f"pause:oos:{row_num}"),
+         InlineKeyboardButton("📉 Low Margin", callback_data=f"pause:margin:{row_num}")],
+        [InlineKeyboardButton("📊 Low Demand", callback_data=f"pause:demand:{row_num}"),
+         InlineKeyboardButton("📅 Seasonal", callback_data=f"pause:seasonal:{row_num}")],
+        [InlineKeyboardButton("❌ Cancel", callback_data=f"pause:back:{row_num}")],
+    ])
+    await _send_screen(update, "Why pause this item?", reply_markup=kb)
+
+
+_PAUSE_REASON_STATUS = {
+    "oos": "PAUSED_OOS", "margin": "PAUSED_MARGIN",
+    "demand": "PAUSED_DEMAND", "seasonal": "PAUSED_SEASONAL",
+}
+# OOS/MARGIN are already re-checked every daily sweep (DAILY_SWEEP_STATUSES in
+# tools/status_logic.py); DEMAND/SEASONAL are not, so a bot-driven pause for
+# either sets a re_eval_date — without it those rows would never get
+# reconsidered, unlike a scheduler-driven pause.
+_PAUSE_REASON_REEVAL_DAYS = {"seasonal": 30, "demand": 14}
+
+
+async def _do_pause(update, context, arg, reason):
+    row_num = int(arg)
+    status = _PAUSE_REASON_STATUS[reason]
+    item = _active_queue_item(context, row_num)
+    col_map, service, sheet_name, start, end = _sheet_ctx()
+    pairs = [(col_map["status"], status)]
+    reeval_days = _PAUSE_REASON_REEVAL_DAYS.get(reason)
+    if reeval_days:
+        reeval_date = (datetime.now() + timedelta(days=reeval_days)).strftime("%Y-%m-%d")
+        pairs.append((col_map["re_eval_date"], reeval_date))
+    safe_write_row(service, sheet_name, row_num, pairs)
+    if item is None:
+        await _send_screen(update, f"⏸️ Paused ({status}).", reply_markup=_home_inline_kb())
+        return
+    context.user_data["queue"]["tally"]["paused"] += 1
+    await _advance_or_finish_review(update, context)
+
+
+async def cb_pause_oos(update, context, arg):
+    await _do_pause(update, context, arg, "oos")
+
+
+async def cb_pause_margin(update, context, arg):
+    await _do_pause(update, context, arg, "margin")
+
+
+async def cb_pause_demand(update, context, arg):
+    await _do_pause(update, context, arg, "demand")
+
+
+async def cb_pause_seasonal(update, context, arg):
+    await _do_pause(update, context, arg, "seasonal")
+
+
+async def cb_pause_back(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    if item is not None:
+        await _render_review_position(update, context)
+    else:
+        await _send_screen(update, "Cancelled.", reply_markup=_home_inline_kb())
+
+
+# ── Audit queue (spec Part 6) ────────────────────────────────────────────────
+
+def _audit_card_kb(row_num):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Keep", callback_data=f"audit:keep:{row_num}"),
+         InlineKeyboardButton("🗑️ Delete", callback_data=f"audit:delete:{row_num}")],
+        [InlineKeyboardButton("⏭️ Skip", callback_data=f"audit:skip:{row_num}")],
+        [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
+    ])
+
+
+async def cb_menu_audit(update, context, arg):
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"audit queue sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    items = extract_audit_queue(rows, col_map, data_start_row=start)
+    if not items:
+        await _send_screen(
+            update, "✅ Audit queue is empty — nothing flagged right now.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+    context.user_data["queue"] = {
+        "kind": "audit", "items": items, "pos": 0,
+        "tally": {"kept": 0, "deleted": 0, "skipped": 0},
+    }
+    await _render_audit_position(update, context)
+
+
+async def _render_audit_position(update, context):
+    q = context.user_data["queue"]
+    item = q["items"][q["pos"]]
+    text = format_audit_card(item, q["pos"] + 1, len(q["items"]))
+    await _send_screen(update, text, reply_markup=_audit_card_kb(item["row_num"]))
+
+
+async def _finish_audit_queue(update, context):
+    q = context.user_data["queue"]
+    t = q["tally"]
+    text = (
+        f"✅ Audit complete — {len(q['items'])} items processed\n"
+        f"  Kept: {t['kept']}\n"
+        f"  Deleted: {t['deleted']}\n"
+        f"  Skipped: {t['skipped']}"
+    )
+    context.user_data["queue"] = None
+    await _send_screen(update, text, reply_markup=_home_inline_kb())
+
+
+async def cb_audit_keep(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    col_map, service, sheet_name, start, end = _sheet_ctx()
+    safe_write_row(service, sheet_name, row_num, [(col_map["status"], "APPROVED")])
+    if item is None:
+        await _send_screen(update, "✅ Kept (Approved).", reply_markup=_home_inline_kb())
+        return
+    q = context.user_data["queue"]
+    q["tally"]["kept"] += 1
+    q["pos"] += 1
+    if q["pos"] >= len(q["items"]):
+        await _finish_audit_queue(update, context)
+    else:
+        await _render_audit_position(update, context)
+
+
+async def cb_audit_skip(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    if item is None:
+        await _send_screen(update, "Skipped.", reply_markup=_home_inline_kb())
+        return
+    q = context.user_data["queue"]
+    q["tally"]["skipped"] += 1
+    q["pos"] += 1
+    if q["pos"] >= len(q["items"]):
+        await _finish_audit_queue(update, context)
+    else:
+        await _render_audit_position(update, context)
+
+
+async def cb_audit_delete(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    title = item["title"] if item else f"row {row_num}"
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🗑️ Confirm Delete", callback_data=f"audit_confirm:delete:{row_num}"),
+        InlineKeyboardButton("❌ Cancel", callback_data=f"audit_confirm:cancel:{row_num}"),
+    ]])
+    await _send_screen(update, f"Delete '{title}' permanently?", reply_markup=kb)
+
+
+async def cb_audit_confirm_cancel(update, context, arg):
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    if item is not None:
+        await _render_audit_position(update, context)
+    else:
+        await _send_screen(update, "Cancelled.", reply_markup=_home_inline_kb())
+
+
+async def cb_audit_confirm_delete(update, context, arg):
+    """
+    Two-step delete (confirm already happened in cb_audit_delete) + a
+    Graveyard-tab write before the row is removed — matching
+    agents/auditor.py's own convention for every other automated delete path
+    in this codebase, rather than a bare irreversible tap with no record.
+    """
+    row_num = int(arg)
+    item = _active_queue_item(context, row_num)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"audit delete sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG)
+        return
+
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category")
+    current = _find_by_row_num(_extract_rows_by_field(rows, col_map, fields, data_start_row=start), row_num)
+    if current is None:
+        await _send_screen(
+            update, "This item is no longer there — it may have already been handled.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+
+    write_to_graveyard(service, [{
+        "date_removed": datetime.now().strftime("%Y-%m-%d"),
+        "reason": "Deleted via Telegram bot (Audit queue)",
+        "category": current.get("category", ""),
+        "title": current.get("title", ""),
+        "cost": current.get("costco_cost", ""),
+        "ebay_price": current.get("ebay_price", ""),
+        "net_profit": current.get("net_profit", ""),
+        "score": current.get("demand_score", ""),
+        "status_at_removal": "AUDIT_REVIEW",
+        "original_row": row_num,
+    }])
+    _delete_sheet_row(service, sheet_name, row_num, context)
+
+    if item is not None and context.user_data.get("queue"):
+        context.user_data["queue"]["tally"]["deleted"] += 1
+
+    # A deleteDimension shifts every row below the deleted one up by one,
+    # invalidating cached row_num for every not-yet-visited queue item.
+    # Re-extracting from the sheet is the cheapest correct fix for a queue
+    # this small — cheaper than patching cached row numbers in memory.
+    try:
+        col_map2, service2, sheet_name2, start2, rows2 = _read_product_rows()
+        items = extract_audit_queue(rows2, col_map2, data_start_row=start2)
+    except Exception as e:
+        logger.warning(f"audit re-extract after delete failed: {e}")
+        items = []
+
+    if context.user_data.get("queue"):
+        context.user_data["queue"]["items"] = items
+        context.user_data["queue"]["pos"] = 0
+
+    if not items:
+        await _finish_audit_queue(update, context)
+    else:
+        await _render_audit_position(update, context)
+
+
+# ── Alerts screen (spec Part 6) ──────────────────────────────────────────────
+
+async def cb_menu_alerts(update, context, arg):
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"alerts screen sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+
+    products = extract_dashboard_products(rows, col_map, data_start_row=start)
+    audit_count = len(extract_audit_queue(rows, col_map, data_start_row=start))
+    stale = find_stale_active_items(products)
+    back_in_stock = find_back_in_stock(products)
+    sale_section = format_sale_urgency_section(products)
+
+    lines = ["🚨 Active Alerts", ""]
+    lines.append(sale_section if sale_section else "🔥 Sale Expiring Soon: none")
+    lines.append(f"⚠️ Stale Checks: {len(stale)} ACTIVE item(s) not checked in 12h+")
+    lines.append(f"📦 Back In Stock: {len(back_in_stock)} item(s)")
+    lines.append(f"🗂️ Audit Queue: {audit_count} item(s)")
+    text = "\n".join(lines)
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🗂️ Audit Queue", callback_data="menu:audit")],
+        [InlineKeyboardButton("🔄 Refresh", callback_data="menu:alerts"),
+         InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+    ])
+    await _send_screen(update, text, reply_markup=kb)
+
+
+# ── Operations / job launching (spec Part 7) ─────────────────────────────────
+#
+# scheduler.py's own completion notifications (tools/alert_sender.py) only
+# fire on crash or a truthy tier-1 result — a routine successful run sends no
+# Telegram message today. asyncio.create_subprocess_exec (awaited via a task
+# tied to the Application) lets the bot post its own completion message
+# instead of relying on that.
+
+_JOB_MODES = ("active", "daily", "research", "discovery", "rotation", "recheck", "audit")
+_JOB_LABELS = {
+    "active": "▶️ Active Monitor", "daily": "▶️ Daily Sweep", "research": "▶️ Research",
+    "discovery": "▶️ Discovery", "rotation": "▶️ Rotation", "recheck": "▶️ Recheck",
+    "audit": "▶️ Audit",
+}
+# refresh-notes intentionally excluded — a one-shot retroactive migration
+# per its own docstring, not a routine action; a tap target here risks an
+# accidental re-run.
+
+
+def _running_job(context):
+    jobs = context.bot_data.setdefault("jobs", {})
+    return next((m for m, p in jobs.items() if p.returncode is None), None)
+
+
+async def cb_menu_ops(update, context, arg):
+    running = _running_job(context)
+    text = "⚙️ Operations" + (f"\n⏳ {running} is currently running..." if running else "")
+
+    mode_buttons = [InlineKeyboardButton(_JOB_LABELS[m], callback_data=f"job:start:{m}") for m in _JOB_MODES]
+    rows_ = [mode_buttons[i:i + 2] for i in range(0, len(mode_buttons), 2)]
+    rows_.append([InlineKeyboardButton("📤 Export CSV", callback_data="job:export")])
+    rows_.append([
+        InlineKeyboardButton("🔗 Google Sheet",
+                              url="https://docs.google.com/spreadsheets/d/1KXxULBBp4dmZb1OMGYPkf_YIE1HFd4byQCsAb-_tSic"),
+        InlineKeyboardButton("🔗 eBay Hub", url="https://www.ebay.com/sh/ovw"),
+    ])
+    rows_.append([InlineKeyboardButton("🔄 Refresh", callback_data="menu:ops"),
+                  InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+    await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(rows_))
+
+
+async def cb_job_start(update, context, arg):
+    mode = arg
+    running = _running_job(context)
+    if running:
+        await _send_screen(update, f"⚠️ {running} is currently running — wait for it to finish.")
+        return
+
+    cmd = [sys.executable, os.path.join(_BASE_DIR, "agents", "scheduler.py"), "--mode", mode]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, cwd=_BASE_DIR,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+    )
+    context.bot_data.setdefault("jobs", {})[mode] = proc
+    await _send_screen(
+        update, f"▶️ {mode} started — you'll get a message here when it finishes.",
+        reply_markup=_home_inline_kb(),
+    )
+    context.application.create_task(_await_job(context, mode, proc))
+
+
+async def _await_job(context, mode, proc):
+    start_t = time.monotonic()
+    try:
+        await proc.communicate()
+    except Exception:
+        logger.exception(f"Error awaiting job {mode}")
+    elapsed = time.monotonic() - start_t
+    chat_id = context.bot_data["chat_id"]
+    if proc.returncode == 0:
+        await context.bot.send_message(chat_id, f"✅ {mode} completed ({elapsed:.0f}s)")
+    else:
+        await context.bot.send_message(chat_id, f"❌ {mode} failed (exit {proc.returncode}) — see /logs {mode}")
+
+
+async def cb_job_export(update, context, arg):
+    await _send_screen(update, "Exporting...")
+    try:
+        path = await asyncio.to_thread(export_approved_products)
+    except Exception as e:
+        logger.warning(f"export failed: {e}")
+        await context.bot.send_message(context.bot_data["chat_id"], "Export failed — try again in a bit.",
+                                        reply_markup=_home_inline_kb())
+        return
+    if path is None:
+        await context.bot.send_message(context.bot_data["chat_id"], "No READY products eligible for export.",
+                                        reply_markup=_home_inline_kb())
+        return
+    with open(path, "rb") as f:
+        await context.bot.send_document(context.bot_data["chat_id"], document=f)
+    await context.bot.send_message(context.bot_data["chat_id"], "📤 Export complete.", reply_markup=_home_inline_kb())
+
+
+# ── Category ROI / Spot Prices (spec Parts 8 & 10) ───────────────────────────
+
+async def cb_menu_roi(update, context, arg):
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"roi screen sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    products = extract_dashboard_products(rows, col_map, data_start_row=start)
+    text = compute_category_roi(products)
+    await _send_screen(update, text, reply_markup=_home_inline_kb())
+
+
+async def cb_menu_spot(update, context, arg):
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"spot screen sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    products = extract_dashboard_products(rows, col_map, data_start_row=start)
+    gold = await asyncio.to_thread(get_spot_price, "gold")
+    silver = await asyncio.to_thread(get_spot_price, "silver")
+    text = compute_spot_price_impact(products, gold, silver)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh", callback_data="menu:spot"),
+         InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
+        [InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+    ])
+    await _send_screen(update, text, reply_markup=kb)
+
+
+# ── Logs screen (thin wrapper around the existing /logs body) ───────────────
+
+def _format_log_tail(mode):
+    lines = read_tail(LOG_FILES[mode], 30)
+    if lines is None:
+        return f"{mode}.log: not found"
+    safe_lines = [html.escape(l) for l in lines]
+    text = f"<pre>{mode}.log (last 30 lines):\n" + "\n".join(safe_lines) + "</pre>"
+    if len(text) > _MAX_MSG:
+        text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
+    return text
+
+
+async def cb_menu_logs(update, context, arg):
+    mode_buttons = [InlineKeyboardButton(m, callback_data=f"logs:show:{m}") for m in LOG_FILES]
+    rows_ = [mode_buttons[i:i + 2] for i in range(0, len(mode_buttons), 2)]
+    rows_.append([InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+    await _send_screen(update, "📋 Pick a log:", reply_markup=InlineKeyboardMarkup(rows_))
+
+
+async def cb_logs_show(update, context, arg):
+    mode = arg
+    if mode not in LOG_FILES:
+        await _send_screen(update, "Unknown log.", reply_markup=_home_inline_kb())
+        return
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📋 Logs", callback_data="menu:logs"),
+        InlineKeyboardButton("🏠 Home", callback_data="menu:root"),
+    ]])
+    await _send_screen(update, _format_log_tail(mode), reply_markup=kb, parse_mode="HTML")
+
+
+# ── Free-text handler + persistent-keyboard label routing ───────────────────
+
+_HOME_LABEL_HANDLERS = {
+    "📊 Dashboard": cb_menu_dashboard,
+    "🔍 Search": cb_menu_search,
+    "✅ Review": cb_menu_review,
+    "🚨 Alerts": cb_menu_alerts,
+    "⚙️ Operations": cb_menu_ops,
+    "📋 Logs": cb_menu_logs,
+}
+
+
+async def on_text(update, context):
+    if not _authorized(update, context.bot_data["chat_id"]):
+        return
+    text = (update.message.text or "").strip()
+
+    handler = _HOME_LABEL_HANDLERS.get(text)
+    if handler is not None:
+        context.user_data["awaiting_search"] = False
+        await handler(update, context, None)
+        return
+
+    if context.user_data.get("awaiting_search"):
+        context.user_data["awaiting_search"] = False
+        await _handle_search_term(update, context, text)
+        return
+
+    await update.message.reply_text(
+        "🏠 Use the buttons below, or /help for text commands.", reply_markup=_HOME_KEYBOARD
+    )
+
+
+_CALLBACK_ROUTES.update({
+    ("menu", "root"): cb_menu_root,
+    ("menu", "dashboard"): cb_menu_dashboard,
+    ("menu", "search"): cb_menu_search,
+    ("menu", "review"): cb_menu_review,
+    ("menu", "audit"): cb_menu_audit,
+    ("menu", "alerts"): cb_menu_alerts,
+    ("menu", "ops"): cb_menu_ops,
+    ("menu", "logs"): cb_menu_logs,
+    ("menu", "roi"): cb_menu_roi,
+    ("menu", "spot"): cb_menu_spot,
+    ("review", "approve"): cb_review_approve,
+    ("review", "pause"): cb_review_pause,
+    ("review", "audit"): cb_review_audit,
+    ("review", "skip"): cb_review_skip,
+    ("pause", "oos"): cb_pause_oos,
+    ("pause", "margin"): cb_pause_margin,
+    ("pause", "demand"): cb_pause_demand,
+    ("pause", "seasonal"): cb_pause_seasonal,
+    ("pause", "back"): cb_pause_back,
+    ("audit", "keep"): cb_audit_keep,
+    ("audit", "delete"): cb_audit_delete,
+    ("audit", "skip"): cb_audit_skip,
+    ("audit_confirm", "delete"): cb_audit_confirm_delete,
+    ("audit_confirm", "cancel"): cb_audit_confirm_cancel,
+    ("search", "pick"): cb_search_pick,
+    ("job", "start"): cb_job_start,
+    ("job", "export"): cb_job_export,
+    ("logs", "show"): cb_logs_show,
+})
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -879,6 +2048,8 @@ def _main_body():
 
     app = Application.builder().token(token).build()
     app.bot_data["chat_id"] = chat_id
+    app.bot_data["jobs"] = {}
+    app.bot_data["sheet_gid"] = None
 
     restart_state = {"conflict": False, "reexec": False}
     app.bot_data["_restart_state"] = restart_state
@@ -902,6 +2073,10 @@ def _main_body():
     app.add_handler(CommandHandler("lookup", cmd_lookup))
     app.add_handler(CommandHandler("dashboard", cmd_dashboard))
     app.add_handler(CommandHandler("restart", cmd_restart))
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("menu", cmd_menu))
+    app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
     while True:
         restart_state["conflict"] = False

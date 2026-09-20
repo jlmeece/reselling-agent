@@ -7,6 +7,17 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.telegram_bot import (
+    PROTECTED_COLS,
+    _extract_rows_by_field,
+    _parse_pct,
+    compute_category_roi,
+    compute_spot_price_impact,
+    extract_audit_queue,
+    extract_review_queue,
+    find_back_in_stock,
+    find_stale_active_items,
+    format_audit_card,
+    format_review_card,
     _format_fee_rate_pct,
     _format_net_fragment,
     _format_net_with_ads_line,
@@ -27,6 +38,8 @@ from agents.telegram_bot import (
     has_errors,
     parse_logs_arg,
     read_tail,
+    safe_get,
+    safe_write_row,
     search_products,
 )
 
@@ -270,7 +283,7 @@ def test_format_net_with_ads_line_none_when_net_profit_unparseable():
     assert _format_net_with_ads_line("", "$6.75", "$459.99") is None
 
 
-# ── search_products / format_* (/lookup) ───────────────────────────────────
+# ── _extract_rows_by_field (shared row-extraction helper) ───────────────────
 
 _COL = {
     "status": "A", "title": "C", "category": "D", "stock_status": "F",
@@ -278,6 +291,7 @@ _COL = {
     "last_checked": "O", "costco_url": "R", "sale_info": "X",
     "fee_rate": "AB", "ebay_fees": "AC", "ship_cost": "AD", "ad_cost": "AE",
     "ad_budget": "AH", "regular_price": "AW", "demand_score": "B",
+    "tier_summary": "T",
 }
 
 
@@ -294,6 +308,172 @@ def _make_row(**overrides):
     for col, val in defaults.items():
         row[col_to_idx(col)] = val
     return row
+
+
+def test_extract_rows_by_field_includes_row_num():
+    rows = [_make_row(C="Gold Bar")]
+    items = _extract_rows_by_field(rows, _COL, ("title",), data_start_row=4)
+    assert items[0]["row_num"] == 4
+
+
+def test_extract_rows_by_field_row_num_offset_by_position():
+    rows = [_make_row(C="First"), _make_row(C="Second")]
+    items = _extract_rows_by_field(rows, _COL, ("title",), data_start_row=4)
+    assert items[0]["row_num"] == 4
+    assert items[1]["row_num"] == 5
+
+
+def test_extract_rows_by_field_skips_blank_rows_but_row_num_still_counts_position():
+    rows = [[], _make_row(C="Second")]
+    items = _extract_rows_by_field(rows, _COL, ("title",), data_start_row=4)
+    assert len(items) == 1
+    assert items[0]["row_num"] == 5
+
+
+def test_extract_rows_by_field_applies_filter_fn():
+    rows = [_make_row(A="PENDING"), _make_row(A="SCORED")]
+    status_i = col_to_idx(_COL["status"])
+    items = _extract_rows_by_field(
+        rows, _COL, ("title",), data_start_row=4,
+        filter_fn=lambda row: safe_get(row, status_i) == "SCORED",
+    )
+    assert len(items) == 1
+    assert items[0]["title"] == "PAMP Suisse 1oz Gold Bar"
+
+
+def test_extract_rows_by_field_never_raises_on_ragged_rows():
+    rows = [["ACTIVE"]]  # far short of every requested field's column
+    items = _extract_rows_by_field(rows, _COL, ("title", "category"), data_start_row=4)
+    assert items[0]["title"] == ""
+    assert items[0]["category"] == ""
+
+
+def test_extract_rows_by_field_no_filter_returns_all_nonblank_rows():
+    rows = [_make_row(C="A"), _make_row(C="B")]
+    items = _extract_rows_by_field(rows, _COL, ("title",), data_start_row=4)
+    assert len(items) == 2
+
+
+# ── extract_review_queue / extract_audit_queue ───────────────────────────────
+
+def test_extract_review_queue_filters_scored_status():
+    rows = [_make_row(A="SCORED", C="Scored Item"), _make_row(A="PENDING", C="Pending Item")]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    assert len(items) == 1
+    assert items[0]["title"] == "Scored Item"
+
+
+def test_extract_review_queue_sorts_by_demand_score_descending():
+    rows = [
+        _make_row(A="SCORED", C="Low", B="4.0"),
+        _make_row(A="SCORED", C="High", B="9.0"),
+    ]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    assert [i["title"] for i in items] == ["High", "Low"]
+
+
+def test_extract_review_queue_unparseable_score_sorts_last():
+    rows = [
+        _make_row(A="SCORED", C="No Score", B=""),
+        _make_row(A="SCORED", C="Has Score", B="5.0"),
+    ]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    assert [i["title"] for i in items] == ["Has Score", "No Score"]
+
+
+def test_extract_review_queue_includes_row_num():
+    rows = [_make_row(A="PENDING"), _make_row(A="SCORED", C="Item")]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    assert items[0]["row_num"] == 5
+
+
+def test_extract_audit_queue_filters_audit_review_status():
+    rows = [_make_row(A="AUDIT_REVIEW", C="Flagged"), _make_row(A="SCORED", C="Not Flagged")]
+    items = extract_audit_queue(rows, _COL, data_start_row=4)
+    assert len(items) == 1
+    assert items[0]["title"] == "Flagged"
+
+
+def test_extract_audit_queue_includes_tier_summary():
+    rows = [_make_row(A="AUDIT_REVIEW", T="[AUDIT_REVIEW] Stale 90+ days")]
+    items = extract_audit_queue(rows, _COL, data_start_row=4)
+    assert items[0]["tier_summary"] == "[AUDIT_REVIEW] Stale 90+ days"
+
+
+def test_extract_audit_queue_preserves_sheet_row_order():
+    rows = [
+        _make_row(A="AUDIT_REVIEW", C="First"),
+        _make_row(A="AUDIT_REVIEW", C="Second"),
+    ]
+    items = extract_audit_queue(rows, _COL, data_start_row=4)
+    assert [i["title"] for i in items] == ["First", "Second"]
+    assert items[0]["row_num"] == 4
+    assert items[1]["row_num"] == 5
+
+
+# ── format_review_card / format_audit_card ───────────────────────────────────
+
+def test_format_review_card_shows_position_and_body():
+    p = search_products([_make_row(A="SCORED")], _COL, "pamp")[0]
+    text = format_review_card(p, 1, 5)
+    assert text.startswith("Item 1 of 5")
+    assert "📦 PAMP Suisse 1oz Gold Bar" in text
+
+
+def test_format_audit_card_shows_flag_reason():
+    rows = [_make_row(A="AUDIT_REVIEW", T="[AUDIT_REVIEW] Stale 90+ days")]
+    p = extract_audit_queue(rows, _COL, data_start_row=4)[0]
+    text = format_audit_card(p, 1, 3)
+    assert "⚠️ Flagged: [AUDIT_REVIEW] Stale 90+ days" in text
+    assert "Item 1 of 3" in text
+
+
+def test_format_audit_card_no_flag_line_when_tier_summary_blank():
+    rows = [_make_row(A="AUDIT_REVIEW", T="")]
+    p = extract_audit_queue(rows, _COL, data_start_row=4)[0]
+    text = format_audit_card(p, 1, 1)
+    assert "Flagged" not in text
+
+
+# ── safe_write_row / PROTECTED_COLS ──────────────────────────────────────────
+
+def test_protected_cols_matches_col_map_formula_columns():
+    assert PROTECTED_COLS == {"I", "J", "N", "Z", "AC", "AF", "AG", "AH"}
+
+
+def test_safe_write_row_raises_on_protected_column(monkeypatch):
+    calls = []
+    monkeypatch.setattr("agents.telegram_bot.write_row_partial", lambda *a, **k: calls.append((a, k)))
+    with pytest.raises(ValueError):
+        safe_write_row(None, "Product Tracker", 42, [("J", "0.5")])
+    assert calls == []
+
+
+def test_safe_write_row_raises_when_any_pair_is_protected():
+    with pytest.raises(ValueError):
+        safe_write_row(None, "Product Tracker", 42, [("A", "APPROVED"), ("AC", "1.00")])
+
+
+def test_safe_write_row_case_insensitive_protected_check(monkeypatch):
+    monkeypatch.setattr("agents.telegram_bot.write_row_partial", lambda *a, **k: None)
+    with pytest.raises(ValueError):
+        safe_write_row(None, "Product Tracker", 42, [("j", "0.5")])
+
+
+def test_safe_write_row_passes_through_clean_columns(monkeypatch):
+    calls = []
+    monkeypatch.setattr("agents.telegram_bot.write_row_partial", lambda *a, **k: calls.append((a, k)))
+    safe_write_row(None, "Product Tracker", 42, [("A", "APPROVED")])
+    assert len(calls) == 1
+
+
+# ── search_products / format_* (/lookup) ───────────────────────────────────
+
+def test_search_products_row_num_reflects_absolute_sheet_row():
+    rows = [_make_row(C="First"), _make_row(C="PAMP match")]
+    matches = search_products(rows, _COL, "pamp", data_start_row=4)
+    assert len(matches) == 1
+    assert matches[0]["row_num"] == 5
 
 
 def test_search_products_matches_title_case_insensitive():
@@ -436,10 +616,10 @@ def test_format_product_detail_no_sale_line_when_blank():
 
 _DASH_COL = {
     "status": "A", "demand_score": "B", "title": "C", "category": "D",
-    "costco_cost": "G", "ebay_price": "H",
+    "stock_status": "F", "costco_cost": "G", "ebay_price": "H",
     "net_profit": "I", "net_margin": "J", "comp_saturation": "N",
     "suggested_price": "V", "sale_info": "X", "ad_budget": "AH",
-    "mpt_sharpe": "AX", "mpt_rank": "BA",
+    "last_checked": "O", "mpt_sharpe": "AX", "mpt_rank": "BA",
 }
 
 
@@ -455,6 +635,13 @@ def _make_dash_row(**overrides):
     for col, val in defaults.items():
         row[col_to_idx(col)] = val
     return row
+
+
+def test_extract_dashboard_products_row_num_reflects_absolute_sheet_row():
+    rows = [_make_dash_row(A=""), _make_dash_row(C="Second")]
+    products = extract_dashboard_products(rows, _DASH_COL, data_start_row=4)
+    assert len(products) == 1
+    assert products[0]["row_num"] == 5
 
 
 def test_extract_dashboard_products_skips_blank_status():
@@ -606,3 +793,152 @@ def test_format_dashboard_reply_includes_score_legend():
     counts, total = {"Ready": 1}, 1
     text = format_dashboard_reply(counts, total)
     assert "Scores: 0–10 · Tier 1 ≥7 🥇 · Tier 2 ≥4 · Tier 3 <4 · Sharpe = risk-adjusted return (higher = better)" in text
+
+
+# ── _parse_pct ────────────────────────────────────────────────────────────────
+
+def test_parse_pct_from_percent_suffixed():
+    assert _parse_pct("18%") == 18.0
+
+
+def test_parse_pct_from_raw_fraction():
+    assert _parse_pct("0.18") == 18.0
+
+
+def test_parse_pct_from_plain_number():
+    assert _parse_pct("18") == 18.0
+
+
+def test_parse_pct_blank_returns_none():
+    assert _parse_pct("") is None
+    assert _parse_pct(None) is None
+
+
+# ── compute_category_roi ─────────────────────────────────────────────────────
+
+def test_compute_category_roi_header():
+    text = compute_category_roi([], category_names=[])
+    assert text.startswith("📈 Category ROI")
+
+
+def test_compute_category_roi_includes_zero_item_category():
+    text = compute_category_roi([], category_names=["Precious Metals", "Jewelry"])
+    assert "Precious Metals: 0 items" in text
+    assert "Jewelry: 0 items" in text
+
+
+def test_compute_category_roi_averages_net_margin():
+    products = [
+        {"status": "READY", "category": "Jewelry", "net_margin": "10%"},
+        {"status": "ACTIVE", "category": "Jewelry", "net_margin": "20%"},
+    ]
+    text = compute_category_roi(products, category_names=["Jewelry"])
+    assert "Jewelry: 15% avg margin (2 items)" in text
+
+
+def test_compute_category_roi_excludes_paused_and_rejected():
+    products = [
+        {"status": "PAUSED_OOS", "category": "Jewelry", "net_margin": "10%"},
+        {"status": "REJECTED", "category": "Jewelry", "net_margin": "50%"},
+        {"status": "READY", "category": "Jewelry", "net_margin": "20%"},
+    ]
+    text = compute_category_roi(products, category_names=["Jewelry"])
+    assert "Jewelry: 20% avg margin (1 items)" in text
+
+
+def test_compute_category_roi_appends_unknown_category():
+    products = [{"status": "READY", "category": "New Category", "net_margin": "10%"}]
+    text = compute_category_roi(products, category_names=["Jewelry"])
+    assert "New Category: 10% avg margin (1 items)" in text
+
+
+# ── compute_spot_price_impact ─────────────────────────────────────────────────
+
+def test_compute_spot_price_impact_header_shows_spot_prices():
+    text = compute_spot_price_impact([], gold_spot=2650.0, silver_spot=31.2)
+    assert "Gold: $2,650.00/oz" in text
+    assert "Silver: $31.20/oz" in text
+    assert text.startswith("🪙 Spot Price Impact")
+
+
+def test_compute_spot_price_impact_estimates_parseable_gold_item():
+    products = [{
+        "status": "ACTIVE", "category": "Precious Metals",
+        "title": "1 oz Gold Bar PAMP Suisse", "costco_cost": "$1998.99",
+        "ebay_price": "$2199.00", "net_margin": "8%",
+    }]
+    text = compute_spot_price_impact(products, gold_spot=2000.0, silver_spot=25.0)
+    assert "1 Precious Metals items re-estimated · 0 skipped (no parseable weight)" in text
+    assert "PAMP Suisse" in text
+    assert "was 8%" in text
+
+
+def test_compute_spot_price_impact_skips_unparseable_weight():
+    products = [{
+        "status": "ACTIVE", "category": "Precious Metals",
+        "title": "Diamond Tennis Bracelet", "costco_cost": "$500", "ebay_price": "$700",
+    }]
+    text = compute_spot_price_impact(products, gold_spot=2000.0, silver_spot=25.0)
+    assert "0 Precious Metals items re-estimated · 1 skipped (no parseable weight)" in text
+
+
+def test_compute_spot_price_impact_ignores_non_active_status():
+    products = [{
+        "status": "PENDING", "category": "Precious Metals",
+        "title": "1 oz Gold Bar", "costco_cost": "$1998.99", "ebay_price": "$2199.00",
+    }]
+    text = compute_spot_price_impact(products, gold_spot=2000.0, silver_spot=25.0)
+    assert "0 Precious Metals items re-estimated · 0 skipped (no parseable weight)" in text
+
+
+def test_compute_spot_price_impact_ignores_non_precious_metals_category():
+    products = [{
+        "status": "ACTIVE", "category": "Jewelry",
+        "title": "1 oz Gold Bar", "costco_cost": "$1998.99", "ebay_price": "$2199.00",
+    }]
+    text = compute_spot_price_impact(products, gold_spot=2000.0, silver_spot=25.0)
+    assert "0 Precious Metals items re-estimated · 0 skipped (no parseable weight)" in text
+
+
+def test_compute_spot_price_impact_uses_silver_spot_for_silver_titles():
+    products = [{
+        "status": "ACTIVE", "category": "Precious Metals",
+        "title": "10 oz Silver Bar", "costco_cost": "$250.00", "ebay_price": "$320.00",
+    }]
+    text = compute_spot_price_impact(products, gold_spot=2000.0, silver_spot=30.0)
+    assert "margin ~6%" in text
+
+
+# ── find_stale_active_items / find_back_in_stock (Alerts screen) ────────────
+
+def test_find_stale_active_items_flags_over_12h():
+    products = [{"status": "ACTIVE", "last_checked": "2026-09-18 06:00", "title": "Old"}]
+    now = datetime(2026, 9, 18, 20, 0)
+    assert len(find_stale_active_items(products, now=now)) == 1
+
+
+def test_find_stale_active_items_ignores_fresh_check():
+    products = [{"status": "ACTIVE", "last_checked": "2026-09-18 19:00", "title": "Fresh"}]
+    now = datetime(2026, 9, 18, 20, 0)
+    assert find_stale_active_items(products, now=now) == []
+
+
+def test_find_stale_active_items_ignores_non_active():
+    products = [{"status": "PENDING", "last_checked": "2026-09-18 06:00"}]
+    now = datetime(2026, 9, 18, 20, 0)
+    assert find_stale_active_items(products, now=now) == []
+
+
+def test_find_back_in_stock_flags_recovered_stock():
+    products = [{"status": "PAUSED_OOS", "stock_status": "In Stock", "title": "Back"}]
+    assert len(find_back_in_stock(products)) == 1
+
+
+def test_find_back_in_stock_ignores_still_out_of_stock():
+    products = [{"status": "PAUSED_OOS", "stock_status": "OUT OF STOCK"}]
+    assert find_back_in_stock(products) == []
+
+
+def test_find_back_in_stock_ignores_non_paused_oos_status():
+    products = [{"status": "ACTIVE", "stock_status": "In Stock"}]
+    assert find_back_in_stock(products) == []
