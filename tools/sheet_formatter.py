@@ -14,7 +14,7 @@ Safe to re-run — clears formatting before applying fresh.
 import os
 from loguru import logger
 
-from tools.sheet_writer import required_grid_columns
+from tools.sheet_writer import required_grid_columns, execute_with_retry
 
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
@@ -107,6 +107,12 @@ HEADER_LABELS = [
     "IMAGE URLS",      # AT 45
     "PERF SCORE",      # AU 46
     "FULL NOTES",      # AV 47
+    # AW–BA  (visible, indices 48–52) — written by scraper / mpt_engine
+    "REGULAR PRICE",   # AW 48 — Costco regular price before sale
+    "MPT Sharpe",      # AX 49
+    "MPT Return (μ)",  # AY 50
+    "MPT Vol (σ)",     # AZ 51
+    "MPT Rank",        # BA 52
 ]
 
 COLUMN_WIDTHS = {
@@ -136,11 +142,17 @@ COLUMN_WIDTHS = {
     23: 130,   # X: sale badge
     24: 90,    # Y: ship cost badge (wider — "$12.99 ship" needs more room than "✓ FREE")
     25: 110,   # Z: total cost
+    48: 90,    # AW: regular price
+    49: 130,   # AX: MPT sharpe ("1.2345 🔥 Strong")
+    50: 90,    # AY: MPT return
+    51: 90,    # AZ: MPT vol
+    52: 80,    # BA: MPT rank
 }
 
 VISIBLE_COLS  = 26    # A–Z
-TOTAL_COLS    = 48    # A–AV
+TOTAL_COLS    = 53    # A–BA (must equal len(HEADER_LABELS) and required_grid_columns())
 HIDDEN_START  = 26    # AA onwards (index 26 = col AA)
+HIDDEN_END    = 48    # AA–AV hidden; AW–BA stay visible
 FROZEN_COLS   = 4     # A–D always visible
 
 SALE_COL_IDX  = 23    # X — orange badge when non-empty
@@ -529,7 +541,7 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
     # 11. Hide columns AA–AV (index 26–47)
     requests.append({"updateDimensionProperties": {
         "range": {"sheetId": tab_id, "dimension": "COLUMNS",
-                  "startIndex": HIDDEN_START, "endIndex": TOTAL_COLS},
+                  "startIndex": HIDDEN_START, "endIndex": HIDDEN_END},
         "properties": {"hiddenByUser": True}, "fields": "hiddenByUser",
     }})
 
@@ -1015,6 +1027,52 @@ def _write_header_text(service, spreadsheet_id, sheet_name, data_start_row):
              "values": [HEADER_LABELS]},
         ]},
     ).execute()
+
+
+def refresh_header_row(service, sheet_name, data_start_row=4):
+    """
+    Rewrite ONLY the column-header row (labels + header style + widths for the
+    trailing columns) on the live sheet. Unlike setup_dashboard() it leaves the
+    title/stats rows, filters, banding and data untouched, so it is safe to run
+    any time HEADER_LABELS gains a column. Idempotent.
+    """
+    spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
+    header_row     = data_start_row - 1          # 1-indexed (row 3)
+    header_row_idx = header_row - 1              # 0-indexed
+    tab_id = _get_tab_id(_get_sheet_meta(service, spreadsheet_id), sheet_name)
+    if tab_id is None:
+        raise ValueError(f"Tab '{sheet_name}' not found.")
+
+    execute_with_retry(service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet_name}'!A{header_row}",
+        valueInputOption="USER_ENTERED",
+        body={"values": [HEADER_LABELS]},
+    ), "refresh_header_row labels")
+
+    requests = [{
+        "repeatCell": {
+            "range": _cell_range(tab_id, header_row_idx, header_row_idx + 1, HIDDEN_END, TOTAL_COLS),
+            "cell": {"userEnteredFormat": {
+                "backgroundColor": HDR_BG,
+                "textFormat": {"foregroundColor": HDR_FG, "bold": True, "fontSize": 9},
+                "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE",
+                "wrapStrategy": "CLIP",
+            }},
+            "fields": "userEnteredFormat",
+        }
+    }]
+    for col_idx, width in COLUMN_WIDTHS.items():
+        if col_idx >= HIDDEN_END:
+            requests.append({"updateDimensionProperties": {
+                "range": {"sheetId": tab_id, "dimension": "COLUMNS",
+                          "startIndex": col_idx, "endIndex": col_idx + 1},
+                "properties": {"pixelSize": width}, "fields": "pixelSize",
+            }})
+    execute_with_retry(service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id, body={"requests": requests}
+    ), "refresh_header_row style")
+    logger.info(f"Header row {header_row} refreshed ({len(HEADER_LABELS)} labels).")
 
 
 def update_stats_row(service, sheet_name, stats: dict):

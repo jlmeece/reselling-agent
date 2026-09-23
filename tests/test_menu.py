@@ -292,11 +292,45 @@ def test_legend_rows_no_old_column_quick_reference():
     assert "COLUMN QUICK REFERENCE" not in flat
 
 
-def test_header_labels_covers_all_48_columns():
+def test_header_labels_covers_all_53_columns():
     from tools.sheet_formatter import HEADER_LABELS, TOTAL_COLS
-    assert len(HEADER_LABELS) == TOTAL_COLS, (
+    assert len(HEADER_LABELS) == TOTAL_COLS == 53, (
         f"Expected {TOTAL_COLS} labels, got {len(HEADER_LABELS)}"
     )
+
+
+def test_header_labels_match_col_map_width():
+    """Drift guard: a new col_map.yaml column must ship with a header label."""
+    from tools.sheet_formatter import HEADER_LABELS
+    from tools.sheet_writer import required_grid_columns
+    assert len(HEADER_LABELS) == required_grid_columns()
+
+
+def test_header_labels_trailing_cols_labelled():
+    from tools.sheet_formatter import HEADER_LABELS, HIDDEN_END
+    # AW=48 .. BA=52 stay visible (not in the hidden AA–AV block)
+    assert HIDDEN_END == 48
+    assert HEADER_LABELS[48] == "REGULAR PRICE"
+    assert HEADER_LABELS[49] == "MPT Sharpe"
+    assert HEADER_LABELS[50] == "MPT Return (μ)"
+    assert HEADER_LABELS[51] == "MPT Vol (σ)"
+    assert HEADER_LABELS[52] == "MPT Rank"
+
+
+def test_refresh_header_row_touches_only_row_3():
+    from unittest.mock import MagicMock
+    from tools.sheet_formatter import refresh_header_row, HEADER_LABELS
+    svc = MagicMock()
+    svc.spreadsheets().get().execute.return_value = {
+        "sheets": [{"properties": {"sheetId": 7, "title": "Product Tracker"}}]}
+    refresh_header_row(svc, "Product Tracker", 4)
+    upd = svc.spreadsheets().values().update.call_args.kwargs
+    assert upd["range"] == "'Product Tracker'!A3"
+    assert upd["body"]["values"] == [HEADER_LABELS]
+    reqs = svc.spreadsheets().batchUpdate.call_args.kwargs["body"]["requests"]
+    rng = reqs[0]["repeatCell"]["range"]
+    assert (rng["startRowIndex"], rng["endRowIndex"]) == (2, 3)
+    assert (rng["startColumnIndex"], rng["endColumnIndex"]) == (48, 53)
 
 
 def test_header_labels_visible_cols_unchanged():

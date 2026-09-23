@@ -3,7 +3,8 @@ Sheet Auditor — CFO Mode
 ========================
 Runs every other day via scheduler.py --mode audit.
 Reviews all non-protected rows and:
-  - Auto-removes rows with clearly broken economics
+  - Auto-removes rows with clearly broken economics (incl. stale SCORED rows in
+    the $1–$4 net dead zone the review queue never shows)
   - Flags borderline rows as AUDIT_REVIEW for manual decision
   - Writes removed rows to Graveyard tab (append-only)
   - Appends summary row to Audit Log tab
@@ -33,6 +34,18 @@ from tools.graveyard_writer import (
 # ── Protected statuses — NEVER touch these ────────────────────────────────────
 PROTECTED = {"ACTIVE", "READY", "APPROVED", "LISTED", "AUDIT_REVIEW"}
 
+# ── SCORED dead-zone sweep ────────────────────────────────────────────────────
+# The Telegram review queue only surfaces SCORED rows with net >= 4.00
+# (agents/telegram_bot.py::_REVIEW_MIN_NET_PROFIT). Rows with net in
+# [SCORED_STALE_NET_FLOOR, SCORED_STALE_NET_CEILING) can never be reviewed, and
+# the rules below $1 don't reach them — so once they go stale they are removed.
+# Keep SCORED_STALE_NET_CEILING in lockstep with the review floor (a test pins it).
+SCORED_STALE_NET_FLOOR   = 1.00   # matches the "borderline net" flag boundary below
+SCORED_STALE_NET_CEILING = 4.00   # == telegram_bot._REVIEW_MIN_NET_PROFIT (exclusive)
+SCORED_STALE_DAYS        = 30
+
+_DAYS_UNKNOWN = 999   # _days_since() sentinel for a blank/unparseable timestamp
+
 
 def _col_to_idx(letter: str) -> int:
     result = 0
@@ -61,6 +74,21 @@ def _safe_float(val, default=0.0):
         return default
 
 
+def _parse_net(val):
+    """Net profit as a float, or None when the cell is blank/#VALUE!/N/A.
+    A blank net means "not priced/researched yet" — it must NOT read as $0.00,
+    or every fresh PENDING row looks like a broken-economics row."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s.startswith("#") or s == "N/A":
+        return None
+    try:
+        return float(s.replace("$", "").replace(",", "").replace("%", ""))
+    except (ValueError, TypeError):
+        return None
+
+
 def _days_since(timestamp_str: str) -> int:
     """Days since 'YYYY-MM-DD HH:MM'. Returns 999 if unparseable."""
     if not timestamp_str:
@@ -71,7 +99,35 @@ def _days_since(timestamp_str: str) -> int:
             return (datetime.now() - dt).days
         except ValueError:
             continue
-    return 999
+    return _DAYS_UNKNOWN
+
+
+def _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes=""):
+    """First matching auto-remove reason for a non-protected row, or None.
+    Order matters: it is an if/elif chain, so a row claimed by an earlier rule
+    (e.g. zero velocity + net < $5) is never re-claimed by a later one.
+    net_profit=None (blank cell) skips every economics rule — only the wrong-
+    product flag and the age rules can remove an un-priced row."""
+    if "wrong_product_flag" in full_notes.lower():
+        return "Wrong product flag — comps matched wrong item"
+    if net_profit is not None:
+        if net_profit < 0:
+            return f"Negative net profit (${net_profit:.2f})"
+        if net_profit < 0.50:
+            return f"Below floor ($0.50 min) — net ${net_profit:.2f}"
+        if sold_90d == 0 and net_profit < 5.0:
+            return f"Zero velocity + net < $5 (net ${net_profit:.2f})"
+        if (status == "SCORED"
+                and SCORED_STALE_NET_FLOOR <= net_profit < SCORED_STALE_NET_CEILING
+                and SCORED_STALE_DAYS <= days_since_checked < _DAYS_UNKNOWN):
+            # < _DAYS_UNKNOWN: a missing timestamp must not read as "stale"
+            return (f"Below ${SCORED_STALE_NET_CEILING:.0f} review floor, "
+                    f"stale {days_since_checked} days")
+    if status == "PAUSED_OOS" and days_since_checked >= 45:
+        return f"OOS {days_since_checked}+ days, no restock"
+    if status in ("PENDING", "WATCH") and days_since_checked >= 60:
+        return f"Stale {days_since_checked} days (no progress)"
+    return None
 
 
 def _send_telegram(text: str) -> None:
@@ -161,7 +217,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         status       = _safe(row, _col_to_idx(COL["status"]))
         title        = _safe(row, _col_to_idx(COL["title"]))
         category     = _safe(row, _col_to_idx(COL["category"]))
-        net_profit   = _safe_float(_safe(row, _col_to_idx(COL["net_profit"])))
+        net_profit   = _parse_net(_safe(row, _col_to_idx(COL["net_profit"])))
         sold_90d_raw = _safe(row, _col_to_idx(COL["sold_90d"]))
         score_raw    = _safe(row, _col_to_idx(COL["demand_score"]))
         last_checked = _safe(row, _col_to_idx(COL["last_checked"]))
@@ -192,7 +248,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
             "title":            title,
             "category":         category or "Unknown",
             "status":           status,
-            "net_profit":       net_profit,
+            "net_profit":       net_profit if net_profit is not None else "",
             "sold_90d":         sold_90d,
             "score":            score,
             "costco_cost":      costco_cost,
@@ -202,20 +258,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         }
 
         # ── Auto-remove rules ─────────────────────────────────────────────────
-        remove_reason = None
-
-        if "wrong_product_flag" in full_notes.lower():
-            remove_reason = "Wrong product flag — comps matched wrong item"
-        elif net_profit < 0:
-            remove_reason = f"Negative net profit (${net_profit:.2f})"
-        elif net_profit < 0.50:
-            remove_reason = f"Below floor ($0.50 min) — net ${net_profit:.2f}"
-        elif sold_90d == 0 and net_profit < 5.0:
-            remove_reason = f"Zero velocity + net < $5 (net ${net_profit:.2f})"
-        elif status == "PAUSED_OOS" and days_since_checked >= 45:
-            remove_reason = f"OOS {days_since_checked}+ days, no restock"
-        elif status in ("PENDING", "WATCH") and days_since_checked >= 60:
-            remove_reason = f"Stale {days_since_checked} days (no progress)"
+        remove_reason = _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes)
 
         if remove_reason:
             logger.info(f"  Row {sheet_row} AUTO-REMOVE [{remove_reason}]: {title[:50]}")
@@ -225,11 +268,12 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         # ── AUDIT_REVIEW rules ────────────────────────────────────────────────
         flag_reason = None
 
-        if 0.50 <= net_profit < 1.00:
+        # net_profit None = un-priced row: no economics-based flags
+        if net_profit is not None and 0.50 <= net_profit < 1.00:
             flag_reason = f"Borderline net (${net_profit:.2f}) — below $1 floor"
         elif status in ("PENDING", "WATCH") and 45 <= days_since_checked < 60:
             flag_reason = f"Stale {days_since_checked} days — might be salvageable"
-        elif sold_90d == 0 and net_profit >= 5.0:
+        elif net_profit is not None and sold_90d == 0 and net_profit >= 5.0:
             flag_reason = f"Zero velocity but net ${net_profit:.2f} — no proven demand, high upside"
 
         if flag_reason:
@@ -251,7 +295,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
     sub_categories = []
 
     for sheet_row, product_dict, reason in to_remove:
-        is_economics = any(k in reason for k in ["Negative", "Below floor", "Zero velocity"])
+        is_economics = any(k in reason for k in ["Negative", "Below floor", "Zero velocity", "review floor"])
         graveyard_rows.append({
             "date_removed":      run_date,
             "reason":            reason,
