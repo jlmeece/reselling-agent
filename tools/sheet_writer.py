@@ -6,10 +6,43 @@ Secrets loaded from .env — never hardcoded.
 
 import os
 import socket
+import time
+
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from loguru import logger
 
 socket.setdefaulttimeout(60)  # 60-second cap on all socket reads including Sheets API
+
+# Google caps Sheets writes at 60/min per service account. 429 (rate limit) and
+# transient 500/503 are retried with exponential backoff before giving up.
+RETRY_STATUSES = (429, 500, 503)
+RETRY_DELAYS   = (1, 2, 4, 8, 16)  # seconds before retry 1..5
+
+
+def execute_with_retry(request, label="sheets call"):
+    """
+    Run a googleapiclient request's .execute(), retrying on HttpError with
+    status in RETRY_STATUSES and on socket.timeout, up to len(RETRY_DELAYS)
+    times with exponential backoff. Any other error (403, 400, ...) raises
+    immediately; the last error raises once retries are exhausted.
+    Wrap the individual .execute() rather than a whole read-then-write
+    function so a retried 5xx can't re-read state and double-append.
+    """
+    for attempt in range(len(RETRY_DELAYS) + 1):
+        try:
+            return request.execute()
+        except (HttpError, socket.timeout) as e:
+            status = e.resp.status if isinstance(e, HttpError) else "timeout"
+            retryable = isinstance(e, socket.timeout) or status in RETRY_STATUSES
+            if not retryable or attempt >= len(RETRY_DELAYS):
+                raise
+            delay = RETRY_DELAYS[attempt]
+            logger.warning(
+                f"Sheets {label}: {status} — retry {attempt + 1}/{len(RETRY_DELAYS)} in {delay}s"
+            )
+            time.sleep(delay)
 
 
 def get_sheets_service():
@@ -31,12 +64,12 @@ def read_sheet(service, range_name):
 def write_cell(service, sheet_name, col, row, value):
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
     range_addr = f"'{sheet_name}'!{col}{row}"
-    service.spreadsheets().values().update(
+    execute_with_retry(service.spreadsheets().values().update(
         spreadsheetId=sheet_id,
         range=range_addr,
         valueInputOption="USER_ENTERED",
         body={"values": [[value]]}
-    ).execute()
+    ), "write_cell")
 
 
 def append_row(service, sheet_name, col_value_dict, COL, data_start_row=4):
@@ -48,10 +81,10 @@ def append_row(service, sheet_name, col_value_dict, COL, data_start_row=4):
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
 
     # Find the next empty row, but never above data_start_row
-    result = service.spreadsheets().values().get(
+    result = execute_with_retry(service.spreadsheets().values().get(
         spreadsheetId=sheet_id,
         range=f"'{sheet_name}'!A:A",
-    ).execute()
+    ), "append_row read")
     next_row = max(len(result.get("values", [])) + 1, data_start_row)
 
     data = []
@@ -65,10 +98,10 @@ def append_row(service, sheet_name, col_value_dict, COL, data_start_row=4):
             "values": [[value]],
         })
     if data:
-        service.spreadsheets().values().batchUpdate(
+        execute_with_retry(service.spreadsheets().values().batchUpdate(
             spreadsheetId=sheet_id,
             body={"valueInputOption": "USER_ENTERED", "data": data},
-        ).execute()
+), "append_row")
     return next_row
 
 
@@ -84,10 +117,10 @@ def append_rows_batch(service, sheet_name, col_value_dicts, data_start_row=4):
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
 
     # Read current row count once
-    result = service.spreadsheets().values().get(
+    result = execute_with_retry(service.spreadsheets().values().get(
         spreadsheetId=sheet_id,
         range=f"'{sheet_name}'!A:A",
-    ).execute()
+    ), "append_rows_batch read")
     start_row = max(len(result.get("values", [])) + 1, data_start_row)
 
     # Build all ranges for all rows in one pass
@@ -105,10 +138,10 @@ def append_rows_batch(service, sheet_name, col_value_dicts, data_start_row=4):
             })
 
     if data:
-        service.spreadsheets().values().batchUpdate(
+        execute_with_retry(service.spreadsheets().values().batchUpdate(
             spreadsheetId=sheet_id,
             body={"valueInputOption": "USER_ENTERED", "data": data},
-        ).execute()
+), "append_rows_batch")
 
     return row_numbers
 
@@ -123,7 +156,7 @@ def write_row_partial(service, sheet_name, row_num, col_value_pairs):
             "values": [[value]]
         })
     if data:
-        service.spreadsheets().values().batchUpdate(
+        execute_with_retry(service.spreadsheets().values().batchUpdate(
             spreadsheetId=sheet_id,
             body={"valueInputOption": "USER_ENTERED", "data": data}
-        ).execute()
+        ), "write_row_partial")

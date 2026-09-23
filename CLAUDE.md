@@ -74,6 +74,7 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 - Costco scraper blocks after ~14 product pages — session refresh runs every 20 products
 - YouTube API quota exhausts daily — Reddit/DDG fallback handles it automatically
 - Active monitor must run locally (Chrome CDP) — pre-scans for active/approved rows and skips the browser launch entirely if there's nothing to check
+- Google Sheets caps writes at 60/min per service account — route every `.execute()` write through `tools.sheet_writer.execute_with_retry` (retries 429/500/503/socket.timeout, 1/2/4/8/16s backoff); auditor sleeps 1.5s per row delete, 0.3s per flag write
 - `data/run_history.json` is local only — cloud runs write to Sheet Run Log tab instead
 
 ---
@@ -81,5 +82,6 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 ## Recent Changes
 
 - Run-lock file (`data/.scheduler_lock`) prevents overlapping scheduler runs (45-min staleness before it's reclaimed)
+- Cookie auto-refresh (24h throttle, `tools/cookie_refresh.py`) triggers on file age ≥25d **or** >20% cookies expired (scheduler `_check_cookie_age` and scraper `_load_cookies`)
 - Telegram alerts fire on scheduler crash and on expired/aging Costco cookies
 - Dashboard shows per-category average margins and MPT (Sharpe-ratio) rotation ranking

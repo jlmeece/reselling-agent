@@ -24,7 +24,7 @@ from loguru import logger
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial
+from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial, execute_with_retry
 from tools.graveyard_writer import (
     setup_graveyard_tab, setup_audit_log_tab,
     write_to_graveyard, append_audit_log, queue_substitute,
@@ -244,6 +244,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
             (COL["status"],      "AUDIT_REVIEW"),
             (COL["tier_summary"], f"[AUDIT_REVIEW] {reason}"),
         ])
+        time.sleep(0.3)  # Sheets write cap is 60/min per service account
 
     # ── Write to Graveyard BEFORE deleting ───────────────────────────────────
     graveyard_rows = []
@@ -295,11 +296,11 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
                     "startIndex": sheet_row - 1,  # 0-based
                     "endIndex":   sheet_row,
                 }}}]}
-                service.spreadsheets().batchUpdate(
+                execute_with_retry(service.spreadsheets().batchUpdate(
                     spreadsheetId=spreadsheet_id, body=body
-                ).execute()
+                ), f"delete row {sheet_row}")
                 logger.info(f"  Deleted row {sheet_row}: {product_dict['title'][:40]}")
-                time.sleep(0.5)
+                time.sleep(1.5)  # ~35 deletes/min — stays under the 60/min write cap
             except Exception as e:
                 logger.error(f"  Failed to delete row {sheet_row}: {e}")
 

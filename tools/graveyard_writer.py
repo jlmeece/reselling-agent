@@ -11,7 +11,7 @@ from loguru import logger
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.sheet_writer import get_sheets_service
+from tools.sheet_writer import get_sheets_service, execute_with_retry
 
 
 SHEET_ID = None  # resolved lazily from env
@@ -104,13 +104,13 @@ def write_to_graveyard(service, removed_rows: list) -> None:
             str(r.get("substitute_queued", "NO")),
             str(r.get("original_row", "")),
         ])
-    service.spreadsheets().values().append(
+    execute_with_retry(service.spreadsheets().values().append(
         spreadsheetId=_get_sheet_id(),
         range="Graveyard!A1",
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
         body={"values": values},
-    ).execute()
+    ), "graveyard append")
     logger.info(f"Graveyard: appended {len(values)} rows.")
 
 
@@ -126,13 +126,13 @@ def append_audit_log(service, summary: dict) -> None:
         str(summary.get("category_health", "")),
         str(summary.get("notes", "")),
     ]]
-    service.spreadsheets().values().append(
+    execute_with_retry(service.spreadsheets().values().append(
         spreadsheetId=_get_sheet_id(),
         range="Audit Log!A1",
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
         body={"values": row},
-    ).execute()
+    ), "audit log append")
     logger.info("Audit Log: entry appended.")
 
 

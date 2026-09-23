@@ -31,6 +31,7 @@ import time
 from datetime import datetime
 from loguru import logger
 
+from tools.sheet_writer import execute_with_retry
 
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 _HISTORY_FILE = os.path.join(_DATA_DIR, "run_history.json")
@@ -123,17 +124,17 @@ def _append_sheet(entry: dict, service):
         if not sheet_id:
             return
 
-        spreadsheet = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+        spreadsheet = execute_with_retry(service.spreadsheets().get(spreadsheetId=sheet_id), "run log meta")
         tab_names = [s["properties"]["title"] for s in spreadsheet.get("sheets", [])]
 
         if _RUN_LOG_TAB not in tab_names:
             _create_run_log_tab(service, sheet_id)
 
         # Dedup: skip if the last row already has same date+time+mode
-        existing = service.spreadsheets().values().get(
+        existing = execute_with_retry(service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
             range=f"'{_RUN_LOG_TAB}'!A:C",
-        ).execute().get("values", [])
+        ), "run log dedup read").get("values", [])
         if len(existing) > 1:
             last_row = existing[-1]
             if (len(last_row) >= 3 and
@@ -170,13 +171,13 @@ def _append_sheet(entry: dict, service):
             error_col or notes_col,
         ]
 
-        service.spreadsheets().values().append(
+        execute_with_retry(service.spreadsheets().values().append(
             spreadsheetId=sheet_id,
             range=f"'{_RUN_LOG_TAB}'!A:K",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": [row]},
-        ).execute()
+        ), "run log append")
 
     except Exception as e:
         logger.warning(f"run_logger: sheet append failed: {e}")
