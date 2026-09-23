@@ -70,6 +70,8 @@ _TS_RE = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
 _MAX_MSG = 4096
 
+_REVIEW_MIN_NET_PROFIT = 4.00
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -311,6 +313,10 @@ def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
     last) — feeds the Telegram bot's swipe-style Review queue. Same field set
     as search_products, so a Review card renders via the same
     format_product_detail() body as a /lookup card.
+
+    Items with net_profit below _REVIEW_MIN_NET_PROFIT (or unparseable/negative)
+    are excluded and stay SCORED in the sheet. The auditor only removes net <
+    $0.50 and flags $0.50-$1.00, so rows between $1 and the floor linger unseen.
     """
     status_i = col_to_idx(col_map["status"])
 
@@ -321,6 +327,12 @@ def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
     items = _extract_rows_by_field(
         rows, col_map, fields, data_start_row=data_start_row, filter_fn=is_scored
     )
+
+    def meets_profit_floor(p):
+        net = _parse_currency(p.get("net_profit"))
+        return net is not None and net >= _REVIEW_MIN_NET_PROFIT
+
+    items = [p for p in items if meets_profit_floor(p)]
 
     def sort_key(p):
         score = _parse_currency(p["demand_score"])
@@ -447,7 +459,7 @@ def _format_net_with_ads_line(net_profit_raw, ad_budget_raw, ebay_price_raw):
     else:
         margin_str = "—"
     sign = "-" if net_with_ads < 0 else ""
-    return f"Net with ads: {sign}${abs(net_with_ads):,.2f} ({margin_str})"
+    return f"Net after ad reserve: {sign}${abs(net_with_ads):,.2f} ({margin_str})"
 
 
 def _parse_sale_expiry_info(sale_info_raw, now=None):
@@ -559,7 +571,7 @@ def format_product_detail(p, now=None):
 
     ad_budget = _parse_currency(p.get("ad_budget"))
     if ad_budget is not None and ad_budget > 0:
-        lines.append(f"Ads ${_format_price(p.get('ad_budget'))} (suggested budget)")
+        lines.append(f"Ad reserve ${_format_price(p.get('ad_budget'))} (15% of net profit)")
 
     lines.append(_format_net_fragment(p.get("net_profit"), p.get("net_margin"), label="Net without ads:"))
     net_with_ads_line = _format_net_with_ads_line(p.get("net_profit"), p.get("ad_budget"), p.get("ebay_price"))
@@ -1470,7 +1482,7 @@ def _review_card_kb(row_num):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Approve", callback_data=f"review:approve:{row_num}"),
          InlineKeyboardButton("⏸️ Pause", callback_data=f"review:pause:{row_num}")],
-        [InlineKeyboardButton("🔍 Send to Audit", callback_data=f"review:audit:{row_num}"),
+        [InlineKeyboardButton("🔍 Flag for review", callback_data=f"review:audit:{row_num}"),
          InlineKeyboardButton("⏭️ Skip", callback_data=f"review:skip:{row_num}")],
         [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
     ])
@@ -1501,6 +1513,11 @@ async def _render_review_position(update, context):
     q = context.user_data["queue"]
     item = q["items"][q["pos"]]
     text = format_review_card(item, q["pos"] + 1, len(q["items"]))
+    if q["pos"] == 0:
+        text += (
+            "\n\nScore = demand/opportunity (0–10). Tier 1 ≥7 · Tier 2 4–6.9 · "
+            "Tier 3 <4. Margin is separate (Net / Net%)."
+        )
     await _send_screen(update, text, reply_markup=_review_card_kb(item["row_num"]))
 
 
@@ -1511,7 +1528,7 @@ async def _finish_review_queue(update, context):
         f"✅ Review complete — {len(q['items'])} items processed\n"
         f"  Approved: {t['approved']}\n"
         f"  Paused: {t['paused']}\n"
-        f"  Sent to Audit: {t['audited']}\n"
+        f"  Flagged: {t['audited']}\n"
         f"  Skipped: {t['skipped']}"
     )
     context.user_data["queue"] = None

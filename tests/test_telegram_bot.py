@@ -266,17 +266,17 @@ def test_format_regular_price_line_none_when_equal_to_current():
 
 def test_format_net_with_ads_line_subtracts_ad_budget():
     line = _format_net_with_ads_line("$45.20", "$6.75", "$459.99")
-    assert line == "Net with ads: $38.45 (8%)"
+    assert line == "Net after ad reserve: $38.45 (8%)"
 
 
 def test_format_net_with_ads_line_treats_blank_ad_budget_as_zero():
     line = _format_net_with_ads_line("$45.20", "", "$459.99")
-    assert line == "Net with ads: $45.20 (10%)"
+    assert line == "Net after ad reserve: $45.20 (10%)"
 
 
 def test_format_net_with_ads_line_guards_zero_ebay_price():
     line = _format_net_with_ads_line("$45.20", "$6.75", "")
-    assert line == "Net with ads: $38.45 (—)"
+    assert line == "Net after ad reserve: $38.45 (—)"
 
 
 def test_format_net_with_ads_line_none_when_net_profit_unparseable():
@@ -385,6 +385,21 @@ def test_extract_review_queue_includes_row_num():
     rows = [_make_row(A="PENDING"), _make_row(A="SCORED", C="Item")]
     items = extract_review_queue(rows, _COL, data_start_row=4)
     assert items[0]["row_num"] == 5
+
+
+def test_extract_review_queue_excludes_net_profit_below_floor():
+    rows = [
+        _make_row(A="SCORED", C="Too Low", I="$2.00"),
+        _make_row(A="SCORED", C="Meets Floor", I="$4.00"),
+    ]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    assert [i["title"] for i in items] == ["Meets Floor"]
+
+
+def test_extract_review_queue_excludes_blank_net_profit():
+    rows = [_make_row(A="SCORED", C="No Net Profit", I="")]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    assert items == []
 
 
 def test_extract_audit_queue_filters_audit_review_status():
@@ -520,9 +535,9 @@ def test_format_lookup_reply_single_match_full_card():
     assert "List $2199.00" in text
     assert "Ship $0.00" in text
     assert "Fees $329.85 (15.0%)" in text
-    assert "Ads $27.08 (suggested budget)" in text
+    assert "Ad reserve $27.08 (15% of net profit)" in text
     assert "Net without ads: $180.50 (8%)" in text
-    assert "Net with ads: $153.42 (7%)" in text
+    assert "Net after ad reserve: $153.42 (7%)" in text
     assert "Stock: In Stock" in text
     assert "Last checked 12h ago" in text
     assert text.endswith("https://www.costco.com/gold-bar")
