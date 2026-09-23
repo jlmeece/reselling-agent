@@ -185,17 +185,19 @@ def _append_sheet(entry: dict, service):
 
 def _create_run_log_tab(service, sheet_id: str):
     """Creates the Run Log tab and writes column headers."""
-    service.spreadsheets().batchUpdate(
+    # addSheet is non-idempotent: a landed 5xx/timeout retried would 400 on the
+    # duplicate title and skip the header write, so only 429 is retried.
+    execute_with_retry(service.spreadsheets().batchUpdate(
         spreadsheetId=sheet_id,
         body={"requests": [{"addSheet": {"properties": {"title": _RUN_LOG_TAB}}}]},
-    ).execute()
+    ), "run log addSheet", retry_statuses=(429,), retry_timeouts=False)
 
     headers = [["Date", "Time", "Mode", "Status", "Duration",
                  "New", "Researched", "T1", "T2", "Scout Health", "Notes / Errors"]]
-    service.spreadsheets().values().update(
+    execute_with_retry(service.spreadsheets().values().update(
         spreadsheetId=sheet_id,
         range=f"'{_RUN_LOG_TAB}'!A1:K1",
         valueInputOption="RAW",
         body={"values": headers},
-    ).execute()
+    ), "run log headers")
     logger.info(f"run_logger: created '{_RUN_LOG_TAB}' tab with headers")

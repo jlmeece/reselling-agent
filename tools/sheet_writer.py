@@ -21,21 +21,27 @@ RETRY_STATUSES = (429, 500, 503)
 RETRY_DELAYS   = (1, 2, 4, 8, 16)  # seconds before retry 1..5
 
 
-def execute_with_retry(request, label="sheets call"):
+def execute_with_retry(request, label="sheets call", retry_statuses=RETRY_STATUSES,
+                       retry_timeouts=True):
     """
     Run a googleapiclient request's .execute(), retrying on HttpError with
-    status in RETRY_STATUSES and on socket.timeout, up to len(RETRY_DELAYS)
-    times with exponential backoff. Any other error (403, 400, ...) raises
-    immediately; the last error raises once retries are exhausted.
+    status in retry_statuses and (if retry_timeouts) on socket.timeout, up to
+    len(RETRY_DELAYS) times with exponential backoff. Any other error
+    (403, 400, ...) raises immediately; the last error raises once retries
+    are exhausted.
     Wrap the individual .execute() rather than a whole read-then-write
     function so a retried 5xx can't re-read state and double-append.
+    Non-idempotent writes (deleteDimension, addSheet) must pass
+    retry_statuses=(429,), retry_timeouts=False: a 429 was rejected outright,
+    but a 5xx or timeout may have landed, and a retry would repeat the effect.
     """
     for attempt in range(len(RETRY_DELAYS) + 1):
         try:
             return request.execute()
         except (HttpError, socket.timeout) as e:
             status = e.resp.status if isinstance(e, HttpError) else "timeout"
-            retryable = isinstance(e, socket.timeout) or status in RETRY_STATUSES
+            retryable = (retry_timeouts if isinstance(e, socket.timeout)
+                         else status in retry_statuses)
             if not retryable or attempt >= len(RETRY_DELAYS):
                 raise
             delay = RETRY_DELAYS[attempt]

@@ -69,6 +69,46 @@ def test_non_retryable_status_raises_immediately(sleeps, status):
     assert req.execute.call_count == 1
 
 
+def test_restricted_retry_statuses_do_not_retry_5xx(sleeps):
+    req = _request(_http_error(503), {"ok": 1})
+    with pytest.raises(HttpError):
+        sheet_writer.execute_with_retry(req, retry_statuses=(429,))
+    assert sleeps == []
+    assert req.execute.call_count == 1
+
+
+def test_restricted_retry_statuses_still_retry_429(sleeps):
+    req = _request(_http_error(429), {"ok": 1})
+    assert sheet_writer.execute_with_retry(req, retry_statuses=(429,)) == {"ok": 1}
+    assert sleeps == [1]
+
+
+def test_retry_timeouts_false_raises_on_timeout(sleeps):
+    req = _request(socket.timeout("slow"), {"ok": 1})
+    with pytest.raises(socket.timeout):
+        sheet_writer.execute_with_retry(req, retry_timeouts=False)
+    assert sleeps == []
+    assert req.execute.call_count == 1
+
+
+def test_run_logger_addsheet_is_429_only(sleeps):
+    from tools import run_logger
+    service = MagicMock()
+    service.spreadsheets.return_value.batchUpdate.return_value.execute.side_effect = [
+        _http_error(503), {}
+    ]
+    with pytest.raises(HttpError):
+        run_logger._create_run_log_tab(service, "sid")
+    assert service.spreadsheets.return_value.batchUpdate.return_value.execute.call_count == 1
+
+
+def test_auditor_delete_dimension_is_429_only(sleeps):
+    import inspect
+    from agents import auditor
+    src = inspect.getsource(auditor)
+    assert 'retry_statuses=(429,), retry_timeouts=False' in src
+
+
 def test_every_retry_is_logged(sleeps, monkeypatch):
     logged = []
     monkeypatch.setattr(sheet_writer.logger, "warning", lambda msg: logged.append(msg))

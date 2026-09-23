@@ -74,8 +74,9 @@ def test_get_all_items_each_has_required_keys():
         assert "label" in item
         assert "category_prompt" in item
         assert "args" in item
-        # must have either mode or script
-        assert item.get("mode") is not None or item.get("script") is not None
+        # must have a dispatch key: mode, script, or an in-process action
+        assert (item.get("mode") is not None or item.get("script") is not None
+                or item.get("action") is not None)
 
 
 def test_get_all_items_category_prompt_items_have_mode():

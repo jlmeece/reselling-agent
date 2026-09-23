@@ -41,13 +41,16 @@ def setup_graveyard_tab(service) -> None:
         "SUBSTITUTE_QUEUED", "ORIGINAL_ROW",
     ]]
     body = {"requests": [{"addSheet": {"properties": {"title": "Graveyard"}}}]}
-    service.spreadsheets().batchUpdate(spreadsheetId=_get_sheet_id(), body=body).execute()
-    service.spreadsheets().values().update(
+    execute_with_retry(
+        service.spreadsheets().batchUpdate(spreadsheetId=_get_sheet_id(), body=body),
+        "graveyard addSheet", retry_statuses=(429,), retry_timeouts=False,
+    )
+    execute_with_retry(service.spreadsheets().values().update(
         spreadsheetId=_get_sheet_id(),
         range="Graveyard!A1",
         valueInputOption="RAW",
         body={"values": header},
-    ).execute()
+    ), "graveyard headers")
     logger.info("Graveyard tab created.")
 
 
@@ -60,13 +63,16 @@ def setup_audit_log_tab(service) -> None:
         "FLAGGED_REVIEW", "SUBSTITUTES_QUEUED", "CATEGORY_HEALTH", "NOTES",
     ]]
     body = {"requests": [{"addSheet": {"properties": {"title": "Audit Log"}}}]}
-    service.spreadsheets().batchUpdate(spreadsheetId=_get_sheet_id(), body=body).execute()
-    service.spreadsheets().values().update(
+    execute_with_retry(
+        service.spreadsheets().batchUpdate(spreadsheetId=_get_sheet_id(), body=body),
+        "audit log addSheet", retry_statuses=(429,), retry_timeouts=False,
+    )
+    execute_with_retry(service.spreadsheets().values().update(
         spreadsheetId=_get_sheet_id(),
         range="Audit Log!A1",
         valueInputOption="RAW",
         body={"values": header},
-    ).execute()
+    ), "audit log headers")
     logger.info("Audit Log tab created.")
 
 

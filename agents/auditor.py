@@ -300,7 +300,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
                 }}}]}
                 execute_with_retry(service.spreadsheets().batchUpdate(
                     spreadsheetId=spreadsheet_id, body=body
-                ), f"delete row {sheet_row}")
+                ), f"delete row {sheet_row}", retry_statuses=(429,), retry_timeouts=False)
                 logger.info(f"  Deleted row {sheet_row}: {product_dict['title'][:40]}")
                 time.sleep(1.5)  # ~35 deletes/min — stays under the 60/min write cap
             except Exception as e:

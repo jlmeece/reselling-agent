@@ -25,6 +25,7 @@ RUN_HISTORY_PATH = os.path.join(PROJECT_ROOT, "data", "run_history.json")
 SCHEDULER        = os.path.join(PROJECT_ROOT, "agents", "scheduler.py")
 SETUP_COOKIES    = os.path.join(PROJECT_ROOT, "tools", "setup_costco_session.py")
 SETUP_SHEET      = os.path.join(PROJECT_ROOT, "agents", "setup_sheet.py")
+EBAY_EXPORT      = os.path.join(PROJECT_ROOT, "tools", "ebay_export.py")
 
 
 MENU_GROUPS = [
@@ -35,7 +36,7 @@ MENU_GROUPS = [
             {"label": "2. Discover new Costco products (pick category)",     "mode": "discovery", "category_prompt": True,  "args": [], "limit_prompt": True},
             {"label": "3. Research & score queued products (all)",           "mode": "research",  "category_prompt": False, "args": []},
             {"label": "4. Research & score queued products (pick category)", "mode": "research",  "category_prompt": True,  "args": []},
-            {"label": "5. Export READY products → eBay CSV",                "action": "ebay_export", "category_prompt": False, "args": []},
+            {"label": "5. Export READY products → eBay CSV",                "mode": None, "category_prompt": False, "args": [], "script": EBAY_EXPORT},
         ],
     },
     {
@@ -195,10 +196,6 @@ def run_item(item, category=None, add_limit=None):
     """Invoke the subprocess for the selected menu item."""
     if item.get("action") == "reset_paused":
         reset_paused_to_pending()
-        input("\nPress Enter to return to menu...")
-        return
-    elif item.get("action") == "ebay_export":
-        subprocess.run([sys.executable, "tools/ebay_export.py"])
         input("\nPress Enter to return to menu...")
         return
     if item.get("script"):

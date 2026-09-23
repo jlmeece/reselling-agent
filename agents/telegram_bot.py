@@ -2021,6 +2021,16 @@ def main():
             pass
 
 
+async def _notify_online(application):
+    """post_init callback: tell the authorized chat the bot is ready. Never raises."""
+    try:
+        await application.bot.send_message(
+            application.bot_data["chat_id"], f"✅ Bot back online (PID {os.getpid()})"
+        )
+    except Exception as e:
+        logger.warning(f"Online notice failed to send: {e}")
+
+
 def _main_body():
     logger.add(
         os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
@@ -2046,7 +2056,7 @@ def _main_body():
 
     logger.info(f"Telegram bot starting (authorized chat_id={chat_id})")
 
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(_notify_online).build()
     app.bot_data["chat_id"] = chat_id
     app.bot_data["jobs"] = {}
     app.bot_data["sheet_gid"] = None

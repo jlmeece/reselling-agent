@@ -75,6 +75,7 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 - YouTube API quota exhausts daily — Reddit/DDG fallback handles it automatically
 - Active monitor must run locally (Chrome CDP) — pre-scans for active/approved rows and skips the browser launch entirely if there's nothing to check
 - Google Sheets caps writes at 60/min per service account — route every `.execute()` write through `tools.sheet_writer.execute_with_retry` (retries 429/500/503/socket.timeout, 1/2/4/8/16s backoff); auditor sleeps 1.5s per row delete, 0.3s per flag write
+- Non-idempotent Sheets writes (`deleteDimension`, `addSheet`) must pass `retry_statuses=(429,), retry_timeouts=False` to `execute_with_retry` — a 5xx/timeout may have landed, and a retry would delete the next row or fail on a duplicate tab. `telegram_bot.py`'s deleteDimension is still unwrapped
 - `data/run_history.json` is local only — cloud runs write to Sheet Run Log tab instead
 
 ---
