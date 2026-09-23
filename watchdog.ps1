@@ -28,13 +28,17 @@ param(
     [switch]$DryRun,
     [switch]$NoAlert,
     [switch]$AlertTest,
-    [string]$AliveFile = (Join-Path $PSScriptRoot "data\.telegram_bot.alive"),
+    [string]$AliveFile = "",
     [string]$ProcessPattern = 'agents\\telegram_bot\.py',
     [string]$LoopPattern = 'start_telegram_bot\.bat',
     [string]$TaskName = "WAT-TelegramBot"
 )
 
-$root    = $PSScriptRoot
+# NB: $PSScriptRoot is empty inside param() defaults under `powershell -File`
+# (5.1), so resolve paths here in the body instead.
+$root = $PSScriptRoot
+if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $AliveFile) { $AliveFile = Join-Path $root "data\.telegram_bot.alive" }
 $logDir  = Join-Path $root "data\logs"
 $logFile = Join-Path $logDir "watchdog.log"
 
