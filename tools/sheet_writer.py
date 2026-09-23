@@ -58,6 +58,59 @@ def get_sheets_service():
     return build("sheets", "v4", credentials=creds)
 
 
+def _letter_to_idx(letters):
+    """'A' -> 0, 'Z' -> 25, 'AA' -> 26, 'BA' -> 52."""
+    n = 0
+    for ch in letters.upper():
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n - 1
+
+
+def required_grid_columns(col_map=None):
+    """Column count the tab's grid must have for every col_map.yaml column to be
+    writable (rightmost column index + 1). Loads config/col_map.yaml if col_map
+    is None."""
+    if col_map is None:
+        import yaml
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "config", "col_map.yaml")
+        with open(path) as f:
+            col_map = yaml.safe_load(f)["columns"]
+    return max(_letter_to_idx(v) for v in col_map.values()) + 1
+
+
+def ensure_grid_columns(service, sheet_name, min_cols):
+    """Expand the tab's grid to at least min_cols columns; never shrinks.
+    Sheets rejects writes past the grid ('exceeds grid limits'), so a column
+    added to col_map.yaml needs the grid to grow with it. Setting an absolute
+    columnCount is idempotent, so the default retry policy is safe. Returns True
+    if it expanded."""
+    sheet_id = os.getenv("GOOGLE_SHEET_ID")
+    meta = execute_with_retry(service.spreadsheets().get(
+        spreadsheetId=sheet_id,
+        fields="sheets.properties(sheetId,title,gridProperties.columnCount)",
+    ), "grid_meta")
+    for s in meta.get("sheets", []):
+        props = s["properties"]
+        if props.get("title") == sheet_name:
+            break
+    else:
+        raise ValueError(f"Tab {sheet_name!r} not found")
+    current = props.get("gridProperties", {}).get("columnCount", 0)
+    if current >= min_cols:
+        return False
+    execute_with_retry(service.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={"requests": [{"updateSheetProperties": {
+            "properties": {"sheetId": props["sheetId"],
+                           "gridProperties": {"columnCount": min_cols}},
+            "fields": "gridProperties.columnCount",
+        }}]},
+    ), "grid_expand")
+    logger.info(f"Expanded '{sheet_name}' grid from {current} to {min_cols} columns")
+    return True
+
+
 def read_sheet(service, range_name):
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
     result = execute_with_retry(service.spreadsheets().values().get(

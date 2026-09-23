@@ -49,7 +49,10 @@ load_dotenv(encoding="utf-8", override=True)
 
 import anthropic
 
-from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial, append_row, append_rows_batch
+from tools.sheet_writer import (
+    get_sheets_service, read_sheet, write_row_partial, append_row, append_rows_batch,
+    ensure_grid_columns, required_grid_columns,
+)
 from tools.formula_seeder import seed_formula_row
 from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
@@ -450,6 +453,14 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
     sheet_name = business["sheet_name"]
     start_row  = business["data_start_row"]
     end_row    = business["data_end_row"]
+
+    # Sheets rejects writes past the grid; col_map.yaml has grown past what the
+    # formatter sized (MPT cols AX-BA). Best-effort: a failure here must not
+    # block research on its own — the writes will surface the real error.
+    try:
+        ensure_grid_columns(service, sheet_name, required_grid_columns(COL))
+    except Exception as e:
+        logger.warning(f"Grid-size check failed (continuing): {e}")
 
     all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
 

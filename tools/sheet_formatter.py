@@ -14,6 +14,8 @@ Safe to re-run — clears formatting before applying fresh.
 import os
 from loguru import logger
 
+from tools.sheet_writer import required_grid_columns
+
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 
@@ -460,7 +462,9 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
                 "gridProperties": {
                     "frozenRowCount": data_row_idx,
                     "frozenColumnCount": FROZEN_COLS,
-                    "columnCount": TOTAL_COLS,
+                    # never below what col_map.yaml needs (MPT cols AX-BA live
+                    # past TOTAL_COLS); a plain TOTAL_COLS would shrink them off
+                    "columnCount": max(TOTAL_COLS, required_grid_columns()),
                 },
             },
             "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount,gridProperties.columnCount",
