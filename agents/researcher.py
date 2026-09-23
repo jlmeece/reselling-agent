@@ -1018,6 +1018,17 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 full_notes += "\n📦 FREE SHIPPING from Costco — higher margin potential vs. paid-ship comps"
             if purchase_limit:
                 full_notes += f"\nPurchase limit: {purchase_limit}/day — list max {purchase_limit} units on eBay"
+            # Costco specs line — read back by tools/ebay_export.py for C:Brand / C:Model / dimensions
+            _dims = costco_data.get("dimensions")
+            _spec_parts = [
+                f"Brand: {brand}" if brand else "",
+                f"Model: {model}" if model else "",
+                (f"Dimensions: {_dims['length']:g} x {_dims['width']:g} x {_dims['height']:g} in"
+                 if _dims else ""),
+            ]
+            _spec_parts = [p for p in _spec_parts if p]
+            if _spec_parts:
+                full_notes += "\nCostco specs: " + " | ".join(_spec_parts)
             if cart_est:
                 if free_shipping:
                     full_notes += "\nCostco shipping: FREE (confirmed)"

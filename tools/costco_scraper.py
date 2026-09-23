@@ -448,6 +448,58 @@ def _extract_model(page):
     return None
 
 
+_DIM_NUM = r"(\d+(?:\.\d+)?)"
+_DIM_UNIT = r"\s*(?:\"|in\.?|inch(?:es)?|cm|centimeters?)?\s*[a-z]?\s*"
+_DIM_TRIPLE_RX = re.compile(
+    rf"(?:product\s+|item\s+|overall\s+|assembled\s+)?dimensions?[^\n\d]{{0,30}}"
+    rf"{_DIM_NUM}{_DIM_UNIT}[x×]\s*{_DIM_NUM}{_DIM_UNIT}[x×]\s*{_DIM_NUM}"
+    rf"\s*(\"|in\.?|inch(?:es)?|cm|centimeters?)?",
+    re.IGNORECASE,
+)
+
+
+def parse_dimensions(text: str) -> dict | None:
+    """
+    Extract product dimensions (inches) from Costco spec text.
+
+    Handles two layouts:
+      * labeled rows — "Item Length: 12 in", "Item Width: 5 in", "Item Height: 3 in"
+      * combined     — "Dimensions: 10 x 5 x 3 in" (order taken as L x W x H); cm is converted.
+    Returns {"length": float, "width": float, "height": float} or None if all three axes
+    are not found.
+    """
+    if not text:
+        return None
+
+    labeled = {}
+    for axis in ("length", "width", "height"):
+        m = re.search(
+            rf"\b(?:item\s+|product\s+)?{axis}\s*[:\-]?\s*{_DIM_NUM}\s*(\"|in\.?|inch(?:es)?|cm|centimeters?)?",
+            text, re.IGNORECASE,
+        )
+        if not m:
+            break
+        val = float(m.group(1))
+        if (m.group(2) or "").lower().startswith(("c",)):
+            val /= 2.54
+        labeled[axis] = val
+    if len(labeled) == 3:
+        dims = labeled
+    else:
+        m = _DIM_TRIPLE_RX.search(text)
+        if not m:
+            return None
+        vals = [float(m.group(i)) for i in (1, 2, 3)]
+        if (m.group(4) or "").lower().startswith("c"):
+            vals = [v / 2.54 for v in vals]
+        dims = dict(zip(("length", "width", "height"), vals))
+
+    dims = {k: round(v, 1) for k, v in dims.items()}
+    if min(dims.values()) <= 0:
+        return None
+    return dims
+
+
 def _parse_currency(text: str) -> float | None:
     """Extract first dollar amount from text like '$12.34' or 'Free'."""
     if not text:
@@ -574,13 +626,14 @@ def scrape_costco(url, page):
 
     Returns: {"price": float|None, "stock_status": str, "image_urls": list,
               "title": str|None, "brand": str|None, "model": str|None,
+              "dimensions": {"length","width","height"} inches|None,
               "item_number": str|None, "purchase_limit": int|None,
               "in_stock": bool, "error": str|None, "http_status": int|None}
     """
     result = {
         "price": None, "stock_status": "Unknown",
         "image_urls": [], "title": None,
-        "brand": None, "model": None,
+        "brand": None, "model": None, "dimensions": None,
         "item_number": None, "purchase_limit": None, "in_stock": False,
         "on_sale": False, "sale_savings": None, "original_price": None,
         "sale_expires": None, "free_shipping": False,
@@ -863,8 +916,12 @@ def scrape_costco(url, page):
         # sale_info and free_shipping are written to dedicated cols X/Y by researcher.py.
         result["brand"] = _extract_brand(page)
         result["model"] = _extract_model(page)
-        if result["brand"] or result["model"]:
-            logger.debug(f"  Brand={result['brand']!r} Model={result['model']!r}")
+        # Dimensions come from the spec text (best-effort; the Specifications tab may be
+        # collapsed, in which case the export falls back to category default dimensions).
+        result["dimensions"] = parse_dimensions(prod_text)
+        if result["brand"] or result["model"] or result["dimensions"]:
+            logger.debug(f"  Brand={result['brand']!r} Model={result['model']!r} "
+                         f"Dims={result['dimensions']!r}")
 
         # Weight + karat — for precious metals margin calc
         from tools.spot_price import parse_gold_weight

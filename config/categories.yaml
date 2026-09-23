@@ -75,6 +75,7 @@ categories:
       "C:Metal": ""                        # Gold / Silver / Platinum — Claude fills
       "C:Purity": ""                       # e.g. .9999 Fine — Claude fills
       "C:Brand": ""                        # e.g. PAMP Suisse, Argor Heraeus
+    ebay_required_specifics: ["C:Brand", "C:Type", "C:Metal", "C:Purity"]
 
     discovery_urls:
       - "https://www.costco.com/precious-metals.html"
@@ -138,6 +139,7 @@ categories:
       "C:Type": ""                              # e.g. Ring, Necklace, Earrings
       "C:Style": ""
       "C:Brand": ""
+    ebay_required_specifics: ["C:Brand", "C:Type", "C:Metal"]
 
     discovery_urls:
       - "https://www.costco.com/gold-bracelets.html"
@@ -187,6 +189,9 @@ categories:
       "C:Material": ""
       "C:Color": ""
       "C:Type": ""
+    ebay_required_specifics: ["C:Brand", "C:Type", "C:Material", "C:Color", "C:Model",
+                              "C:Item Width", "C:Item Height", "C:Item Length"]
+    default_dimensions: {length: 60, width: 30, height: 34}  # inches — patio chair/table fallback
     discovery_urls:
       - "https://www.costco.com/patio-furniture.html"
     community_sources:
@@ -224,6 +229,7 @@ categories:
       "C:Water Resistance": ""
       "C:Case Color": ""
       "C:Band Color": ""
+    ebay_required_specifics: ["C:Brand", "C:Type", "C:Movement", "C:Model", "C:Color"]
     discovery_urls:
       - "https://www.costco.com/watches.html"
     community_sources:
@@ -268,16 +274,20 @@ categories:
       "fish oil": "11892"                   # Fish Oil & Omega-3 (leaf)
       "omega": "11892"                      # Fish Oil & Omega-3 (leaf)
       "calcium": "11894"                    # Calcium (leaf)
-      "vitamin d": "11896"                  # Vitamin D (leaf)
-      "vitamin c": "11896"                  # Vitamins & Minerals (leaf)
-      "probiotic": "11896"                  # Other Vitamins (leaf)
+      "vitamin d": "183904"                 # Vitamin D (leaf; was 11896, eBay migrated it)
+      "vitamin c": "183904"                 # Vitamins & Minerals (leaf; was 11896)
+      "probiotic": "183904"                 # Other Vitamins (leaf; was 11896)
       "dog": "177799"                       # Pet Vitamins & Supplements (leaf)
-      "default": "11896"                    # Other Vitamins & Supplements (leaf)
+      "default": "183904"                   # Other Vitamins & Supplements (leaf; was 11896)
     ebay_item_specifics:
       "C:Brand": ""                         # e.g. Kirkland Signature, Nature Made
       "C:Type": ""                          # e.g. Fish Oil, Vitamin D, Probiotics
       "C:Formulation": ""                   # e.g. Softgels, Capsules, Tablets
       "C:Unit Count": ""                    # e.g. 500 Count
+    # Every key here must be non-blank in the export or eBay rejects the listing (21919303).
+    ebay_required_specifics: ["C:Brand", "C:Type", "C:Formulation", "C:Unit Count", "C:Color", "C:Model",
+                              "C:Item Width", "C:Item Height", "C:Item Length"]
+    default_dimensions: {length: 4, width: 4, height: 6}   # inches — bottle/box fallback when Costco page has none
 
     discovery_urls:
       - "https://www.costco.com/vitamins-supplements.html"
@@ -338,6 +348,9 @@ categories:
       "C:Type": ""                          # e.g. Blender, Stand Mixer, Air Fryer
       "C:Model": ""                         # exact model number
       "C:Color": ""
+    ebay_required_specifics: ["C:Brand", "C:Type", "C:Model", "C:Color",
+                              "C:Item Width", "C:Item Height", "C:Item Length"]
+    default_dimensions: {length: 14, width: 12, height: 14}  # inches — countertop appliance fallback
 
     discovery_urls:
       - "https://www.costco.com/small-kitchen-appliances.html"
