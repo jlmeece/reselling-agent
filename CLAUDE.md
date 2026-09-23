@@ -86,3 +86,4 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 - Cookie auto-refresh (24h throttle, `tools/cookie_refresh.py`) triggers on file age ≥25d **or** >20% cookies expired (scheduler `_check_cookie_age` and scraper `_load_cookies`)
 - Telegram alerts fire on scheduler crash and on expired/aging Costco cookies
 - Dashboard shows per-category average margins and MPT (Sharpe-ratio) rotation ranking
+- Bot heartbeat: `agents/telegram_bot.py` runs a daemon thread that pings `HEALTHCHECK_URL_BOT` at startup then every 300s (unset = disabled, one log line). Set healthchecks.io period 5 min / grace ≥10 min. Proves the process is alive, not that polling is

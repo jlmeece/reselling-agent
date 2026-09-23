@@ -12,7 +12,9 @@ import html
 import os
 import re
 import sys
+import threading
 import time
+import urllib.request
 from datetime import datetime, timedelta
 
 import psutil
@@ -157,6 +159,47 @@ def _check_and_write_pid_lock():
         sys.exit(0)
     with open(PID_FILE, "w") as f:
         f.write(str(os.getpid()))
+
+
+# ── Heartbeat (healthchecks.io) ─────────────────────────────────────────────
+
+_HEARTBEAT_ENV = "HEALTHCHECK_URL_BOT"
+_HEARTBEAT_INTERVAL = 300  # seconds between pings
+_HEARTBEAT_TIMEOUT = 5     # seconds per ping
+
+
+def _ping_healthcheck(url):
+    """One healthchecks.io ping. Logs success/failure; never raises."""
+    try:
+        with urllib.request.urlopen(url, timeout=_HEARTBEAT_TIMEOUT):
+            pass
+        logger.info(f"Heartbeat ping sent ({_HEARTBEAT_ENV})")
+    except Exception as e:
+        logger.warning(f"Heartbeat ping FAILED ({_HEARTBEAT_ENV}): {e}")
+
+
+def _heartbeat_loop(url, interval=_HEARTBEAT_INTERVAL, stop=None):
+    """Ping immediately, then every `interval` seconds until `stop` (a
+    threading.Event) is set. Runs on a daemon thread, so it dies with the process
+    and the pings stop — that silence is what healthchecks.io alerts on."""
+    stop = stop or threading.Event()
+    while True:
+        _ping_healthcheck(url)
+        if stop.wait(interval):
+            break
+
+
+def _start_heartbeat_thread():
+    """Start the heartbeat daemon thread if HEALTHCHECK_URL_BOT is set.
+    Returns the thread, or None when the env var is empty/unset."""
+    hc_url = os.getenv(_HEARTBEAT_ENV, "").strip()
+    if not hc_url:
+        logger.info(f"Heartbeat disabled ({_HEARTBEAT_ENV} not set)")
+        return None
+    thread = threading.Thread(target=_heartbeat_loop, args=(hc_url,), daemon=True, name="hc-heartbeat")
+    thread.start()
+    logger.info(f"Heartbeat thread started ({_HEARTBEAT_ENV} set, every {_HEARTBEAT_INTERVAL}s)")
+    return thread
 
 
 # ── Sheet config / lookup helpers ───────────────────────────────────────────
@@ -2087,6 +2130,8 @@ def _main_body():
     app.add_handler(CommandHandler("menu", cmd_menu))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+
+    _start_heartbeat_thread()
 
     try:
         logger.info("Polling for messages...")
