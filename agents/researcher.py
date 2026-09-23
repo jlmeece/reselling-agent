@@ -336,8 +336,8 @@ def _ship_badge(free_shipping: bool, cart_est: dict) -> str:
         return "✓ FREE"
     ship = cart_est.get("shipping")
     if ship is not None:
-        if ship <= 0:
-            return "✓ FREE"
+        # A $0 estimate without the free-shipping flag most likely means the
+        # number is missing, not that shipping is free — don't claim FREE.
         return f"${ship:.2f} ship"
     return ""
 

@@ -54,10 +54,10 @@ def get_sheets_service():
 
 def read_sheet(service, range_name):
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
-    result = service.spreadsheets().values().get(
+    result = execute_with_retry(service.spreadsheets().values().get(
         spreadsheetId=sheet_id,
         range=range_name
-    ).execute()
+    ), "read_sheet")
     return result.get("values", [])
 
 

@@ -101,6 +101,7 @@ def refresh_costco_cookies() -> "tuple[bool, str]":
         logger.warning(f"Cookie auto-refresh timestamp write failed (non-fatal): {e}")
 
     mtime_before = os.path.getmtime(_COOKIES_PATH) if os.path.exists(_COOKIES_PATH) else 0.0
+    expired_before, _ = cookie_expiry_stats(_COOKIES_PATH)
 
     logger.info("Attempting automatic Costco cookie refresh...")
     try:
@@ -119,6 +120,19 @@ def refresh_costco_cookies() -> "tuple[bool, str]":
     if export_result.returncode != 0 or mtime_after <= mtime_before:
         logger.warning("Cookie auto-refresh: setup_costco_session.py did not produce fresh cookies.")
         return False, _tail_output(export_result)
+
+    # A fresh mtime isn't proof of fresh cookies: a Chrome that got logged out of
+    # Costco still exports a file, just one that's still full of expired cookies.
+    # Bail before the upload so we don't overwrite good VPS cookies with bad ones.
+    expired_after, total_after = cookie_expiry_stats(_COOKIES_PATH)
+    if expired_after > 0 and expired_after >= expired_before:
+        logger.warning(
+            f"Cookie auto-refresh: exported but still {expired_after}/{total_after} cookies expired."
+        )
+        return False, (
+            f"exported but still {expired_after}/{total_after} cookies expired "
+            "— re-authenticate Chrome"
+        )
 
     try:
         upload_result = subprocess.run(

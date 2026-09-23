@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv(encoding="utf-8", override=True)
 
+from tools.sheet_writer import execute_with_retry
+
 # ── Schedule reference (Central time, CDT) ────────────────────────────────────
 _SCHEDULE = {
     "discovery": {"hour": 7,  "minute": 0,  "days": "daily"},
@@ -64,10 +66,10 @@ def _sheet_run_log():
             creds_file, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
         service = build("sheets", "v4", credentials=creds)
-        result  = service.spreadsheets().values().get(
+        result  = execute_with_retry(service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
             range="'Run Log'!A2:K500"
-        ).execute()
+        ), "status run log")
         rows = result.get("values", [])
 
         runs = []
@@ -164,10 +166,10 @@ def _sheet_status_counts():
 
         creds   = Credentials.from_service_account_file(creds_file, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
         service = build("sheets", "v4", credentials=creds)
-        result  = service.spreadsheets().values().get(
+        result  = execute_with_retry(service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
             range=f"'{sheet_name}'!A{start_row}:C{end_row}"
-        ).execute()
+        ), "status counts")
         rows = result.get("values", [])
 
         counts = {}

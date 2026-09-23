@@ -277,7 +277,9 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
     if to_remove:
         spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
         try:
-            meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            meta = execute_with_retry(
+                service.spreadsheets().get(spreadsheetId=spreadsheet_id), "auditor sheet meta"
+            )
             sheet_gid = next(
                 s["properties"]["sheetId"]
                 for s in meta["sheets"]

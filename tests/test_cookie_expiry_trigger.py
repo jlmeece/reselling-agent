@@ -121,3 +121,46 @@ def test_expiry_stats_and_rule_match_scraper(tmp_path):
     assert not cookie_refresh.expiry_refresh_needed(2, 10)
     assert cookie_refresh.expiry_refresh_needed(11, 100)   # >10 absolute
     assert not cookie_refresh.expiry_refresh_needed(0, 0)
+
+
+# ── refresh_costco_cookies(): a fresh export that is still expired is not success ──
+
+@pytest.fixture
+def refresh_env(tmp_path, monkeypatch):
+    """Point cookie_refresh at tmp files; fake subprocess.run so 'export' rewrites the cookie file."""
+    path = tmp_path / "costco_cookies.json"
+    monkeypatch.setattr(cookie_refresh, "_COOKIES_PATH", str(path))
+    monkeypatch.setattr(cookie_refresh, "_COOKIE_AUTOREFRESH_TS_PATH", str(tmp_path / ".ar_ts"))
+    path.write_text(json.dumps(_cookies(10, 8)))
+    old = time.time() - 86400
+    os.utime(path, (old, old))
+
+    state = {"exported": None, "calls": []}
+
+    def fake_run(cmd, **kwargs):
+        script = os.path.basename(cmd[1])
+        state["calls"].append(script)
+        if script == "setup_costco_session.py":
+            path.write_text(json.dumps(state["exported"]))
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+    monkeypatch.setattr(cookie_refresh.subprocess, "run", fake_run)
+    return state
+
+
+def test_refresh_still_expired_after_export_fails_and_skips_upload(refresh_env):
+    refresh_env["exported"] = _cookies(10, 8)
+    ok, diag = cookie_refresh.refresh_costco_cookies()
+    assert ok is False
+    assert "still 8/10 cookies expired" in diag and "re-authenticate Chrome" in diag
+    assert "cookie_sync.py" not in refresh_env["calls"]
+
+
+def test_refresh_with_no_expired_cookies_succeeds_and_uploads(refresh_env):
+    refresh_env["exported"] = _cookies(10, 0)
+    assert cookie_refresh.refresh_costco_cookies() == (True, "")
+    assert refresh_env["calls"] == ["setup_costco_session.py", "cookie_sync.py"]
+
+
+def test_refresh_with_reduced_expired_count_succeeds(refresh_env):
+    refresh_env["exported"] = _cookies(10, 2)  # 8 -> 2
+    assert cookie_refresh.refresh_costco_cookies() == (True, "")

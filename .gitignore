@@ -40,6 +40,7 @@ data/run_history.json
 data/spot_history.json
 data/rotation_log.json
 data/.cookie_warn_ts
+data/.cookie_expiry_alert_ts
 data/.cookie_autorefresh_ts
 data/exports/
 data/CostcoAgentProfile/

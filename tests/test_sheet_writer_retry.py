@@ -121,3 +121,20 @@ def test_append_rows_batch_retries(sleeps, monkeypatch):
     rows = sheet_writer.append_rows_batch(service, "Tab", [{"A": 1}, {"A": 2}])
     assert rows == [6, 7]
     assert values.batchUpdate.return_value.execute.call_count == 2
+
+
+def test_read_sheet_retries_and_returns_values(sleeps, monkeypatch):
+    monkeypatch.setenv("GOOGLE_SHEET_ID", "sid")
+    service = MagicMock()
+    get = service.spreadsheets.return_value.values.return_value.get
+    get.return_value.execute.side_effect = [_http_error(429), {"values": [["a", "b"]]}]
+    assert sheet_writer.read_sheet(service, "Tab!A1:B1") == [["a", "b"]]
+    assert get.return_value.execute.call_count == 2
+    assert sleeps == [1]
+
+
+def test_read_sheet_missing_values_key_returns_empty(sleeps, monkeypatch):
+    monkeypatch.setenv("GOOGLE_SHEET_ID", "sid")
+    service = MagicMock()
+    service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {}
+    assert sheet_writer.read_sheet(service, "Tab!A1:B1") == []
