@@ -31,6 +31,8 @@ from contextlib import contextmanager
 from loguru import logger
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
+from tools.cookie_refresh import refresh_costco_cookies
+
 if sys.platform == "win32":
     CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 else:
@@ -158,6 +160,14 @@ def _load_cookies():
             logger.info(f"  Loaded {len(out)} Costco cookies ({expired_count} expired)")
 
         if out and (expired_count > len(out) * 0.2 or expired_count > 10):
+            ok, diag = refresh_costco_cookies()
+            if ok:
+                token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+                chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+                if token and chat_id:
+                    _send_telegram(token, chat_id, "✅ Costco cookies auto-refreshed and synced to VPS. (expiry)")
+                return _load_cookies()  # re-parse the freshly-written file instead of
+                                         # returning this call's now-stale `out`
             _alert_cookie_expiry(expired_count, len(out))
 
         return out

@@ -18,6 +18,8 @@ PAUSED_DEMAND   Low demand / high competition — deep research only, no scrapin
 PAUSED_SEASONAL Off-season — monthly re-eval
 """
 
+from datetime import datetime
+
 # Statuses that the active monitor loop should process every run
 ACTIVE_MONITOR_STATUSES = {"ACTIVE"}
 
@@ -121,6 +123,36 @@ def determine_status(
             notes.append("Stock verified OK")
 
     return new_status, reason_code, " | ".join(notes) if notes else "All clear"
+
+
+SCORED_STALE_DAYS = 7  # SCORED rows untouched this long get returned to PENDING
+
+
+def days_since(timestamp_str):
+    """Days since a 'YYYY-MM-DD HH:MM' (or date-only) timestamp. Returns 999
+    if blank/unparseable, so stale-check callers treat missing data as stale
+    rather than silently skipping it. Mirrors agents/auditor.py::_days_since —
+    duplicated here (not imported) to keep tools/ from depending on agents/."""
+    if not timestamp_str:
+        return 999
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(timestamp_str.strip()[:16], fmt)
+            return (datetime.now() - dt).days
+        except ValueError:
+            continue
+    return 999
+
+
+def check_scored_staleness(last_checked_str, threshold=SCORED_STALE_DAYS):
+    """
+    Returns ("PENDING", notes) if a SCORED row's last_checked is >= threshold
+    days old, else (None, None) — no change.
+    """
+    age = days_since(last_checked_str)
+    if age >= threshold:
+        return "PENDING", f"Stale ({age}d) — returned to PENDING for re-research"
+    return None, None
 
 
 def suggest_reprice(new_cost, fee_rate, ship_cost=0, target_margin=0.20):

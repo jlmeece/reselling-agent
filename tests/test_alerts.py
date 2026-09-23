@@ -152,6 +152,7 @@ def test_load_cookies_alerts_when_over_20_percent_expired(monkeypatch, tmp_path)
     _write_cookies(cookies_path, total=20, expired=5)  # 25% expired, >20%
     monkeypatch.setattr(costco_scraper, "COOKIES_PATH", str(cookies_path))
     monkeypatch.setattr(costco_scraper, "_COOKIE_EXPIRY_ALERT_TS_PATH", str(tmp_path / ".alert_ts"))
+    monkeypatch.setattr(costco_scraper, "refresh_costco_cookies", lambda: (False, ""))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
 
@@ -171,6 +172,7 @@ def test_load_cookies_alerts_when_over_10_expired_even_under_20_percent(monkeypa
     _write_cookies(cookies_path, total=100, expired=11)  # 11% (<20%) but >10 absolute
     monkeypatch.setattr(costco_scraper, "COOKIES_PATH", str(cookies_path))
     monkeypatch.setattr(costco_scraper, "_COOKIE_EXPIRY_ALERT_TS_PATH", str(tmp_path / ".alert_ts"))
+    monkeypatch.setattr(costco_scraper, "refresh_costco_cookies", lambda: (False, ""))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
 
@@ -181,6 +183,39 @@ def test_load_cookies_alerts_when_over_10_expired_even_under_20_percent(monkeypa
     costco_scraper._load_cookies()
 
     assert "11/100 expired" in sent["text"]
+
+
+def test_load_cookies_auto_refreshes_before_alerting_and_suppresses_alert_on_success(monkeypatch, tmp_path):
+    from tools import costco_scraper
+
+    cookies_path = tmp_path / "costco_cookies.json"
+    _write_cookies(cookies_path, total=20, expired=5)  # 25% expired, >20% — would normally alert
+    monkeypatch.setattr(costco_scraper, "COOKIES_PATH", str(cookies_path))
+    monkeypatch.setattr(costco_scraper, "_COOKIE_EXPIRY_ALERT_TS_PATH", str(tmp_path / ".alert_ts"))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    refresh_calls = []
+
+    def fake_refresh():
+        refresh_calls.append(1)
+        # Simulate the refresh rewriting the cookie file with all-fresh cookies.
+        _write_cookies(cookies_path, total=20, expired=0)
+        return True, ""
+
+    monkeypatch.setattr(costco_scraper, "refresh_costco_cookies", fake_refresh)
+
+    sent = {}
+    monkeypatch.setattr(costco_scraper, "_send_telegram",
+                         lambda token, chat_id, text: sent.update(text=text))
+
+    result = costco_scraper._load_cookies()
+
+    assert len(refresh_calls) == 1
+    assert sent["text"] == "✅ Costco cookies auto-refreshed and synced to VPS. (expiry)"
+    # Must re-read the freshly-refreshed file, not return the stale pre-refresh list.
+    assert len(result) == 20
+    assert all(c["expires"] > time.time() for c in result)
 
 
 def test_load_cookies_no_alert_below_thresholds(monkeypatch, tmp_path):
@@ -208,6 +243,7 @@ def test_load_cookies_alert_throttled_within_24h(monkeypatch, tmp_path):
     _write_cookies(cookies_path, total=20, expired=15)
     monkeypatch.setattr(costco_scraper, "COOKIES_PATH", str(cookies_path))
     monkeypatch.setattr(costco_scraper, "_COOKIE_EXPIRY_ALERT_TS_PATH", str(tmp_path / ".alert_ts"))
+    monkeypatch.setattr(costco_scraper, "refresh_costco_cookies", lambda: (False, ""))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
 
@@ -227,6 +263,7 @@ def test_load_cookies_alert_skipped_when_telegram_unconfigured(monkeypatch, tmp_
     _write_cookies(cookies_path, total=20, expired=15)
     monkeypatch.setattr(costco_scraper, "COOKIES_PATH", str(cookies_path))
     monkeypatch.setattr(costco_scraper, "_COOKIE_EXPIRY_ALERT_TS_PATH", str(tmp_path / ".alert_ts"))
+    monkeypatch.setattr(costco_scraper, "refresh_costco_cookies", lambda: (False, ""))
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
 

@@ -35,8 +35,9 @@ load_dotenv(encoding="utf-8", override=True)
 
 from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial
 from tools.costco_scraper import scrape_costco, make_browser
+from tools.cookie_refresh import refresh_costco_cookies, cookie_expiry_stats, expiry_refresh_needed
 from tools.status_logic import (
-    determine_status, suggest_reprice,
+    determine_status, suggest_reprice, check_scored_staleness,
     ACTIVE_MONITOR_STATUSES, DAILY_SWEEP_STATUSES, SKIP_STATUSES,
 )
 from tools.listing_copy import generate_listing_copy
@@ -435,6 +436,28 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
             re_eval_promoted.append({"title": title, "row": sheet_row})
             logger.info(f"  {status} -> PENDING (re_eval_date reached): {title[:50]}")
 
+    # ── Pass 1b: stale SCORED demotion (no browser needed) ───────────────────
+    stale_scored = []
+    for idx, row in enumerate(all_data):
+        if not row:
+            continue
+        status = safe_get(row, col_to_idx(COL["status"]))
+        if status != "SCORED":
+            continue
+
+        last_checked_raw = safe_get(row, col_to_idx(COL["last_checked"]))
+        new_status, notes = check_scored_staleness(last_checked_raw)
+        if new_status:
+            sheet_row = idx + start_row
+            title     = safe_get(row, col_to_idx(COL["title"]))
+            write_row_partial(service, sheet_name, sheet_row, [
+                (COL["status"],       new_status),
+                (COL["tier_summary"], notes),
+                (COL["last_checked"], run_time),
+            ])
+            stale_scored.append({"title": title, "row": sheet_row})
+            logger.info(f"  SCORED -> PENDING (stale): {title[:50]}")
+
     # ── Pass 2: Costco scrape for APPROVED / PAUSED_OOS / PAUSED_MARGIN ──────
     if sys.platform != "win32":
         logger.info("Daily sweep: Chrome-dependent scrape skipped on non-Windows.")
@@ -564,13 +587,14 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     if ready_items:
         send_ready_to_list_alert(ready_items, run_time=run_time)
 
-    changes = len(ready_items) + len(newly_paused) + len(oos_recovered) + len(margin_recovered) + len(re_eval_promoted)
+    changes = len(ready_items) + len(newly_paused) + len(oos_recovered) + len(margin_recovered) + len(re_eval_promoted) + len(stale_scored)
     if changes > 0:
         summary_rows = [
             ("Ready to list (new)",        len(ready_items),      "#007aff"),
             ("Restocked -> WATCH",          len(oos_recovered),    "#34c759"),
             ("Margin recovered -> WATCH",   len(margin_recovered), "#34c759"),
             ("Re-eval date -> PENDING",     len(re_eval_promoted), "#ff9500"),
+            ("Stale SCORED -> PENDING",     len(stale_scored),     "#ff9500"),
             ("Newly paused",                len(newly_paused),     "#ff9500"),
         ]
         send_routine_alert(
@@ -968,9 +992,6 @@ _COOKIE_WARN_TS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.absp
 _COOKIE_WARN_INTERVAL_SEC = 7 * 86400  # don't re-warn within 7 days
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_COOKIE_AUTOREFRESH_TS_PATH = os.path.join(_REPO_ROOT, "data", ".cookie_autorefresh_ts")
-_COOKIE_AUTOREFRESH_INTERVAL_SEC = 86400  # at most one auto-refresh attempt per 24h
-_COOKIE_AUTOREFRESH_TIMEOUT_SEC = 60
 
 
 def _send_telegram(token: str, chat_id: str, text: str) -> None:
@@ -986,93 +1007,31 @@ def _send_telegram(token: str, chat_id: str, text: str) -> None:
         logger.warning(f"Telegram message failed (non-fatal): {e}")
 
 
-def _tail_output(result, n_lines: int = 3) -> str:
-    """Last few lines of a subprocess result's stdout+stderr, for alert diagnostics."""
-    combined = "\n".join(x for x in (result.stdout, result.stderr) if x)
-    lines = [l for l in combined.strip().splitlines() if l.strip()]
-    return "\n".join(lines[-n_lines:])
-
-
-def _attempt_cookie_autorefresh() -> tuple[bool, str]:
+def _attempt_cookie_autorefresh(reason: str = "age") -> tuple[bool, str]:
     """
-    Tries to refresh Costco cookies unattended: runs setup_costco_session.py
-    (exports cookies from the agent's already-running, already-logged-in
-    Chrome via CDP — it does NOT log in itself) and, if that produces fresh
-    cookies, uploads them to the VPS via cookie_sync.py upload.
-
-    Throttled to at most one attempt per _COOKIE_AUTOREFRESH_INTERVAL_SEC (24h)
-    so a closed/unreachable Chrome doesn't retry on every scheduled run.
-    Returns (success, diagnostic) — diagnostic is a short error excerpt for
-    the fallback manual alert, empty on success or when skipped by throttle.
-    Never raises.
+    Thin wrapper around tools.cookie_refresh.refresh_costco_cookies() (the
+    shared subprocess/throttle mechanics, also called from
+    tools/costco_scraper.py's expiry-based trigger) — this module just owns
+    sending its own success alert, tagged with which trigger fired
+    (reason: "age" or "expiry").
+    Returns (success, diagnostic), same contract as before.
     """
-    last_attempt_ts = 0.0
-    if os.path.exists(_COOKIE_AUTOREFRESH_TS_PATH):
-        try:
-            with open(_COOKIE_AUTOREFRESH_TS_PATH) as f:
-                last_attempt_ts = float(f.read().strip())
-        except Exception:
-            last_attempt_ts = 0.0
-    if time.time() - last_attempt_ts < _COOKIE_AUTOREFRESH_INTERVAL_SEC:
-        logger.info("Cookie auto-refresh already attempted within last 24h, skipping.")
-        return False, ""
-
-    try:
-        os.makedirs(os.path.dirname(_COOKIE_AUTOREFRESH_TS_PATH), exist_ok=True)
-        with open(_COOKIE_AUTOREFRESH_TS_PATH, "w") as f:
-            f.write(str(time.time()))
-    except Exception as e:
-        logger.warning(f"Cookie auto-refresh timestamp write failed (non-fatal): {e}")
-
-    import subprocess
-    mtime_before = os.path.getmtime(_COOKIES_PATH) if os.path.exists(_COOKIES_PATH) else 0.0
-
-    logger.info("Attempting automatic Costco cookie refresh...")
-    try:
-        export_result = subprocess.run(
-            [sys.executable, os.path.join(_REPO_ROOT, "tools", "setup_costco_session.py")],
-            capture_output=True, text=True, timeout=_COOKIE_AUTOREFRESH_TIMEOUT_SEC,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("Cookie auto-refresh: setup_costco_session.py timed out.")
-        return False, "setup_costco_session.py timed out — is Chrome open and reachable?"
-    except Exception as e:
-        logger.warning(f"Cookie auto-refresh: setup_costco_session.py failed to run: {e}")
-        return False, f"setup_costco_session.py failed to run: {e}"
-
-    mtime_after = os.path.getmtime(_COOKIES_PATH) if os.path.exists(_COOKIES_PATH) else 0.0
-    if export_result.returncode != 0 or mtime_after <= mtime_before:
-        logger.warning("Cookie auto-refresh: setup_costco_session.py did not produce fresh cookies.")
-        return False, _tail_output(export_result)
-
-    try:
-        upload_result = subprocess.run(
-            [sys.executable, os.path.join(_REPO_ROOT, "tools", "cookie_sync.py"), "upload"],
-            capture_output=True, text=True, timeout=_COOKIE_AUTOREFRESH_TIMEOUT_SEC,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("Cookie auto-refresh: cookie_sync.py upload timed out.")
-        return False, "cookie_sync.py upload timed out."
-    except Exception as e:
-        logger.warning(f"Cookie auto-refresh: cookie_sync.py upload failed to run: {e}")
-        return False, f"cookie_sync.py upload failed to run: {e}"
-
-    if upload_result.returncode != 0:
-        logger.warning("Cookie auto-refresh: cookie_sync.py upload failed.")
-        return False, _tail_output(upload_result)
-
-    logger.info("Cookie auto-refresh succeeded — cookies exported and synced to VPS.")
-    token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-    if token and chat_id:
-        _send_telegram(token, chat_id, "✅ Costco cookies auto-refreshed and synced to VPS.")
-    return True, ""
+    ok, diag = refresh_costco_cookies()
+    if ok:
+        token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if token and chat_id:
+            _send_telegram(token, chat_id, f"✅ Costco cookies auto-refreshed and synced to VPS. ({reason})")
+    return ok, diag
 
 
 def _check_cookie_age() -> None:
     """
-    Warns if costco_cookies.json is older than 25 days.
-    First tries to auto-refresh the cookies (see _attempt_cookie_autorefresh);
+    Triggers on either (a) costco_cookies.json being 25+ days old, or (b) too
+    many cookies inside it being expired (same rule as costco_scraper — Costco
+    cookies expire in days, so file age alone never catches this).
+    First tries to auto-refresh the cookies (see _attempt_cookie_autorefresh,
+    24h-throttled and shared with the scraper's own expiry trigger);
     only sends a Telegram message telling Jordan to do it manually (if
     TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set) when that fails, at most
     once per _COOKIE_WARN_INTERVAL_SEC (7 days), so a stale cookie file
@@ -1082,10 +1041,18 @@ def _check_cookie_age() -> None:
         return  # no cookies file — rotation/refresh-notes mode, or first run
 
     age_days = (time.time() - os.path.getmtime(_COOKIES_PATH)) / 86400
-    if age_days < _COOKIE_WARN_DAYS:
+    expired, total = cookie_expiry_stats(_COOKIES_PATH)
+    age_trigger    = age_days >= _COOKIE_WARN_DAYS
+    expiry_trigger = expiry_refresh_needed(expired, total)
+    if not age_trigger and not expiry_trigger:
         return
 
-    autorefreshed, autorefresh_diag = _attempt_cookie_autorefresh()
+    if age_trigger:
+        reason_text = f"Costco cookies are {age_days:.0f} days old (warn threshold: {_COOKIE_WARN_DAYS} days)."
+    else:
+        reason_text = f"{expired}/{total} Costco cookies are expired (file is only {age_days:.0f} days old)."
+
+    autorefreshed, autorefresh_diag = _attempt_cookie_autorefresh("age" if age_trigger else "expiry")
     if autorefreshed:
         return
 
@@ -1097,12 +1064,12 @@ def _check_cookie_age() -> None:
         except Exception:
             last_warn_ts = 0.0
     if time.time() - last_warn_ts < _COOKIE_WARN_INTERVAL_SEC:
-        logger.info(f"Cookie age: {age_days:.0f} days — warning already sent within last 7 days, skipping.")
+        logger.info(f"{reason_text} Warning already sent within last 7 days, skipping.")
         return
 
     subject = "⚠️ Costco cookies need refresh — run .\\run.ps1 cookies on your laptop"
     body    = (
-        f"Costco cookies are {age_days:.0f} days old (warn threshold: {_COOKIE_WARN_DAYS} days).\n\n"
+        f"{reason_text}\n\n"
         f"Scraping will likely start returning CHECK FAILED soon.\n\n"
     )
     if autorefresh_diag:
@@ -1113,7 +1080,7 @@ def _check_cookie_age() -> None:
         f"  1. On your Windows laptop: .\\run.ps1 cookies\n"
         f"  2. Upload to VPS:          python tools/cookie_sync.py upload"
     )
-    logger.warning(f"Cookie age: {age_days:.0f} days — {subject}")
+    logger.warning(f"{reason_text} — {subject}")
 
     token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
