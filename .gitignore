@@ -36,6 +36,7 @@ Thumbs.db
 data/chrome_agent.pid
 data/.scheduler_lock
 data/.telegram_bot.pid
+data/.telegram_bot.alive
 data/run_history.json
 data/spot_history.json
 data/rotation_log.json

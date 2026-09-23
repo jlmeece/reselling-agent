@@ -2091,6 +2091,41 @@ async def _notify_online(application):
         logger.warning(f"Online notice failed to send: {e}")
 
 
+# ── Liveness file (read by watchdog.ps1) ────────────────────────────────────
+
+LIVENESS_FILE = os.path.join(_BASE_DIR, "data", ".telegram_bot.alive")
+_LIVENESS_INTERVAL = 60  # seconds between touches
+
+
+def _touch_liveness_file(path=None):
+    """Create/refresh the liveness file's mtime. Logs and swallows OSError."""
+    path = path or LIVENESS_FILE
+    try:
+        with open(path, "a"):
+            pass
+        os.utime(path, None)
+    except OSError as e:
+        logger.warning(f"Liveness file touch failed: {e}")
+
+
+async def _liveness_loop(application, interval=_LIVENESS_INTERVAL, path=None):
+    """Touch the liveness file every `interval` seconds *from the event loop*,
+    and only while polling is actually running. A blocked loop or a silently
+    stopped poller stops the touches — the staleness watchdog.ps1 acts on. The
+    heartbeat thread can't tell (it lives outside the loop)."""
+    while True:
+        updater = application.updater
+        if application.running and updater is not None and updater.running:
+            _touch_liveness_file(path)
+        await asyncio.sleep(interval)
+
+
+async def _post_init(application):
+    """post_init callback: start the liveness task, then send the online notice."""
+    application.bot_data["_liveness_task"] = asyncio.create_task(_liveness_loop(application))
+    await _notify_online(application)
+
+
 def _main_body():
     logger.add(
         os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
@@ -2116,7 +2151,7 @@ def _main_body():
 
     logger.info(f"Telegram bot starting (authorized chat_id={chat_id})")
 
-    app = Application.builder().token(token).post_init(_notify_online).build()
+    app = Application.builder().token(token).post_init(_post_init).build()
     app.bot_data["chat_id"] = chat_id
     app.bot_data["jobs"] = {}
     app.bot_data["sheet_gid"] = None
