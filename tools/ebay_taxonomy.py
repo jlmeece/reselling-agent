@@ -302,6 +302,22 @@ def get_item_aspects(category_id, refresh: bool = False):
         return None
 
 
+def category_status(category_id) -> str:
+    """'valid' (a leaf with aspect data), 'invalid' (eBay answered 400/404: retired, parent or
+    unknown ID) or 'unknown' (couldn't tell — no creds, outage). Callers must treat 'unknown'
+    as "keep what you have", never as invalid. Never raises."""
+    try:
+        cid = str(category_id or "").strip()
+        if not cid:
+            return "unknown"
+        if get_item_aspects(cid) is not None:
+            return "valid"
+        hit, _ = _cache_get(cid)          # only a 400/404 leaves a fresh negative entry behind
+        return "invalid" if hit else "unknown"
+    except Exception:
+        return "unknown"
+
+
 # ── Category suggestions ─────────────────────────────────────────────────────
 
 def _normalize_suggestion(entry: dict) -> dict | None:

@@ -685,6 +685,7 @@ def _sg(cat_id, name="Cat", level=4):
 
 
 def test_suggestion_overrides_yaml_id_and_feeds_aspects(monkeypatch):
+    monkeypatch.setattr(ee, "SUGGESTIONS_MODE", "always")
     asked = _spy_aspects(monkeypatch, valid={"777"})
     _suggest(monkeypatch, [_sg(777, "Air Fryers")])
     _, rows = _export()
@@ -708,6 +709,7 @@ def test_export_falls_back_to_yaml_id_when_no_suggestions(monkeypatch):
 
 
 def test_invalid_top_suggestion_is_skipped_for_next_valid_one(monkeypatch):
+    monkeypatch.setattr(ee, "SUGGESTIONS_MODE", "always")
     _spy_aspects(monkeypatch, valid={"222"})
     _suggest(monkeypatch, [_sg(111), _sg(222)])          # 111 is not a valid leaf
     _, rows = _export()
@@ -715,6 +717,7 @@ def test_invalid_top_suggestion_is_skipped_for_next_valid_one(monkeypatch):
 
 
 def test_all_suggestions_invalid_falls_back_to_yaml_id(monkeypatch):
+    monkeypatch.setattr(ee, "SUGGESTIONS_MODE", "always")
     _spy_aspects(monkeypatch, valid=set())
     _suggest(monkeypatch, [_sg(111), _sg(222), _sg(333)])
     _, rows = _export()
@@ -722,14 +725,15 @@ def test_all_suggestions_invalid_falls_back_to_yaml_id(monkeypatch):
 
 
 def test_only_top_candidates_are_tried(monkeypatch):
+    monkeypatch.setattr(ee, "SUGGESTIONS_MODE", "always")
     asked = _spy_aspects(monkeypatch, valid={"5"})
     _suggest(monkeypatch, [_sg(1), _sg(2), _sg(3), _sg(4), _sg(5)])
     _, rows = _export()
     assert rows[0]["Category"] == "14070" and "4" not in asked and "5" not in asked
 
 
-def test_suggestions_primary_off_uses_yaml_only(monkeypatch):
-    monkeypatch.setattr(ee, "SUGGESTIONS_PRIMARY", False)
+def test_mode_off_uses_yaml_only(monkeypatch):
+    monkeypatch.setattr(ee, "SUGGESTIONS_MODE", "off")
     _spy_aspects(monkeypatch, valid={"777", "14070"})
     _suggest(monkeypatch, [_sg(777)])
     _, rows = _export()
@@ -766,17 +770,163 @@ def test_suggestion_matching_yaml_id_is_silent(monkeypatch):
     assert ee._suggested_category_id("t", "14070") == "14070" and not ee._logged_suggestions
 
 
-def test_export_end_to_end_through_http_seam(monkeypatch, creds):
-    fake = FakeEbay(aspects_response=(200, {"aspects": [aspect("Brand")]}),
+def test_export_suggestions_end_to_end_through_http_seam(monkeypatch, creds):
+    # yaml 14070 is rejected by eBay (400) -> the default invalid_only mode uses the suggestion
+    fake = FakeEbay(aspects_response=lambda cat, n: (400, {}) if cat == "14070"
+                    else (200, {"aspects": [aspect("Brand")]}),
                     suggestions_response=suggest_response(suggestion(777, "Air Fryers", 4)))
     monkeypatch.setattr(et, "_http_json", fake)
     _, rows = _export()
     assert rows[0]["Category"] == "777"
-    aspect_urls = [r.full_url for k, r in fake.calls if k == "aspects"]
-    assert aspect_urls and all(u.endswith("category_id=777") for u in aspect_urls)
+    ids = [urllib.parse.parse_qs(urllib.parse.urlparse(r.full_url).query)["category_id"][0]
+           for k, r in fake.calls if k == "aspects"]
+    assert ids[-1] == "777"                              # specifics fetched for the written category
     _export()                                            # second run served from cache
-    assert fake.suggestion_calls == 1 and fake.aspects_calls == 1
+    assert fake.suggestion_calls == 1 and fake.aspects_calls == 2   # 14070 (400) + 777, once each
+
 
 
 def test_serper_lookup_is_gone():
     assert not hasattr(ee, "_serper_category_lookup")
+
+
+# ── category_status + "invalid_only" mode ────────────────────────────────────
+
+def test_category_status_valid_invalid_unknown(monkeypatch, creds, clock):
+    fake = FakeEbay(aspects_response=lambda cat, n: {
+        "1": (200, {"aspects": [aspect("Brand")]}),
+        "2": (400, {"errors": [{"message": "must be a leaf"}]}),
+        "3": (503, {})}[cat])
+    monkeypatch.setattr(et, "_http_json", fake)
+    assert et.category_status("1") == "valid"
+    assert et.category_status("2") == "invalid"
+    assert et.category_status("2") == "invalid"          # negative cache hit, no new request
+    assert fake.aspects_calls == 2
+    assert et.category_status("3") == "unknown"          # outage is NOT invalid
+    assert et.category_status("") == "unknown" and et.category_status(None) == "unknown"
+
+
+def test_category_status_unknown_without_creds_or_on_network_error(monkeypatch):
+    monkeypatch.delenv("EBAY_APP_ID", raising=False)
+    monkeypatch.delenv("EBAY_CERT_ID", raising=False)
+    assert et.category_status("1") == "unknown"          # conftest also blocks HTTP
+
+
+def test_default_mode_is_invalid_only():
+    assert ee.SUGGESTIONS_MODE == "invalid_only"
+
+
+def _mode_world(monkeypatch, creds_env=True, yaml_status=(200, {"aspects": [aspect("Brand")]})):
+    """yaml id 14070 answers with `yaml_status`; every other id is valid; 777 is suggested."""
+    fake = FakeEbay(aspects_response=lambda cat, n: yaml_status if cat == "14070"
+                    else (200, {"aspects": [aspect("Brand")]}),
+                    suggestions_response=suggest_response(suggestion(777, "Air Fryers", 4)))
+    monkeypatch.setattr(et, "_http_json", fake)
+    return fake
+
+
+def test_invalid_only_keeps_valid_yaml_id_and_never_asks_for_suggestions(monkeypatch, creds):
+    fake = _mode_world(monkeypatch)
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070"
+    assert fake.suggestion_calls == 0
+
+
+def test_invalid_only_replaces_an_invalid_yaml_id(monkeypatch, creds):
+    fake = _mode_world(monkeypatch, yaml_status=(400, {"errors": [{"message": "not a leaf"}]}))
+    _, rows = _export()
+    assert rows[0]["Category"] == "777"
+    assert fake.suggestion_calls == 1
+
+
+def test_invalid_only_keeps_yaml_id_when_api_is_unreachable(monkeypatch, creds):
+    fake = _mode_world(monkeypatch, yaml_status=(503, {}))
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070"                # outage != invalid: curated ID kept
+    assert fake.suggestion_calls == 0
+
+
+def test_invalid_only_with_invalid_yaml_and_no_usable_suggestion_keeps_yaml(monkeypatch, creds):
+    fake = _mode_world(monkeypatch, yaml_status=(400, {}))
+    fake.suggestions_response = (200, {})                # eBay has no match
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070"
+
+
+def test_invalid_only_uses_suggestion_when_yaml_has_no_id(monkeypatch, creds):
+    _mode_world(monkeypatch)
+    cfg = {"business": {}, "categories": {"Small Appliances": {"ebay_required_specifics": ["C:Brand"]}}}
+    _, rows = _export(cfg)
+    assert rows[0]["Category"] == "777"
+
+
+def test_invalid_only_judges_the_migrated_yaml_id(monkeypatch, creds):
+    # 11896 is retired but migrates to 183904; if 183904 is valid the yaml ID stands (no suggestion)
+    fake = FakeEbay(aspects_response=(200, {"aspects": [aspect("Brand")]}),
+                    suggestions_response=suggest_response(suggestion(777, "X", 4)))
+    monkeypatch.setattr(et, "_http_json", fake)
+    cfg = {"business": {}, "categories": {"Pharmacy": {"ebay_category_id": "11896"}}}
+    text = ee.generate_ebay_csv([(4, _row(category="Pharmacy", title="Vitamin D"))], cfg)
+    assert list(csv.DictReader(io.StringIO(text)))[0]["Category"] == "183904"
+    assert fake.suggestion_calls == 0
+
+
+def test_always_mode_overrides_even_a_valid_yaml_id(monkeypatch, creds):
+    monkeypatch.setattr(ee, "SUGGESTIONS_MODE", "always")
+    _mode_world(monkeypatch)
+    _, rows = _export()
+    assert rows[0]["Category"] == "777"
+
+
+def test_unknown_mode_value_behaves_like_invalid_only(monkeypatch, creds):
+    monkeypatch.setattr(ee, "SUGGESTIONS_MODE", "bogus")
+    fake = _mode_world(monkeypatch)
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070" and fake.suggestion_calls == 0
+
+
+# ── categories.yaml fixes (2026-09-23 drift) ─────────────────────────────────
+
+def _yaml_map(category):
+    from tools.ebay_export import _load_config
+    cfg = _load_config()["categories"][category]
+    return cfg, cfg["ebay_category_map"]
+
+
+def test_yaml_stale_ids_were_replaced():
+    _, pm = _yaml_map("Precious Metals")
+    assert (pm["gold bar"], pm["gold coin"], pm["silver bar"], pm["silver coin"]) == \
+        ("178906", "177652", "39489", "177653")
+    assert pm["gold bar"] != pm["gold coin"]             # the shared ID was split
+    jw_cfg, jw = _yaml_map("Jewelry")
+    assert jw["bracelet"] == "261988" and jw["earring"] == "261990"
+    assert jw["earring"] != "261994"                     # 261994 is Rings, not Earrings
+    assert _yaml_map("Outdoor Furniture")[1]["sectional"] == "139849"
+    sa = _yaml_map("Small Appliances")[1]
+    assert sa["coffee"] == "184665" and sa["stand mixer"] == "133701"
+
+
+def test_yaml_defaults_follow_the_fixed_ids():
+    assert _yaml_map("Precious Metals")[0]["ebay_category_id"] == "178906"
+    assert _yaml_map("Jewelry")[0]["ebay_category_id"] == "261988"
+    assert _yaml_map("Outdoor Furniture")[0]["ebay_category_id"] == "139849"
+
+
+def test_yaml_unresolved_and_valid_but_different_ids_are_untouched():
+    _, jw = _yaml_map("Jewelry")
+    assert jw["ring"] == "10968"                         # TODO: unresolvable without a real ring title
+    assert _yaml_map("Small Appliances")[0]["ebay_category_id"] == "20667"     # TODO
+    assert jw["necklace"] == jw["chain"] == jw["pendant"] == "137839"          # separate review
+    sa = _yaml_map("Small Appliances")[1]
+    assert sa["blender"] == sa["vitamix"] == sa["food processor"] == "14070"   # separate review
+    _, rx = _yaml_map("Pharmacy")
+    assert rx["fish oil"] == "11892" and rx["calcium"] == "11894" and rx["vitamin d"] == "183904"
+
+
+def test_no_old_stale_id_remains_as_a_value():
+    from tools.ebay_export import _load_config
+    stale = {"39482", "45109", "45108", "137835", "261940", "30063", "116174"}
+    used = set()
+    for cfg in _load_config()["categories"].values():
+        used |= {str(cfg.get("ebay_category_id", ""))} | {str(v) for v in (cfg.get("ebay_category_map") or {}).values()}
+    assert not (used & stale)

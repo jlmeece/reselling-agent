@@ -194,19 +194,24 @@ def _brand_from_title(title: str) -> str:
     return ""
 
 
-# eBay's category suggestions (Taxonomy API) are the primary category resolver; the yaml ID is
-# the fallback. Set False to use the yaml IDs only (instant rollback).
-SUGGESTIONS_PRIMARY = True
+# How eBay's category suggestions (Taxonomy API) interact with the curated yaml IDs:
+#   "invalid_only" (default) — the yaml ID wins unless eBay says it is not a valid leaf
+#                              category (stale/retired/parent) or the yaml has none; only then
+#                              is a suggestion used. If the API is merely unreachable the yaml
+#                              ID is kept — an outage never overrides a curated ID.
+#   "always"                 — a valid suggestion overrides the yaml ID for every row.
+#   "off"                    — yaml IDs only (instant rollback).
+SUGGESTIONS_MODE = "invalid_only"
 _SUGGESTION_CANDIDATES = 3      # top suggestions tried until one has aspect data
 _logged_suggestions = set()
 
 
 def _suggested_category_id(title: str, yaml_id: str = "") -> str:
     """
-    Category for `title` from eBay's suggestions: the first of the top few (deepest-first)
-    whose item aspects load — so it is a real leaf, and the specifics come from the very
-    category that gets written. "" = nothing usable (API down, no match, none valid), in
-    which case the caller keeps the yaml ID.
+    Category for `title` from eBay's suggestions: the first of the top few (in eBay's
+    relevance order) whose item aspects load — so it is a real leaf, and the specifics come
+    from the very category that gets written. "" = nothing usable (API down, no match, none
+    valid), in which case the caller keeps the yaml ID.
     """
     suggestions = ebay_taxonomy.get_category_suggestions(title)
     for s in (suggestions or [])[:_SUGGESTION_CANDIDATES]:
@@ -218,6 +223,20 @@ def _suggested_category_id(title: str, yaml_id: str = "") -> str:
                         f"— replaces yaml category {yaml_id or '(none)'}")
         return s["id"]
     return ""
+
+
+def _resolve_category_id(title: str, yaml_id: str) -> str:
+    """The category to write for `title`, per SUGGESTIONS_MODE. Falls back to `yaml_id`
+    whenever no usable suggestion exists."""
+    if SUGGESTIONS_MODE == "off":
+        return yaml_id
+    if SUGGESTIONS_MODE != "always":                     # "invalid_only"
+        checked = _CATEGORY_MIGRATIONS.get(yaml_id, yaml_id)    # a retired ID that migrates is fine
+        if checked and ebay_taxonomy.category_status(checked) != "invalid":
+            return yaml_id                               # valid, or unknown (API unreachable)
+        if checked:
+            logger.info(f"  yaml category {yaml_id} is not a valid eBay leaf — trying suggestions")
+    return _suggested_category_id(title, yaml_id) or yaml_id
 
 
 def _quantity_from_limit(limit_cell: str) -> str:
@@ -591,8 +610,7 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
         quantity   = _quantity_from_limit(_safe(row, _COL["purchase_limit"]))
         cat_id     = _ebay_category_id(title, category, config)
         cat_config = config["categories"].get(category, {})
-        if SUGGESTIONS_PRIMARY:
-            cat_id = _suggested_category_id(title, cat_id) or cat_id
+        cat_id = _resolve_category_id(title, cat_id)
         cat_id = _CATEGORY_MIGRATIONS.get(cat_id, cat_id)
         _warn_if_unverified(cat_id)
         logger.debug(f"  {title[:40]} → eBay category: {cat_id} ({category})")

@@ -63,13 +63,15 @@ categories:
       viral social proof, prepper/investment demand. Max list qty = 2 for 1oz bars.
       Melt value and spot premium % are critical scoring signals.
 
-    ebay_category_id: "39482"              # Gold Bars (leaf)
+    # IDs below were invalid/non-leaf in eBay US (found by tools/ebay_taxonomy.py --check, 2026-09-23)
+    # and replaced with the leaves eBay's category suggestions returned for real Costco titles.
+    ebay_category_id: "178906"             # Gold Bars & Rounds (leaf; was 39482, not a leaf)
     ebay_category_map:
-      "gold bar": "39482"                  # Gold Bars (leaf)
-      "gold coin": "39482"                 # Gold (leaf)
-      "silver bar": "45109"               # Silver Bars (leaf)
-      "silver coin": "45108"              # Silver Coins (leaf)
-      "default": "39482"
+      "gold bar": "178906"                 # Gold > Bars & Rounds (leaf; was 39482)
+      "gold coin": "177652"                # Gold > Coins (leaf; was 39482 — shared ID split)
+      "silver bar": "39489"                # Silver > Bars & Rounds (leaf; was 45109)
+      "silver coin": "177653"              # Silver > Coins (leaf; was 45108)
+      "default": "178906"                  # Gold Bars & Rounds (most common)
     ebay_item_specifics:
       "C:Type": ""                         # Gold Bar / Gold Coin / Silver Bar — Claude fills
       "C:Metal": ""                        # Gold / Silver / Platinum — Claude fills
@@ -125,15 +127,19 @@ categories:
       Brand matters less than style, metal type (14k/18k), and stone quality.
       eBay comps: search by metal + style description, not model number.
 
-    ebay_category_id: "137835"                   # Fine Bracelets (leaf, most common)
+    ebay_category_id: "261988"                   # Fine Jewelry > Bracelets & Charms (leaf, most common; was 137835, not a leaf)
     ebay_category_map:
-      "bracelet": "137835"                      # Fine Bracelets (leaf)
-      "necklace": "137839"                      # Fine Necklaces & Pendants (leaf)
-      "chain": "137839"                         # Fine Necklaces & Pendants (leaf)
-      "ring": "10968"                           # Fine Rings (leaf)
-      "earring": "261994"                       # Fine Earrings (leaf)
-      "pendant": "137839"                       # Fine Necklaces & Pendants (leaf)
-      "default": "137835"                       # Fine Bracelets (fallback)
+      "bracelet": "261988"                      # Fine Jewelry > Bracelets & Charms (leaf; was 137835)
+      "necklace": "137839"                      # Fine Necklaces & Pendants (leaf) — eBay now suggests 261993; separate review
+      "chain": "137839"                         # Fine Necklaces & Pendants (leaf) — separate review
+      # TODO: 10968 is NOT a valid leaf in eBay US. --check says Rings is 261994, but no ring
+      # product exists in the knowledge store to confirm it against — re-run
+      # `python tools/ebay_taxonomy.py --check` with a real ring title, then set this. Until
+      # then the export falls back to eBay's per-title suggestion (invalid-only mode).
+      "ring": "10968"
+      "earring": "261990"                       # Fine Jewelry > Earrings (leaf; 261994 was mislabelled here — it is Rings)
+      "pendant": "137839"                       # Fine Necklaces & Pendants (leaf) — separate review
+      "default": "261988"                       # Fine Jewelry > Bracelets & Charms (fallback; was 137835)
     ebay_item_specifics:
       "C:Metal": ""                             # e.g. 14K Gold, Sterling Silver
       "C:Type": ""                              # e.g. Ring, Necklace, Earrings
@@ -177,13 +183,13 @@ categories:
     research_skill: "skills/research_outdoor.py"
     seasonal_peak_months: [3, 4, 5, 6]
     notes: "Watch shipping weight — heavy items cut margin fast"
-    ebay_category_id: "261940"                  # Patio Furniture Sets (leaf)
+    ebay_category_id: "139849"                  # Patio & Garden Furniture Sets (leaf; was 261940, not in eBay US tree)
     ebay_category_map:
-      "sectional": "261940"                     # Patio Furniture Sets (leaf)
+      "sectional": "139849"                     # Patio & Garden Furniture Sets (leaf; was 261940)
       "chair": "79682"                      # Patio Chairs (leaf, verified Jul 2026)
       "adirondack": "79682"                  # Patio Chairs (leaf, verified Jul 2026)
       "table": "20563"                          # Outdoor Tables (leaf)
-      "default": "261940"
+      "default": "139849"                       # Patio & Garden Furniture Sets (was 261940)
     ebay_item_specifics:
       "C:Brand": ""
       "C:Material": ""
@@ -332,6 +338,10 @@ categories:
       Always search eBay by exact model number first. Costco Concierge 2-year warranty is a selling point.
       Ship standard residential (UPS/FedEx). Check product weight — skip anything over 40 lbs.
 
+    # TODO: 20667 is a parent category, not a leaf — eBay rejects it. There is no single correct
+    # leaf for "any small appliance", so it is deliberately NOT guessed here. Rows that hit this
+    # default are resolved per title by eBay's category suggestions (invalid-only mode);
+    # add a keyword above for each product type that shows up (rice cooker = 122932 per --check).
     ebay_category_id: "20667"               # Small Kitchen Appliances (parent)
     ebay_category_map:
       "blender": "14070"                    # Blenders (leaf)
@@ -339,8 +349,8 @@ categories:
       "air fryer": "185033"                  # Air Fryers (leaf, verified Jul 2026)
       "convection oven": "185033"            # Air Fryers/Countertop Ovens (leaf, verified Jul 2026)
       "10-in-1": "185033"                    # Air Fryers/Countertop Ovens (leaf, verified Jul 2026)
-      "coffee": "30063"                     # Coffee Makers (leaf)
-      "stand mixer": "116174"               # Stand Mixers (leaf)
+      "coffee": "184665"                    # Filter Coffee Machines (leaf; was 30063, not in eBay US tree)
+      "stand mixer": "133701"               # Countertop Mixers (leaf; was 116174, not in eBay US tree)
       "food processor": "14070"             # Food Processors (leaf)
       "default": "20667"                    # Small Kitchen Appliances
     ebay_item_specifics:
