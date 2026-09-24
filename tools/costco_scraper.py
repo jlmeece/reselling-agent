@@ -617,6 +617,62 @@ def get_cart_estimate(costco_url: str, page) -> dict:
     return out
 
 
+def _collect_img_urls(els, limit=5):
+    seen, urls = set(), []
+    for img in els:
+        src = img.get_attribute("src") or img.get_attribute("data-src") or ""
+        src = src.strip()
+        if not src or src in seen:
+            continue
+        skip = any(x in src.lower() for x in ["logo", "icon", "banner", "sprite", "svg"])
+        if skip:
+            continue
+        seen.add(src)
+        urls.append(src)
+        if len(urls) >= limit:
+            break
+    return urls
+
+
+def _extract_image_urls(page):
+    # Costco redesigned the product page (Sep 2026): images moved to the
+    # gdx-assets.costco.com CDN (Adobe AEM, served as JPEG despite the .avif
+    # filename) and the gallery markup is now Material-UI. Product photos are
+    # <img alt="Enlarge Product Preview N"> with no stable class name, so
+    # match by alt text first, then CDN hostname, then legacy classes.
+
+    # 1) Current markup: product gallery images carry alt="Enlarge Product Preview N"
+    gallery_imgs = page.query_selector_all("img[alt^='Enlarge Product Preview']")
+    urls = _collect_img_urls(gallery_imgs)
+
+    # 2) CDN hostname fallback (current gdx-assets + legacy CDNs)
+    if not urls:
+        cdn_imgs = page.query_selector_all(
+            "img[src*='gdx-assets'], img[src*='channeladvisor'], img[src*='costco-static'], "
+            "img[data-src*='gdx-assets'], img[data-src*='channeladvisor'], "
+            "img[data-src*='costco-static']"
+        )
+        urls = _collect_img_urls(cdn_imgs)
+
+    # 3) Legacy container classes (pre-redesign pages, keep for safety)
+    if not urls:
+        container_imgs = page.query_selector_all(
+            "[class*='product-image'] img, [class*='image-viewer'] img, "
+            "[class*='carousel'] img, [class*='thumbnail'] img, "
+            ".product-info-section img"
+        )
+        urls = _collect_img_urls(container_imgs)
+
+    # 4) og:image meta as a final fallback
+    if not urls:
+        meta = page.query_selector("meta[property='og:image']")
+        og = (meta.get_attribute("content") or "").strip() if meta else ""
+        if og:
+            urls = [og]
+
+    return urls
+
+
 def scrape_costco(url, page):
     """
     Scrapes a Costco product URL using the CDP-connected Chrome page.
@@ -872,41 +928,11 @@ def scrape_costco(url, page):
                 # No Add to Cart button and no explicit OOS text — flag for review
                 result["stock_status"] = "Unknown"
 
-        # Costco product images are served from two CDNs:
-        #   richmedia.channeladvisor.com  — main product photos
-        #   images.costco-static.com      — fallback / alternate images
-        # Try CDN-matched srcs first, then fall back to container selectors.
-        def _collect_img_urls(els, limit=5):
-            seen, urls = set(), []
-            for img in els:
-                src = img.get_attribute("src") or img.get_attribute("data-src") or ""
-                src = src.strip()
-                if not src or src in seen:
-                    continue
-                skip = any(x in src.lower() for x in ["logo", "icon", "banner", "sprite", "svg"])
-                if skip:
-                    continue
-                seen.add(src)
-                urls.append(src)
-                if len(urls) >= limit:
-                    break
-            return urls
-
-        cdn_imgs = page.query_selector_all(
-            "img[src*='channeladvisor'], img[src*='costco-static'], "
-            "img[data-src*='channeladvisor'], img[data-src*='costco-static']"
-        )
-        urls = _collect_img_urls(cdn_imgs)
-
-        if not urls:
-            container_imgs = page.query_selector_all(
-                "[class*='product-image'] img, [class*='image-viewer'] img, "
-                "[class*='carousel'] img, [class*='thumbnail'] img, "
-                ".product-info-section img"
-            )
-            urls = _collect_img_urls(container_imgs)
-
-        result["image_urls"] = urls
+        result["image_urls"] = _extract_image_urls(page)
+        if not result["image_urls"]:
+            # A silent zero here means every eBay listing falls back to the placeholder
+            # photo — this is how the Sep 2026 redesign went unnoticed.
+            logger.warning(f"  No product images found on {url} — Costco markup may have changed")
 
         h1 = page.query_selector("h1")
         if h1:
