@@ -54,6 +54,7 @@ from tools.sheet_writer import (
     ensure_grid_columns, required_grid_columns,
 )
 from tools.formula_seeder import seed_formula_row
+from tools.sale_history import log_sale
 from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
 from tools.ebay_research import get_ebay_comps
@@ -1067,6 +1068,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 (COL["free_shipping"], free_ship_val),       # col Y — free ship badge
                 (COL["fee_rate"],      fee_rate),            # col AA — needed for =H*AA (eBay fees formula)
             ]
+            reg_price = ""
             if on_sale and sale_savings and live_price:
                 try:
                     reg_price = round(
@@ -1074,7 +1076,11 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     )
                     updates.append((COL["regular_price"], f"${reg_price:,.2f}"))
                 except (ValueError, TypeError):
-                    pass
+                    reg_price = ""
+            # Sale History tab (deduped inside; never raises — must not break the run)
+            if sale_info_val:
+                log_sale(service, title, category, live_price or costco_cost,
+                         reg_price, sale_info_val)
             if ebay_data.get("sold_90d") is not None:
                 updates.append((COL["sold_90d"],   ebay_data["sold_90d"]))
             if ebay_data.get("avg_sold_price") is not None:

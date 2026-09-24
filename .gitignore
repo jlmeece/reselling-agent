@@ -36,6 +36,7 @@ Thumbs.db
 data/chrome_agent.pid
 data/.scheduler_lock
 data/.ebay_sync_alert.json
+data/.ebay_sync_digest.json
 data/ebay_taxonomy_cache.json
 data/.telegram_bot.pid
 data/.telegram_bot.alive

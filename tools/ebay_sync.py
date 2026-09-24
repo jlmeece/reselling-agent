@@ -6,8 +6,14 @@ them to Product Tracker rows by the item ID in col Q (ebay_listing_url), and:
 
   * writes QuantitySold into units_sold (col U) — the ONLY write, and only when it
     changed (through tools.sheet_writer.safe_write_row);
-  * REPORTS (never fixes) price mismatches, eBay listings missing from the sheet,
+  * REPORTS (never fixes) margin breaches (live eBay price vs cost — NOT raw price
+    movement; Jay undercuts by a cent himself), eBay listings missing from the sheet,
     and ACTIVE sheet rows that eBay no longer lists.
+
+Margin check: net = live price - cost_basis - price*fee_rate - ship - ad, where
+cost_basis = buy_cost (col BB, manual) if present else costco_cost (col G).
+HARD (Telegram per run): net < 0. SOFT (once-a-day digest): 0 <= net < $4 AND
+sold_90d == 0. Everything else is silent.
 
 Never touches eBay data and never changes any price. Run via
 `python agents/scheduler.py --mode ebay_sync [--dry-run]`.
@@ -42,20 +48,24 @@ from loguru import logger
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
 
-from tools.sheet_writer import read_sheet, safe_write_row  # noqa: E402
+from tools.sheet_writer import (  # noqa: E402
+    ensure_grid_columns, read_sheet, required_grid_columns, safe_write_row,
+)
 
 ENDPOINT          = "https://api.ebay.com/ws/api.dll"
 COMPAT_LEVEL      = "1193"
 ENTRIES_PER_PAGE  = 200
 MAX_PAGES         = 50          # runaway guard (10,000 listings)
 REQUEST_TIMEOUT   = 30
-PRICE_TOLERANCE   = 0.01        # eBay vs sheet price differences below 1¢ are rounding
-WRITE_DELAY       = 1.1         # s between sheet writes — Sheets caps writes at 60/min
+MARGIN_SOFT_FLOOR = 4.00        # net below this AND sold_90d == 0 → SOFT (daily digest)
+WRITE_DELAY      = 1.1         # s between sheet writes — Sheets caps writes at 60/min
 MAX_REPORT_LINES  = 15          # per section in the Telegram message
 CLOSE_MATCH_JACCARD = 0.8       # token overlap for a "close" title match (link suggestions)
 ALERT_REPEAT_HOURS  = 24        # an identical Telegram alert is re-sent at most this often
 ALERT_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                  "data", ".ebay_sync_alert.json")
+DIGEST_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "data", ".ebay_sync_digest.json")
 
 # Trading API error codes meaning the auth token is invalid/expired (tokens last
 # ~18 months, so this needs a loud alert rather than a silent empty sync).
@@ -320,15 +330,71 @@ def _to_int(value) -> int:
     return int(f) if f is not None else 0
 
 
+def _to_rate(value):
+    """Fee rate cell -> fraction. '0.1325', '13.25%' and 13.25 (>1 = percent) all -> 0.1325;
+    blank/garbage -> None (unknown, never assumed 0)."""
+    s = str(value).strip()
+    pct = s.endswith("%")
+    f = _to_float(s.rstrip("%"))
+    if f is None or f < 0:
+        return None
+    return f / 100 if (pct or f > 1) else f
+
+
+def _cost_basis(buy_cost, costco_cost):
+    """buy_cost (what Jay actually paid) if present, parseable and > 0, else costco_cost."""
+    bc = _to_float(buy_cost)
+    if bc is not None and bc > 0:
+        return bc
+    return _to_float(costco_cost)
+
+
+def compute_net(ebay_price, cost_basis, fee_rate, ship=0.0, ad=0.0) -> float:
+    """Mirrors the sheet's net_profit (I = H - G - AC - AD - AE) with the live eBay price
+    for H and cost_basis for G."""
+    return ebay_price - cost_basis - ebay_price * fee_rate - (ship or 0.0) - (ad or 0.0)
+
+
+def margin_flag(ebay_price, cost_basis, fee_rate, ship, ad, sold_90d):
+    """
+    "hard" (net < 0) | "soft" (0 <= net < MARGIN_SOFT_FLOOR and sold_90d == 0) | None.
+    Unknown price / cost / fee rate -> None (can't judge; never assume $0). Missing ship/ad
+    count as 0. sold_90d None (blank) is unknown, NOT 0, so a thin-margin row with no
+    velocity data stays silent; high-velocity items ride at $3.99 silently.
+    """
+    if ebay_price is None or cost_basis is None or fee_rate is None:
+        return None
+    net = round(compute_net(ebay_price, cost_basis, fee_rate, ship, ad), 2)
+    if net < 0:
+        return "hard"
+    if net < MARGIN_SOFT_FLOOR and sold_90d == 0:
+        return "soft"
+    return None
+
+
+def _break_even(cost_basis, fee_rate, ship, ad):
+    """Lowest price at which net >= 0 (ad treated as a fixed amount)."""
+    if fee_rate >= 1:
+        return None
+    return (cost_basis + (ship or 0.0) + (ad or 0.0)) / (1 - fee_rate)
+
+
+MARGIN_COLS = ("buy_cost", "costco_cost", "fee_rate", "ship_cost", "ad_cost", "sold_90d")
+
+
 def load_sheet_rows(service, COL, sheet_name, start_row, end_row) -> list[dict]:
     """Read the tracker into dicts (row_num = absolute sheet row). Skips empty rows."""
-    raw = read_sheet(service, f"'{sheet_name}'!A{start_row}:BA{end_row}")
+    raw = read_sheet(service, f"'{sheet_name}'!A{start_row}:BB{end_row}")
     idx = {k: _col_idx(COL[k]) for k in
            ("status", "title", "platform", "ebay_price", "ebay_listing_url", "units_sold")}
+    # margin inputs — tolerant of a col_map that predates them
+    idx.update({k: _col_idx(COL[k]) for k in MARGIN_COLS if k in COL})
     rows = []
     for offset, r in enumerate(raw):
         row = {k: _cell(r, i) for k, i in idx.items()}
-        if not any(str(v).strip() for v in row.values()):
+        # emptiness judged on the identity columns only — margin inputs can be formula noise
+        if not any(str(row[k]).strip() for k in
+                   ("status", "title", "platform", "ebay_price", "ebay_listing_url", "units_sold")):
             continue
         row["row_num"] = start_row + offset
         rows.append(row)
@@ -398,6 +464,29 @@ def _suggest_links(entries, pool) -> dict:
     return {r: v for r, v in picks.items() if len(wanted[v[0]["item_id"]]) == 1}
 
 
+def _check_margin(row, listing, report):
+    """Evaluate one matched row's margin at the LIVE eBay price; append to
+    report["margin_breach"] (hard/soft) or report["margin_unchecked"] (inputs unknown)."""
+    price = listing["price"]
+    cost = _cost_basis(row.get("buy_cost"), row.get("costco_cost"))
+    fee = _to_rate(row.get("fee_rate", ""))
+    ship = _to_float(row.get("ship_cost", "")) or 0.0
+    ad = _to_float(row.get("ad_cost", "")) or 0.0
+    sold_raw = _to_float(row.get("sold_90d", ""))
+    sold = None if sold_raw is None else int(sold_raw)
+    base = {"row_num": row["row_num"], "title": row.get("title", ""),
+            "item_id": listing["item_id"]}
+
+    severity = margin_flag(price, cost, fee, ship, ad, sold)
+    if price is None or cost is None or fee is None:
+        report["margin_unchecked"].append(base)
+    elif severity:
+        report["margin_breach"].append({
+            **base, "severity": severity, "ebay_price": price, "cost_basis": cost,
+            "net": round(compute_net(price, cost, fee, ship, ad), 2),
+            "break_even": _break_even(cost, fee, ship, ad)})
+
+
 def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
          col_map=None, title_reader=None) -> dict:
     """
@@ -405,14 +494,18 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
     (col U) is the only thing ever written, and only when QuantitySold differs.
 
     sheet_rows:    dicts from load_sheet_rows (row_num, title, status, platform,
-                   ebay_price, ebay_listing_url, units_sold)
+                   ebay_price, ebay_listing_url, units_sold, plus the margin inputs
+                   buy_cost, costco_cost, fee_rate, ship_cost, ad_cost, sold_90d —
+                   any may be absent/blank)
     title_reader:  optional callable -> {row_num: title}; called once before the
                    first write. A row whose title no longer matches (auditor deleted
                    rows since the read) is skipped, not written.
 
-    Returns {matched, updated, price_mismatch, on_ebay_not_in_sheet,
+    Returns {matched, updated, margin_breach, margin_unchecked, on_ebay_not_in_sheet,
              active_not_on_ebay, duplicate_url, stale_rows, write_errors, dry_run}.
     `matched` = every matched row; `updated` = the subset whose col U changed.
+    `margin_breach` = [{..., severity: "hard"|"soft", net, break_even}] for matched rows;
+    `margin_unchecked` = matched rows whose cost / fee rate / live price is unknown.
     """
     if sheet_name is None or col_map is None:
         d_sheet, d_cols = _load_defaults()
@@ -420,7 +513,7 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
         col_map = col_map or d_cols
     units_col = col_map["units_sold"]
 
-    report = {"matched": [], "updated": [], "price_mismatch": [],
+    report = {"matched": [], "updated": [], "margin_breach": [], "margin_unchecked": [],
               "on_ebay_not_in_sheet": [], "active_not_on_ebay": [],
               "duplicate_url": [], "stale_rows": [], "write_errors": [],
               "dry_run": dry_run}
@@ -457,12 +550,7 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                     logger.warning(f"ebay_sync: row {row['row_num']} units_sold "
                                    f"{old_sold} -> {new_sold} (eBay count went down)")
 
-            sheet_price = _to_float(row.get("ebay_price"))
-            if (sheet_price is not None and listing["price"] is not None
-                    and abs(listing["price"] - sheet_price) >= PRICE_TOLERANCE):
-                report["price_mismatch"].append({
-                    "row_num": row["row_num"], "title": title, "item_id": item_id,
-                    "ebay_price": listing["price"], "sheet_price": sheet_price})
+            _check_margin(row, listing, report)
         elif (str(row.get("status", "")).strip().upper() == "ACTIVE"
               and str(row.get("platform", "")).strip().lower() in ("", "ebay", "both")):
             blank_url = False
@@ -531,10 +619,14 @@ def _write_units_sold(service, sheet_name, units_col, entries, report, title_rea
 
 def summarize(report: dict) -> str:
     """One-line summary for the Run Log notes column."""
+    hard = sum(1 for m in report["margin_breach"] if m["severity"] == "hard")
+    soft = sum(1 for m in report["margin_breach"] if m["severity"] == "soft")
     s = (f"matched {len(report['matched'])}, updated {len(report['updated'])}, "
-         f"price_mismatch {len(report['price_mismatch'])}, "
+         f"margin_breach hard {hard} soft {soft}, "
          f"active_not_on_ebay {len(report['active_not_on_ebay'])}, "
          f"not_in_sheet {len(report['on_ebay_not_in_sheet'])}")
+    if report["margin_unchecked"]:
+        s += f", margin_unchecked {len(report['margin_unchecked'])}"
     n_links = sum(1 for g in report["active_not_on_ebay"] if g.get("suggested_item_id"))
     if n_links:
         s += f", link_suggestions {n_links}"
@@ -560,18 +652,22 @@ def _section(header, lines):
 
 def alert_message(report: dict) -> str | None:
     """
-    Telegram HTML message, or None when there is nothing to flag. Only price
-    mismatches and ACTIVE-but-not-on-eBay rows warrant a message; everything else
-    stays in the Run Log. Sheet-derived titles are truncated THEN html-escaped.
+    Telegram HTML message, or None when there is nothing to flag. Only HARD margin
+    breaches (net < 0) and ACTIVE-but-not-on-eBay rows warrant a message; SOFT breaches
+    go to digest_message(), everything else stays in the Run Log. Raw price movement is
+    never alerted. Sheet-derived titles are truncated THEN html-escaped.
     """
-    mism, gone = report["price_mismatch"], report["active_not_on_ebay"]
-    if not mism and not gone:
+    losing = [m for m in report["margin_breach"] if m["severity"] == "hard"]
+    gone = report["active_not_on_ebay"]
+    if not losing and not gone:
         return None
     msg = ["🛒 <b>eBay sync</b>" + (" (dry run)" if report.get("dry_run") else "")]
-    if mism:
-        msg += _section(f"\n💲 <b>Price mismatch ({len(mism)})</b>", [
-            f"• {html.escape(_truncate(m['title']))} — eBay ${m['ebay_price']:.2f} vs sheet "
-            f"${m['sheet_price']:.2f} (row {m['row_num']})" for m in mism])
+    if losing:
+        def _line(m):
+            be = f", break-even ${m['break_even']:.2f}" if m.get("break_even") else ""
+            return (f"• losing money on {html.escape(_truncate(m['title']))} — net "
+                    f"-${abs(m['net']):.2f} (eBay ${m['ebay_price']:.2f}{be}) (row {m['row_num']})")
+        msg += _section(f"\n💸 <b>Losing money ({len(losing)})</b>", [_line(m) for m in losing])
     if gone:
         msg += _section(f"\n⚠️ <b>ACTIVE but not on eBay ({len(gone)})</b>", [
             f"• {html.escape(_truncate(g['title']))} — {html.escape(g['reason'])} (row {g['row_num']})"
@@ -580,6 +676,39 @@ def alert_message(report: dict) -> str | None:
     if extra:
         msg.append(f"\nℹ️ {extra} eBay listing(s) not in the sheet")
     return "\n".join(msg)
+
+
+def digest_message(report: dict) -> str | None:
+    """SOFT breaches (thin margin, no 90-day sales) as one Telegram HTML message, or None."""
+    soft = [m for m in report["margin_breach"] if m["severity"] == "soft"]
+    if not soft:
+        return None
+    msg = ["🛒 <b>eBay sync — daily thin-margin digest</b>" + (" (dry run)" if report.get("dry_run") else "")]
+    msg += _section(f"\n🐢 <b>Thin margin, no recent sales ({len(soft)})</b>", [
+        f"• {html.escape(_truncate(m['title']))} — net ${m['net']:.2f} at eBay "
+        f"${m['ebay_price']:.2f} (row {m['row_num']})" for m in soft])
+    return "\n".join(msg)
+
+
+def _digest_due(dry_run=False, today=None) -> bool:
+    """True at most once per calendar day. Records the day when it returns True; a dry run
+    neither consumes nor records the slot. An unreadable/unwritable state file means send
+    (a duplicate digest beats a silently missing one)."""
+    if dry_run:
+        return True
+    today = today or time.strftime("%Y-%m-%d")
+    try:
+        with open(DIGEST_STATE_PATH, encoding="utf-8") as f:
+            if json.load(f).get("date") == today:
+                return False
+    except (OSError, ValueError):
+        pass
+    try:
+        with open(DIGEST_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump({"date": today}, f)
+    except OSError as e:
+        logger.warning(f"ebay_sync: digest state unavailable ({e}) — sending anyway")
+    return True
 
 
 def _dedupe_alert(alert, dry_run=False, now=None):
@@ -638,13 +767,23 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
                      f"{html.escape(err['message'][:200])}\nGenerate a new EBAY_AUTH_TOKEN.")
         return {"status": "error", "errors": f"eBay API: {err['message']}"[:300], "alert": alert}
 
+    # The margin read reaches col BB (buy_cost); make sure the grid does. Best-effort.
+    try:
+        ensure_grid_columns(service, sheet_name, required_grid_columns(COL))
+    except Exception as e:
+        logger.warning(f"ebay_sync: grid-size check failed (continuing): {e}")
+
     rows = load_sheet_rows(service, COL, sheet_name, start_row, end_row)
     report = sync(
         service, rows, listings, dry_run=dry_run, sheet_name=sheet_name, col_map=COL,
         title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
     )
+    digest = digest_message(report)
+    if digest and not _digest_due(dry_run=dry_run):
+        digest = None
     result = {"status": "ok", "notes": summarize(report),
-              "alert": _dedupe_alert(alert_message(report), dry_run=dry_run)}
+              "alert": _dedupe_alert(alert_message(report), dry_run=dry_run),
+              "digest": digest}
     if report["write_errors"]:
         result["status"] = "error"
         result["errors"] = "; ".join(

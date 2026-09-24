@@ -44,6 +44,7 @@ from tools.status_logic import (
 from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest, send_run_summary, send_sale_expiry_alert
 from tools.run_logger import log_run_start, log_run_end
+from tools.sale_history import log_sale
 from tools.spot_price import check_spot_movement
 from agents.auditor import run_audit
 from tools import ebay_sync
@@ -904,6 +905,10 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
                     t["cost"] = str(new_price)   # update for eBay pass below
 
                 write_row_partial(service, sheet_name, t["sheet_row"], updates)
+                if sale_val:
+                    orig = costco_data.get("original_price")
+                    log_sale(service, t["title"], t["category"], new_price or t.get("cost"),
+                             f"{orig:.2f}" if orig else "", sale_val)
                 logger.info(f"    Costco OK: {stock_status} | ${new_price}")
                 t["needs_costco"] = False
                 time.sleep(2)
@@ -1013,17 +1018,18 @@ def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry
     """
     ebay_sync mode: fetch eBay listings, write units_sold, return Run Log keys
     (status/notes/errors). Telegram fires ONLY when tools.ebay_sync built an alert
-    (price mismatch, ACTIVE-but-not-on-eBay, or a rejected auth token) — silent
-    otherwise.
+    (losing-money margin breach, ACTIVE-but-not-on-eBay, or a rejected auth token) or,
+    at most once a day, a thin-margin digest — silent otherwise.
     """
     result = ebay_sync.run_ebay_sync(config, COL, service, sheet_name, start_row,
                                      end_row, dry_run=dry_run)
-    alert = result.pop("alert", None)
-    if alert:
+    messages = [m for m in (result.pop("alert", None), result.pop("digest", None)) if m]
+    if messages:
         token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
         if token and chat_id:
-            _send_telegram(token, chat_id, alert)
+            for m in messages:
+                _send_telegram(token, chat_id, m)
         else:
             logger.warning("ebay_sync: alert not sent — TELEGRAM_BOT_TOKEN/CHAT_ID unset")
     return result

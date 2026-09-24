@@ -32,6 +32,12 @@ def _alert_state(monkeypatch, tmp_path):
     monkeypatch.setattr(ebay_sync, "ALERT_STATE_PATH", str(tmp_path / "alert.json"))
 
 
+@pytest.fixture(autouse=True)
+def _digest_state(monkeypatch, tmp_path):
+    """Never touch the real data/.ebay_sync_digest.json."""
+    monkeypatch.setattr(ebay_sync, "DIGEST_STATE_PATH", str(tmp_path / "digest.json"))
+
+
 @pytest.fixture
 def logs():
     msgs = []
@@ -85,11 +91,13 @@ def _failure(code, msg="bad"):
             f"<ShortMessage>{msg}</ShortMessage></Errors></GetMyeBaySellingResponse>")
 
 
-def _row(n, item_id="", title="Widget", status="ACTIVE", platform="eBay", price="$29.99", sold="0", url=None):
+def _row(n, item_id="", title="Widget", status="ACTIVE", platform="eBay", price="$29.99", sold="0", url=None,
+         **margin):
+    """margin kwargs: buy_cost, costco_cost, fee_rate, ship_cost, ad_cost, sold_90d (all optional)."""
     if url is None:
         url = f"https://www.ebay.com/itm/{item_id}" if item_id else ""
     return {"row_num": n, "title": title, "status": status, "platform": platform,
-            "ebay_price": price, "ebay_listing_url": url, "units_sold": sold}
+            "ebay_price": price, "ebay_listing_url": url, "units_sold": sold, **margin}
 
 
 def _listing(item_id, price=29.99, sold=0, qty=5, title="Widget"):
@@ -325,23 +333,130 @@ def test_title_recheck_failure_skips_all_writes(writes):
     assert writes == [] and len(rep["write_errors"]) == 1
 
 
-# ── sync: price mismatch ──────────────────────────────────────────────────────
+# ── margin_flag (pure) ────────────────────────────────────────────────────────
 
-def test_price_mismatch_detected_and_never_written(writes):
-    rows = [_row(4, "111111111111", price="$29.99", sold="0")]
-    rep = _sync(rows, [_listing("111111111111", price=34.99, sold=0)])
-    assert rep["price_mismatch"] == [{"row_num": 4, "title": "Widget", "item_id": "111111111111",
-                                      "ebay_price": 34.99, "sheet_price": 29.99}]
-    assert writes == []  # flag-only: no price write, no units change
+_flag = ebay_sync.margin_flag
 
 
-def test_price_within_a_cent_or_blank_sheet_price_is_not_a_mismatch(writes):
-    rows = [_row(4, "111111111111", price="$29.99"),
-            _row(5, "222222222222", price=""),
-            _row(6, "333333333333", price="$1,299.00")]
-    rep = _sync(rows, [_listing("111111111111", price=29.994), _listing("222222222222", price=5.0),
-                       _listing("333333333333", price=1299.0)])
-    assert rep["price_mismatch"] == []
+@pytest.mark.parametrize("price,cost,fee,ship,ad,sold,expected", [
+    (100.0, 80.0, 0.10, 0, 0, 5, None),        # net 10 -> healthy
+    (100.0, 95.0, 0.10, 0, 0, 5, "hard"),      # net -5
+    (100.0, 95.0, 0.10, 0, 0, 0, "hard"),      # negative is hard regardless of velocity
+])
+def test_margin_flag_hard_and_healthy(price, cost, fee, ship, ad, sold, expected):
+    assert _flag(price, cost, fee, ship, ad, sold) == expected
+
+
+def test_margin_flag_soft_needs_zero_sales():
+    # net = 100 - 86.01 - 10 = 3.99
+    assert _flag(100.0, 86.01, 0.10, 0, 0, 0) == "soft"
+    assert _flag(100.0, 86.01, 0.10, 0, 0, 3) is None          # high velocity rides silently
+    assert _flag(100.0, 86.01, 0.10, 0, 0, None) is None       # blank sold_90d = unknown, not 0
+
+
+def test_margin_flag_boundaries():
+    assert _flag(100.0, 86.0, 0.10, 0, 0, 0) is None           # net exactly 4.00 -> silent
+    assert _flag(100.0, 90.0, 0.10, 0, 0, 0) == "soft"         # net exactly 0.00 -> soft, not hard
+    assert _flag(100.0, 90.01, 0.10, 0, 0, 9) == "hard"        # net -0.01
+
+
+def test_margin_flag_subtracts_ship_and_ad():
+    assert _flag(100.0, 80.0, 0.10, 0, 0, 5) is None           # net 10
+    assert _flag(100.0, 80.0, 0.10, 12.0, 0, 5) == "hard"      # ship pushes net to -2
+    assert _flag(100.0, 80.0, 0.10, 0, 11.0, 5) == "hard"      # ad pushes net to -1
+    assert _flag(100.0, 80.0, 0.10, None, None, 5) is None     # missing ship/ad count as 0
+
+
+@pytest.mark.parametrize("price,cost,fee", [(None, 5.0, 0.1), (10.0, None, 0.1), (10.0, 5.0, None)])
+def test_margin_flag_unknown_inputs_are_never_judged(price, cost, fee):
+    assert _flag(price, cost, fee, 0, 0, 0) is None            # unknown != $0
+
+
+def test_cost_basis_prefers_buy_cost_else_costco():
+    cb = ebay_sync._cost_basis
+    assert cb("$45.00", "$60.00") == 45.0
+    assert cb("", "$60.00") == 60.0
+    assert cb("junk", "1,060.00") == 1060.0
+    assert cb("0", "60") == 60.0                               # a 0 buy_cost is "not filled in"
+    assert cb("", "") is None
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (0.1325, 0.1325), ("0.1325", 0.1325), ("13.25%", 0.1325), (13.25, 0.1325), ("", None), ("x", None),
+])
+def test_to_rate(raw, expected):
+    got = ebay_sync._to_rate(raw)
+    assert got == pytest.approx(expected) if expected is not None else got is None
+
+
+# ── sync: margin breaches ─────────────────────────────────────────────────────
+
+def test_margin_breach_hard_uses_live_price_and_is_never_written(writes):
+    rows = [_row(4, "111111111111", price="$29.99", costco_cost="$30.00", fee_rate="0.10", sold_90d="4")]
+    rep = _sync(rows, [_listing("111111111111", price=29.0)])   # net 29 - 30 - 2.9 = -3.90
+    (b,) = rep["margin_breach"]
+    assert b["severity"] == "hard" and b["net"] == -3.90 and b["cost_basis"] == 30.0
+    assert b["row_num"] == 4 and b["item_id"] == "111111111111"
+    assert b["break_even"] == pytest.approx(30.0 / 0.9)
+    assert "price_mismatch" not in rep
+    assert writes == []                                          # flag-only
+
+
+def test_buy_cost_overrides_costco_cost(writes):
+    # Costco says $30 (would lose money at $29), but Jay paid $20 -> healthy
+    rows = [_row(4, "111111111111", buy_cost="$20", costco_cost="$30", fee_rate="0.10", sold_90d="4")]
+    rep = _sync(rows, [_listing("111111111111", price=29.0)])
+    assert rep["margin_breach"] == [] and rep["margin_unchecked"] == []
+
+
+def test_raw_price_delta_no_longer_alerts(writes):
+    # eBay price differs from sheet H by $5 and by a cent; margin is healthy -> silent
+    rows = [_row(4, "111111111111", price="$29.99", costco_cost="$10", fee_rate="0.10", sold_90d="4"),
+            _row(5, "222222222222", price="$29.99", costco_cost="$10", fee_rate="0.10", sold_90d="4")]
+    rep = _sync(rows, [_listing("111111111111", price=34.99), _listing("222222222222", price=29.98)])
+    assert rep["margin_breach"] == []
+    assert alert_message(rep) is None
+
+
+def test_soft_breach_in_report_but_not_in_alert(writes):
+    rows = [_row(4, "111111111111", costco_cost="$26", fee_rate="0.10", sold_90d="0")]
+    rep = _sync(rows, [_listing("111111111111", price=29.0)])   # net 29 - 26 - 2.9 = 0.10
+    assert [b["severity"] for b in rep["margin_breach"]] == ["soft"]
+    assert alert_message(rep) is None                            # digest only, never per-run
+    d = ebay_sync.digest_message(rep)
+    assert d and "Widget" in d and "$0.10" in d
+
+
+def test_high_velocity_thin_margin_is_silent(writes):
+    rows = [_row(4, "111111111111", costco_cost="$26", fee_rate="0.10", sold_90d="12")]
+    rep = _sync(rows, [_listing("111111111111", price=29.0)])
+    assert rep["margin_breach"] == [] and ebay_sync.digest_message(rep) is None
+
+
+def test_rows_missing_inputs_counted_unchecked_not_flagged(writes):
+    rows = [_row(4, "111111111111"),                                       # no cost / fee at all
+            _row(5, "222222222222", costco_cost="$30", fee_rate="")]       # fee unknown
+    rep = _sync(rows, [_listing("111111111111", price=1.0), _listing("222222222222", price=1.0)])
+    assert rep["margin_breach"] == [] and len(rep["margin_unchecked"]) == 2
+    assert "margin_unchecked 2" in summarize(rep)
+
+
+def test_summary_and_alert_text_for_hard_breach(writes):
+    rows = [_row(4, "111111111111", title="Tom & Jerry <b>", costco_cost="$30", fee_rate="0.10", sold_90d="4")]
+    rep = _sync(rows, [_listing("111111111111", price=29.0)])
+    assert "margin_breach hard 1 soft 0" in summarize(rep)
+    msg = alert_message(rep)
+    assert "losing money on Tom &amp; Jerry &lt;b&gt; — net -$3.90" in msg
+    assert "break-even $33.33" in msg and "row 4" in msg
+
+
+def test_digest_is_once_per_calendar_day():
+    due = ebay_sync._digest_due
+    assert due(today="2026-09-24") is True
+    assert due(today="2026-09-24") is False
+    assert due(today="2026-09-25") is True
+    assert due(dry_run=True, today="2026-09-25") is True         # dry run never consumes the slot
+    assert due(today="2026-09-25") is False
 
 
 # ── sync: presence flags ──────────────────────────────────────────────────────
@@ -437,7 +552,8 @@ def test_alert_message_none_when_clean(writes):
 
 
 def test_alert_message_escapes_and_truncates_and_caps(writes):
-    rows = [_row(i, f"{100000000000 + i}", title="<b>Tom & Jerry</b> " + "x" * 80) for i in range(4, 30)]
+    rows = [_row(i, f"{100000000000 + i}", title="<b>Tom & Jerry</b> " + "x" * 80,
+                 costco_cost="$100", fee_rate="0.10") for i in range(4, 30)]
     listings = [_listing(f"{100000000000 + i}", price=50.0) for i in range(4, 30)]
     rep = _sync(rows, listings)
     msg = alert_message(rep)
@@ -477,7 +593,7 @@ def test_run_expired_token_alerts(monkeypatch, creds):
 def test_run_happy_path_writes_and_summarizes(monkeypatch, creds, writes):
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
                         lambda *a, **k: FakeResp(_page([_item("111111111111", price="40.00", sold=2)])))
-    rows = [_row(4, "111111111111", price="$29.99", sold="0"),
+    rows = [_row(4, "111111111111", price="$29.99", sold="0", costco_cost="$50", fee_rate="0.10"),
             _row(5, "222222222222", status="ACTIVE")]
     monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: rows)
     monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget", 5: "Widget"})
@@ -485,20 +601,45 @@ def test_run_happy_path_writes_and_summarizes(monkeypatch, creds, writes):
 
     assert writes == [(4, [("U", 2)])]
     assert res["status"] == "ok"
-    assert "matched 1" in res["notes"] and "price_mismatch 1" in res["notes"] \
+    assert "matched 1" in res["notes"] and "margin_breach hard 1 soft 0" in res["notes"] \
         and "active_not_on_ebay 1" in res["notes"]
-    assert res["alert"] and "Price mismatch" in res["alert"]
+    assert res["alert"] and "Losing money" in res["alert"] and "Price mismatch" not in res["alert"]
+    assert res["digest"] is None
+
+
+def test_run_price_change_alone_is_silent(monkeypatch, creds, writes):
+    # live price 40 vs sheet 29.99, but cost $10 -> healthy -> no alert, no digest
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="40.00", sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
+        _row(4, "111111111111", price="$29.99", sold="0", costco_cost="$10", fee_rate="0.10", sold_90d="3")])
+    res = run_ebay_sync(*_cfg_args())
+    assert res["alert"] is None and res["digest"] is None
 
 
 def test_run_repeated_alert_is_suppressed_but_notes_stay(monkeypatch, creds, writes):
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
                         lambda *a, **k: FakeResp(_page([_item("111111111111", price="40.00", sold=0)])))
-    monkeypatch.setattr(ebay_sync, "load_sheet_rows",
-                        lambda *a, **k: [_row(4, "111111111111", price="$29.99", sold="0")])
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
+        _row(4, "111111111111", price="$29.99", sold="0", costco_cost="$50", fee_rate="0.10")])
     first = run_ebay_sync(*_cfg_args())
     second = run_ebay_sync(*_cfg_args())
     assert first["alert"] and second["alert"] is None
-    assert "price_mismatch 1" in second["notes"]
+    assert "margin_breach hard 1" in second["notes"]
+
+
+def test_run_soft_digest_sent_once_per_day_and_never_in_dry_run(monkeypatch, creds, writes):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="29.00", sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
+        _row(4, "111111111111", sold="0", costco_cost="$26", fee_rate="0.10", sold_90d="0")])
+    dry = run_ebay_sync(*_cfg_args(), dry_run=True)
+    assert dry["alert"] is None and dry["digest"]                # dry run shows it, records nothing
+    first = run_ebay_sync(*_cfg_args())
+    second = run_ebay_sync(*_cfg_args())
+    assert first["digest"] and "thin-margin" in first["digest"]
+    assert first["alert"] is None                                # soft never becomes a per-run alert
+    assert second["digest"] is None                              # already sent today
 
 
 # ── alert de-duplication ──────────────────────────────────────────────────────
@@ -544,6 +685,12 @@ def test_scheduler_alerts_only_when_there_is_an_alert(monkeypatch):
                         lambda *a, **k: {"status": "ok", "notes": "n", "alert": "⚠️ mismatch"})
     scheduler.run_ebay_sync_mode({}, COL, "svc", "Tab", 4, 500)
     assert sent == ["⚠️ mismatch"]
+
+    sent.clear()
+    monkeypatch.setattr(scheduler.ebay_sync, "run_ebay_sync",
+                        lambda *a, **k: {"status": "ok", "notes": "n", "alert": None, "digest": "🐢 thin"})
+    out = scheduler.run_ebay_sync_mode({}, COL, "svc", "Tab", 4, 500)
+    assert sent == ["🐢 thin"] and "digest" not in out
 
 
 def test_scheduler_passes_dry_run_through(monkeypatch):
