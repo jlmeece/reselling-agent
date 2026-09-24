@@ -13,7 +13,7 @@ LISTED          CSV exported, eBay listing in progress — not yet live
 ACTIVE          Live listing on eBay/website — top priority monitoring
 WATCH           Tier 2 — promising, needs more data; re-scored weekly
 PAUSED_OOS      Costco out of stock — daily stock-check until restocked
-PAUSED_MARGIN   Below margin threshold — re-eval when prices recover
+PAUSED_MARGIN   Set MANUALLY (below margin threshold) — the daily sweep un-pauses it to WATCH when margin recovers; never set automatically
 PAUSED_DEMAND   Low demand / high competition — deep research only, no scraping
 PAUSED_SEASONAL Off-season — monthly re-eval
 """
@@ -53,7 +53,9 @@ def determine_status(
     reason_code: short machine-readable tag for what changed (or "ok")
     notes:       human-readable explanation for sheet col T
 
-    Only ACTIVE rows can be downgraded to PAUSED_* automatically.
+    Only ACTIVE rows can be downgraded automatically, and only to PAUSED_OOS (stock is a hard
+    constraint). Low margin is a note, never a pause. PAUSED_MARGIN is a manual status that
+    still auto-recovers to WATCH.
     APPROVED/READY/WATCH are protected from auto-downgrade — human must approve.
     """
     notes = []
@@ -82,9 +84,9 @@ def determine_status(
             notes.append("Costco price changed — recalculate margin, update eBay listing price")
 
         if margin_pct is not None and margin_pct < min_margin:
-            if new_status == "ACTIVE":  # don't downgrade if already PAUSED_OOS
-                new_status = "PAUSED_MARGIN"
-                reason_code = "low_margin"
+            # Alert-only: Jay reprices by hand, so a thin margin never pauses the listing and does
+            # not raise a monitor alert either (ebay_sync's hard/soft margin alerts, computed from
+            # the LIVE eBay price, own that). The note lands in col T only.
             notes.append(f"Margin {margin_pct:.1%} below {min_margin:.0%} threshold — not profitable at current prices")
 
         if demand_score is not None:

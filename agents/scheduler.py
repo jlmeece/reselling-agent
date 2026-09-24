@@ -103,7 +103,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
       price (margin just improved), no reprice suggestion
     - Detects SALE END / cost rise -> col P flag + URGENT reprice-up alert (suggest_reprice)
     - Trivial cost drift -> col G silently
-    - Detects margin erosion -> PAUSED_MARGIN
+    - Margin erosion -> note in col T only (no auto-pause; ebay_sync alerts on the live price)
     - Auto-promotes READY->ACTIVE when eBay URL is filled
     - Sale-expiry countdown (from col X, fed by the API's promotionEndDate)
     - Sends URGENT email+SMS if any action needed, otherwise stays silent

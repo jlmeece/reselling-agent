@@ -183,7 +183,7 @@ def _write_legend_tab(service, spreadsheet_id):
         ["LISTED",          "Exported to eBay, awaiting first sale",                   "Check eBay Seller Hub; update col Q with listing URL"],
         ["ACTIVE",          "Live eBay listing, actively monitored",                   "No action — agent monitors price, stock, and sale expiry"],
         ["PAUSED_OOS",      "Paused — product went out of stock at Costco",            "Agent will re-check; restore to ACTIVE when back in stock"],
-        ["PAUSED_MARGIN",   "Paused — margin dropped below threshold",                 "Review pricing; manually change to ACTIVE if margin recovers"],
+        ["PAUSED_MARGIN",   "Paused by you — margin below threshold (never set automatically)",                 "Review pricing; manually change to ACTIVE if margin recovers"],
         ["PAUSED_DEMAND",   "Paused — Tier 3, low eBay demand",                       "Check re_eval_date col S — agent will re-score then"],
         ["PAUSED_SEASONAL", "Paused — seasonal product, wrong time of year",           "Check col S for re-eval date; approve manually when season returns"],
         ["", "", ""],
