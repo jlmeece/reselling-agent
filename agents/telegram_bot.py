@@ -1139,7 +1139,13 @@ async def cmd_lookup(update, context):
     text = format_lookup_reply(matches, term)
     if len(text) > _MAX_MSG:
         text = text[:_MAX_MSG - 20] + "\n[truncated]"
-    await update.message.reply_text(text)
+    # A single-match card gets the same action buttons as the Search screen
+    # (Mark Listed on READY items); multi-match/no-match replies stay text-only.
+    markup = None
+    if len(matches) == 1:
+        p = matches[0]
+        markup = _search_action_kb(p["row_num"], (p.get("status") or "").strip())
+    await update.message.reply_text(text, reply_markup=markup)
 
 
 async def cmd_dashboard(update, context):
@@ -1269,6 +1275,7 @@ async def cmd_start(update, context):
     if not _authorized(update, context.bot_data["chat_id"]):
         return
     context.user_data["awaiting_search"] = False
+    _clear_listing_state(context)
     context.user_data["queue"] = None
     await update.message.reply_text(
         "👋 Welcome to the WAT Reselling Agent. Tap a button below to get started.",
@@ -1324,6 +1331,7 @@ async def on_callback(update, context):
 
 async def cb_menu_root(update, context, arg):
     context.user_data["awaiting_search"] = False
+    _clear_listing_state(context)
     context.user_data["queue"] = None
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
@@ -1338,6 +1346,7 @@ async def cb_menu_root(update, context, arg):
 
 async def cb_menu_dashboard(update, context, arg):
     context.user_data["awaiting_search"] = False
+    _clear_listing_state(context)
     try:
         col_map, service, sheet_name, start, rows = _read_product_rows()
     except Exception as e:
@@ -1379,6 +1388,7 @@ async def cb_menu_dashboard(update, context, arg):
 
 async def cb_menu_search(update, context, arg):
     context.user_data["queue"] = None
+    _clear_listing_state(context)
     context.user_data["awaiting_search"] = True
     await _send_screen(
         update, "🔎 Type a product name or category to search.", reply_markup=_home_inline_kb()
@@ -1387,6 +1397,8 @@ async def cb_menu_search(update, context, arg):
 
 def _search_action_kb(row_num, status):
     rows_ = []
+    if status == "READY":
+        rows_.append([InlineKeyboardButton("📦 Mark Listed", callback_data=f"listed:start:{row_num}")])
     if status == "SCORED":
         rows_.append([
             InlineKeyboardButton("✅ Approve", callback_data=f"review:approve:{row_num}"),
@@ -1456,6 +1468,140 @@ async def cb_search_pick(update, context, arg):
     await _send_screen(
         update, format_product_detail(p),
         reply_markup=_search_action_kb(p["row_num"], (p.get("status") or "").strip()),
+    )
+
+
+# ── Mark Listed (READY -> ACTIVE) ────────────────────────────────────────────
+#
+# Flow: listed:start (prompt) -> typed ID/URL or listed:skip -> confirm screen
+# -> listed:confirm (write). The typed value can't ride in callback_data (64-byte
+# cap, free text), so it is stashed in user_data["pending_listed"]. Row numbers
+# can shift if the auditor deletes a row in between, so confirm re-reads the
+# row and refuses to write unless it is still the same READY product.
+
+_EBAY_ITEM_ID_RE = re.compile(r"^\d{9,14}$")
+_EBAY_URL_RE = re.compile(r"^https?://([\w-]+\.)*ebay\.[a-z.]+(/\S*)?$", re.IGNORECASE)
+
+
+def _clear_listing_state(context):
+    context.user_data.pop("awaiting_listing", None)
+    context.user_data.pop("pending_listed", None)
+
+
+def _parse_listing_input(text):
+    """
+    Validate a typed eBay item ID or URL. Returns the cleaned value, or None
+    if it is neither. Rejecting everything else also keeps a typed "=..."
+    from ever reaching the sheet as a formula.
+    """
+    value = (text or "").strip()
+    if _EBAY_ITEM_ID_RE.match(value) or _EBAY_URL_RE.match(value):
+        return value
+    return None
+
+
+def _listed_prompt_kb(row_num):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏭️ Skip (no ID)", callback_data=f"listed:skip:{row_num}"),
+         InlineKeyboardButton("❌ Cancel", callback_data=f"listed:cancel:{row_num}")],
+    ])
+
+
+def _listed_confirm_kb(row_num):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Confirm", callback_data=f"listed:confirm:{row_num}"),
+         InlineKeyboardButton("❌ Cancel", callback_data=f"listed:cancel:{row_num}")],
+    ])
+
+
+async def _show_listed_confirm(update, context, row_num, title, value):
+    context.user_data.pop("awaiting_listing", None)
+    context.user_data["pending_listed"] = {"row_num": row_num, "title": title, "value": value}
+    saved = f"and save eBay listing: {value}" if value else "(no eBay ID/URL will be saved)"
+    await _send_screen(
+        update,
+        f"Mark '{title}' as listed?\nStatus READY → ACTIVE {saved}",
+        reply_markup=_listed_confirm_kb(row_num),
+    )
+
+
+async def cb_listed_start(update, context, arg):
+    row_num = int(arg)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"listed:start sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    items = _extract_rows_by_field(rows, col_map, ("status", "title"), data_start_row=start)
+    p = _find_by_row_num(items, row_num)
+    if p is None or (p.get("status") or "").strip() != "READY":
+        await _send_screen(
+            update, "This item is no longer READY — nothing to mark.", reply_markup=_home_inline_kb()
+        )
+        return
+    context.user_data["awaiting_search"] = False
+    context.user_data.pop("pending_listed", None)
+    context.user_data["awaiting_listing"] = {"row_num": row_num, "title": p["title"]}
+    await _send_screen(
+        update,
+        f"📦 {p['title'] or '(untitled)'}\n\nSend the eBay item ID or listing URL — or tap Skip.",
+        reply_markup=_listed_prompt_kb(row_num),
+    )
+
+
+async def _handle_listing_input(update, context, text):
+    pending = context.user_data.get("awaiting_listing")
+    value = _parse_listing_input(text)
+    if value is None:
+        # Keep awaiting_listing set so the next message is tried again.
+        await update.message.reply_text(
+            "That doesn't look like an eBay item ID (9–14 digits) or an ebay.com URL. "
+            "Try again, or tap Skip.",
+            reply_markup=_listed_prompt_kb(pending["row_num"]),
+        )
+        return
+    await _show_listed_confirm(update, context, pending["row_num"], pending["title"], value)
+
+
+async def cb_listed_skip(update, context, arg):
+    pending = context.user_data.get("awaiting_listing")
+    if not pending or pending["row_num"] != int(arg):
+        await _send_screen(update, "This prompt expired — start again.", reply_markup=_home_inline_kb())
+        return
+    await _show_listed_confirm(update, context, pending["row_num"], pending["title"], "")
+
+
+async def cb_listed_cancel(update, context, arg):
+    _clear_listing_state(context)
+    await _send_screen(update, "Cancelled.", reply_markup=_home_inline_kb())
+
+
+async def cb_listed_confirm(update, context, arg):
+    row_num = int(arg)
+    pending = context.user_data.get("pending_listed")
+    if not pending or pending["row_num"] != row_num:
+        await _send_screen(update, "This prompt expired — start again.", reply_markup=_home_inline_kb())
+        return
+    # Clear first: a double-tap then hits the "expired" branch instead of re-writing.
+    _clear_listing_state(context)
+
+    col_map, service, sheet_name, start, rows = _read_product_rows()
+    items = _extract_rows_by_field(rows, col_map, ("status", "title"), data_start_row=start)
+    p = _find_by_row_num(items, row_num)
+    if p is None or (p.get("status") or "").strip() != "READY" or p["title"] != pending["title"]:
+        await _send_screen(
+            update, "This item changed since you opened it — nothing was written.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+
+    pairs = [(col_map["status"], "ACTIVE")]
+    if pending["value"]:
+        pairs.append((col_map["ebay_listing_url"], pending["value"]))
+    safe_write_row(service, sheet_name, row_num, pairs)
+    await _send_screen(
+        update, f"✅ Marked ACTIVE — monitoring\n{pending['title']}", reply_markup=_home_inline_kb()
     )
 
 
@@ -2023,7 +2169,12 @@ async def on_text(update, context):
     handler = _HOME_LABEL_HANDLERS.get(text)
     if handler is not None:
         context.user_data["awaiting_search"] = False
+        _clear_listing_state(context)
         await handler(update, context, None)
+        return
+
+    if context.user_data.get("awaiting_listing"):
+        await _handle_listing_input(update, context, text)
         return
 
     if context.user_data.get("awaiting_search"):
@@ -2062,6 +2213,10 @@ _CALLBACK_ROUTES.update({
     ("audit_confirm", "delete"): cb_audit_confirm_delete,
     ("audit_confirm", "cancel"): cb_audit_confirm_cancel,
     ("search", "pick"): cb_search_pick,
+    ("listed", "start"): cb_listed_start,
+    ("listed", "skip"): cb_listed_skip,
+    ("listed", "confirm"): cb_listed_confirm,
+    ("listed", "cancel"): cb_listed_cancel,
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
     ("logs", "show"): cb_logs_show,

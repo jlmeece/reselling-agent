@@ -82,6 +82,7 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 
 ## Recent Changes
 
+- Bot "📦 Mark Listed": READY cards (Search, search:pick, single-match `/lookup`) get a button → prompt for eBay ID/URL (or Skip) → confirm → `safe_write_row` status ACTIVE (+ col Q if given; bare ID as-is). Confirm re-reads the row and refuses unless it is still the same READY title (row numbers shift when the auditor deletes). State lives in `user_data["awaiting_listing"]`/`["pending_listed"]`, cleared by `_clear_listing_state` on navigation. Tests: `tests/test_mark_listed.py`. Needs a bot `/restart`; never smoke-tested against live Telegram
 - Run-lock file (`data/.scheduler_lock`) prevents overlapping scheduler runs (45-min staleness before it's reclaimed)
 - Cookie auto-refresh (24h throttle, `tools/cookie_refresh.py`) triggers on file age ≥25d **or** >20% cookies expired (scheduler `_check_cookie_age` and scraper `_load_cookies`)
 - Telegram alerts fire on scheduler crash and on expired/aging Costco cookies
