@@ -23,7 +23,7 @@ def test_real_sale_response_store_warehouse_first():
     # URL was whsNumber=847,1 -> the store (847): $39.99 regular, $8 off, $31.99 to pay
     p = _parse_price_payload(ENERGY, ["847", "1"])
     assert p == {"price": 31.99, "original_price": 39.99, "savings": 8.0,
-                 "authoritative": True, "item_id": "1711796"}
+                 "authoritative": True, "item_id": "1711796", "sale_expires": "10/18/26"}
 
 
 def test_warehouse_1_is_a_different_undiscounted_price():
@@ -50,7 +50,7 @@ def _payload(**entry):
 def test_not_on_sale():
     p = _parse_price_payload(_payload(onlinePrice=24.99, aggregatedDiscountAmt=0, deliveredPrice=24.99), ["847"])
     assert p == {"price": 24.99, "original_price": None, "savings": None,
-                 "authoritative": True, "item_id": "1"}
+                 "authoritative": True, "item_id": "1", "sale_expires": None}
 
 
 def test_strings_dollar_signs_and_commas():
@@ -101,3 +101,19 @@ def test_price_miss_message_thresholds():
     assert price_miss_message({"pages": 100, "misses": 3}) is None         # 3% — a few blips
     assert "3 of 10" in price_miss_message({"pages": 10, "misses": 3})
     assert price_miss_message({"pages": 0, "misses": 0}) is None
+
+
+def test_sale_expires_from_api_promotion_end_pacific_date():
+    # promotionEndDate 2026-10-19T06:59:00Z == 10/18 11:59pm PDT (page text: "through 10/18/26")
+    assert _parse_price_payload(ENERGY, ["847", "1"])["sale_expires"] == "10/18/26"
+    assert _parse_price_payload(EXTRA, ["847", "1"])["sale_expires"]
+
+
+def test_sale_expires_none_when_not_on_sale_or_no_discounts():
+    assert _parse_price_payload(ENERGY, ["1", "847"])["sale_expires"] is None   # wh 1: no sale
+    data = json.loads(json.dumps(ENERGY))
+    data["priceData"][0]["discounts"] = "garbage"
+    assert _parse_price_payload(data, ["847", "1"])["sale_expires"] is None
+    del data["priceData"][0]["discounts"]
+    p = _parse_price_payload(data, ["847", "1"])
+    assert p["price"] == 31.99 and p["sale_expires"] is None

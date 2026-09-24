@@ -14,6 +14,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from loguru import logger
 
+from tools.sale_monitor import parse_rate, to_float
+from tools.status_logic import suggest_reprice
+
 
 # ── Alert level config ────────────────────────────────────────────────────────
 # Set ALERT_LEVEL in .env:
@@ -171,7 +174,7 @@ def send_urgent_alert(subject, items, run_time=None, sheet_url=None):
     _send_sms(_sms_urgent(items))
     _send_telegram(
         f"🚨 Action needed — {subject}\n"
-        + "\n".join(f"• {i['title'][:35]}: {i['reason'][:50]}" for i in items[:3])
+        + "\n".join(f"• {i['title'][:35]}: {i['reason'][:90]}" for i in items[:3])
     )
 
 
@@ -235,12 +238,14 @@ def send_sale_expiry_alert(products: list, hours_remaining: float):
     rows = ""
     for p in products:
         try:
-            fee_rate     = float(p.get("fee_rate") or 0.1325)
+            fee_rate     = parse_rate(p.get("fee_rate")) or 0.1325
+            ship_cost    = to_float(p.get("ship_cost")) or 0.0
             regular_cost = float(p.get("regular_costco_cost") or p.get("costco_cost") or 0)
-            min_break_even = round(regular_cost / (1 - fee_rate), 2) if regular_cost else None
-            target_price   = round((regular_cost + 5) / (1 - fee_rate), 2) if regular_cost else None
+            min_break_even = round((regular_cost + ship_cost) / (1 - fee_rate), 2) if regular_cost else None
+            # Same target math as the sale-end reprice alert (suggest_reprice, 20% margin)
+            target_price   = suggest_reprice(regular_cost, fee_rate, ship_cost) if regular_cost else None
             price_note = (
-                f"Raise to ${target_price} to keep ~$5 net, or ${min_break_even} to break even"
+                f"Raise to ${target_price:.2f} to keep margin, or ${min_break_even} to break even"
                 if target_price else "Recalculate price after sale ends"
             )
         except Exception:

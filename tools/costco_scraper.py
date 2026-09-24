@@ -27,7 +27,7 @@ import sys
 import subprocess
 import urllib.request
 from urllib.parse import parse_qs, urlparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from contextlib import contextmanager
 from loguru import logger
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -732,10 +732,43 @@ def _price_from_entry(entry):
             "authoritative": has_discount_info}
 
 
+def _promo_end_local(item, warehouse):
+    """Sale end date "M/D/YY" (Pacific) from discounts[].promotions[].promotionEndDate, or None.
+
+    promotionEndDate is UTC ("2026-10-19T06:59:00Z" = the 10/18 Pacific end of day the page
+    text names). Takes the warehouse's own discounts block (else the first); of its promotions,
+    the soonest end still in the future, else the latest one. Never raises.
+    """
+    try:
+        blocks = [b for b in (item.get("discounts") or []) if isinstance(b, dict)]
+        block = next((b for b in blocks if str(b.get("warehouseNumber")) == str(warehouse)), None)
+        block = block or (blocks[0] if blocks else None)
+        if not block:
+            return None
+        ends = []
+        for promo in block.get("promotions") or []:
+            raw = promo.get("promotionEndDate") if isinstance(promo, dict) else None
+            if raw:
+                ends.append(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
+        if not ends:
+            return None
+        now = datetime.now(ends[0].tzinfo)
+        future = [e for e in ends if e >= now]
+        end = min(future) if future else max(ends)
+        try:
+            from zoneinfo import ZoneInfo
+            local = end.astimezone(ZoneInfo("America/Los_Angeles"))
+        except Exception:   # no tzdata on this box -> assume PDT
+            local = end - timedelta(hours=7)
+        return f"{local.month}/{local.day}/{local:%y}"
+    except Exception:
+        return None
+
+
 def _parse_price_payload(data, whs_order=()):
     """
     Parse a Costco price-API JSON body -> {"price", "original_price", "savings",
-    "authoritative", "item_id"} or None when it carries no usable price. Pure (no browser).
+    "authoritative", "item_id", "sale_expires"} or None when it carries no usable price. Pure (no browser).
 
     Handles, in order:
       * display-price-lite (Sep 2026): {"priceData": [{"id", "displayPrice": [ {per-warehouse}, ...]}]}.
@@ -765,11 +798,13 @@ def _parse_price_payload(data, whs_order=()):
             parsed = _price_from_entry(entry)
             if parsed:
                 parsed["item_id"] = str(item["id"]) if item.get("id") else None
+                parsed["sale_expires"] = (_promo_end_local(item, entry.get("warehouseNumber"))
+                                          if parsed["original_price"] else None)
                 return parsed
     legacy = _money(data.get("finalOnlinePrice"))
     if legacy:
         return {"price": legacy, "original_price": None, "savings": None,
-                "authoritative": False, "item_id": None}
+                "authoritative": False, "item_id": None, "sale_expires": None}
     return None
 
 
@@ -992,7 +1027,9 @@ def scrape_costco(url, page):
                 r"(?:through|ends?|valid\s+through)\s+(\d{1,2}/\d{1,2}/\d{2,4})",
                 prod_text, re.IGNORECASE
             )
-            if exp_m:
+            if api and api.get("sale_expires"):
+                result["sale_expires"] = api["sale_expires"]   # authoritative: API promotionEndDate
+            elif exp_m:
                 result["sale_expires"] = exp_m.group(1)
 
         # Free shipping detection

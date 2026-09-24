@@ -22,6 +22,7 @@ import argparse
 import html
 import json
 import os
+import re
 import sys
 import time
 import traceback
@@ -45,6 +46,11 @@ from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready_to_list_alert, send_rotation_digest, send_run_summary, send_sale_expiry_alert
 from tools.run_logger import log_run_start, log_run_end
 from tools.sale_history import log_sale
+from tools.sale_monitor import (
+    PRICE_FLAG_YES, already_alerted, classify_cost_event, expiry_tier, load_alert_state,
+    margin_note_sale_start, parse_rate, parse_sale_expiry, price_flag_still_needed,
+    record_alerts, sale_badge, sale_end_alert, to_float,
+)
 from tools.spot_price import check_spot_movement
 from agents.auditor import run_audit
 from tools import ebay_sync
@@ -78,19 +84,32 @@ def safe_get(lst, i, default=""):
 
 # ── Mode: ACTIVE monitor (3x/day) ────────────────────────────────────────────
 
-def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
+def _set_cell(row, idx, value):
+    """Mirror a sheet write into the in-memory row (pads short rows) so later checks in the
+    same run see it."""
+    while len(row) <= idx:
+        row.append("")
+    row[idx] = value
+
+
+def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, only_rows=None):
     """
     Checks all ACTIVE listings every run.
     - Detects stock changes -> PAUSED_OOS
-    - Detects price changes -> reprice suggestion in URGENT alert
+    - Detects Costco SALE START (cost dropped + on_sale) -> writes G / AW / X, keeps the eBay
+      price (margin just improved), no reprice suggestion
+    - Detects SALE END / cost rise -> col P flag + URGENT reprice-up alert (suggest_reprice)
+    - Trivial cost drift -> col G silently
     - Detects margin erosion -> PAUSED_MARGIN
     - Auto-promotes READY->ACTIVE when eBay URL is filled
+    - Sale-expiry countdown (from col X, fed by the API's promotionEndDate)
     - Sends URGENT email+SMS if any action needed, otherwise stays silent
+    only_rows: optional set of sheet row numbers — scrape/alert only those (live testing).
     """
     business = config["business"]
     categories = config["categories"]
 
-    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     urgent_items = []
@@ -113,6 +132,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
         for idx, row in enumerate(all_data):
             sheet_row = idx + start_row
             if not row:
+                continue
+            if only_rows and sheet_row not in only_rows:
                 continue
 
             status    = safe_get(row, col_to_idx(COL["status"]))
@@ -171,47 +192,38 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
                 time.sleep(2)
                 continue
 
-            # Detect price change
-            price_changed = False
-            old = None
-            if new_price and costco_cost:
-                try:
-                    old = float(str(costco_cost).replace("$", "").replace(",", ""))
-                    if abs(new_price - old) > business["price_change_threshold"]:
-                        price_changed = True
-                        logger.info(f"  Price: ${old} -> ${new_price}")
-                except (ValueError, TypeError):
-                    old = None
+            # ── Cost change — sale-aware ──────────────────────────────────────────
+            # SALE START (cost dropped + on_sale): keep the eBay price, pocket the margin.
+            # SALE END / cost rise: flag col P + urgent reprice-up alert.
+            # Small drift or a scrape with no price: col G only (or nothing), no alert.
+            old        = to_float(costco_cost)
+            on_sale    = bool(costco_data.get("on_sale"))
+            had_badge  = bool(safe_get(row, col_to_idx(COL["sale_info"])))
+            event      = "none"
+            if new_price:
+                event = classify_cost_event(old, new_price, on_sale, had_badge,
+                                            business["price_change_threshold"])
+                if event != "none":
+                    logger.info(f"  Cost {event}: ${old} -> ${new_price} (on_sale={on_sale})")
+
+            ebay_f = to_float(ebay_price)
+            fee_f  = parse_rate(fee_rate)
+            ship_f = to_float(ship_cost) or 0.0
 
             # Compute margin inline (avoid formula column)
             margin = None
-            try:
-                p = float(str(ebay_price).replace("$", "").replace(",", ""))
-                c = float(str(new_price or costco_cost).replace("$", "").replace(",", ""))
-                f = float(str(fee_rate).replace("%", "")) / (100 if "%" in str(fee_rate) else 1)
-                s = float(str(ship_cost).replace("$", "").replace(",", "")) if ship_cost else 0
-                if p > 0:
-                    margin = (p - c - p * f - s) / p
-            except (ValueError, TypeError):
-                pass
-
-            # Margin as it stood BEFORE this price change (using old Costco cost),
-            # for price-change alert detail only — does not affect status/margin logic.
-            margin_before = None
-            if price_changed and old is not None:
-                try:
-                    if p > 0:
-                        margin_before = (p - old - p * f - s) / p
-                except (NameError, ZeroDivisionError):
-                    margin_before = None
+            cost_now = to_float(new_price or costco_cost)
+            if ebay_f and ebay_f > 0 and cost_now is not None and fee_f is not None:
+                margin = (ebay_f - cost_now - ebay_f * fee_f - ship_f) / ebay_f
 
             try:
                 demand_int = int(demand) if demand else None
             except (ValueError, TypeError):
                 demand_int = None
 
+            # price_changed is retired as a generic trigger — the sale events below own it.
             new_status, reason_code, notes = determine_status(
-                status, stock_status, margin, price_changed, demand_int,
+                status, stock_status, margin, False, demand_int,
                 ebay_url=ebay_url,
                 min_margin=business["min_margin_threshold"],
                 min_demand=business["min_demand_score"],
@@ -229,14 +241,53 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
             except (ValueError, TypeError):
                 pass
 
+            # Sale columns X (badge) / AW (regular price): refreshed while on sale, cleared when
+            # the sale is gone. A scrape with no price never touches them.
+            sale_updates = []
+            sale_note = None
+            sale_item = None
+            flag_update = None      # new col P value, when it changes
+            if new_price:
+                if on_sale:
+                    orig = costco_data.get("original_price")
+                    badge = sale_badge(costco_data.get("sale_savings"), costco_data.get("sale_expires"))
+                    sale_updates = [(COL["sale_info"], badge),
+                                    (COL["regular_price"], orig if orig else "")]
+                elif had_badge or safe_get(row, col_to_idx(COL["regular_price"])):
+                    sale_updates = [(COL["sale_info"], ""), (COL["regular_price"], "")]
+
+            existing_flag = safe_get(row, col_to_idx(COL["price_change"]))
+            target = suggest_reprice(new_price or old, fee_f, ship_f) if (fee_f is not None and (new_price or old)) else None
+            if event == "sale_start":
+                sale_note = margin_note_sale_start(old, new_price)
+            elif event == "sale_end":
+                sale_item = sale_end_alert(title, old, new_price, fee_f, ship_f, ebay_f,
+                                           row=sheet_row, category=category)
+                if ebay_f is not None and target is not None and ebay_f >= target:
+                    # Listing price already covers margin at the new cost — nothing to fix
+                    sale_note = (f"sale ended — cost ${old:.2f}→${new_price:.2f}, "
+                                 f"eBay ${ebay_f:.2f} already covers margin")
+                    sale_item = None
+                else:
+                    flag_update = PRICE_FLAG_YES
+            elif existing_flag and not price_flag_still_needed(existing_flag, ebay_f, target):
+                flag_update = ""    # listing was repriced — clear the stale flag
+            # (an existing YES flag that is still needed is left alone — it used to be blanked
+            #  on the very next quiet run)
+
+            if sale_note:
+                notes = sale_note if notes in ("", "All clear") else f"{notes} | {sale_note}"
+
             # Build updates
             updates = [
                 (COL["stock_status"],  stock_status),
                 (COL["last_checked"],  run_time),
                 (COL["tier_summary"],         notes),
                 (COL["image_urls"],    image_urls),
-                (COL["price_change"],  "YES — update listing" if price_changed else ""),
             ]
+            updates += sale_updates
+            if flag_update is not None:
+                updates.append((COL["price_change"], flag_update))
             if new_price:
                 updates.append((COL["costco_cost"], new_price))
             if new_status != status:
@@ -244,40 +295,29 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
                 logger.info(f"  Status: {status} -> {new_status}")
 
             write_row_partial(service, sheet_name, sheet_row, updates)
+            for _col, _val in updates:                 # keep the expiry check below in sync
+                _set_cell(row, col_to_idx(_col), _val)
+
+            if on_sale and new_price and (event == "sale_start" or not had_badge):
+                orig = costco_data.get("original_price")
+                log_sale(service, title, category, new_price,
+                         f"{orig:.2f}" if orig else "", sale_updates[0][1])
 
             # Collect items needing action
-            if reason_code != "ok" and reason_code != "ebay_url_detected":
-                reprice_note = ""
-                item_reason = notes
-                if price_changed and new_price:
-                    try:
-                        f_rate = float(str(fee_rate).replace("%", "")) / (100 if "%" in str(fee_rate) else 1)
-                        s_cost = float(str(ship_cost).replace("$", "").replace(",", "")) if ship_cost else 0
-                        suggested = suggest_reprice(new_price, f_rate, s_cost)
-                        if suggested:
-                            reprice_note = f"Suggested new eBay price: ${suggested:.2f}"
-                        else:
-                            reprice_note = "Margin no longer supports profitable resale — consider ending listing"
-                    except (ValueError, TypeError):
-                        reprice_note = "Margin no longer supports profitable resale — consider ending listing"
-
-                    if old is not None:
-                        price_detail = f"Costco ${old:.2f} -> ${new_price:.2f}"
-                    else:
-                        price_detail = f"Costco price changed to ${new_price:.2f}"
-                    if margin_before is not None and margin is not None:
-                        price_detail += f" | Margin {margin_before:.1%} -> {margin:.1%}"
-                    elif margin is not None:
-                        price_detail += f" | Margin now {margin:.1%}"
-                    item_reason = f"{notes} | {price_detail}" if notes else price_detail
-
-                urgent_items.append({
-                    "title":        title,
-                    "row":          sheet_row,
-                    "category":     category,
-                    "reason":       item_reason,
-                    "reprice_note": reprice_note,
-                })
+            if reason_code not in ("ok", "ebay_url_detected"):
+                if sale_item:
+                    sale_item["reason"] = f"{sale_item['reason']} | {notes}"
+                    urgent_items.append(sale_item)
+                else:
+                    urgent_items.append({
+                        "title":        title,
+                        "row":          sheet_row,
+                        "category":     category,
+                        "reason":       notes,
+                        "reprice_note": "",
+                    })
+            elif sale_item:
+                urgent_items.append(sale_item)
 
             time.sleep(2)
 
@@ -285,68 +325,72 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row):
 
     # ── Sale expiry check ──────────────────────────────────────────────────────
     # Online arbitrage model — no inventory held. Sale expiry = repricing event.
-    import re as _re
-    from datetime import datetime as _dt
-
+    # Fed by col X ("🔥 -$8 ends 10/18/26"), which the monitor writes from the price API's
+    # promotionEndDate — all_data rows were updated in place above, so a sale seen this run
+    # counts this run. Two tiers (SALE_WARN_HOURS / SALE_URGENT_HOURS), each alerted once.
     SALE_WARN_HOURS   = int(business.get("sale_warn_hours",   48))
     SALE_URGENT_HOURS = int(business.get("sale_urgent_hours", 24))
     SALE_EXPIRY_STATUSES = {"ACTIVE", "READY", "APPROVED", "LISTED"}
 
+    alert_state = load_alert_state()
     expiring = []
-    for row in all_data:
+    expiring_keys = []
+    for idx, row in enumerate(all_data):
         if not row:
+            continue
+        if only_rows and (idx + start_row) not in only_rows:
             continue
         status    = safe_get(row, col_to_idx(COL["status"]))
         sale_info = safe_get(row, col_to_idx(COL["sale_info"]))
         if status not in SALE_EXPIRY_STATUSES or not sale_info:
             continue
 
-        exp_match = _re.search(r'ends?\s+(\d{1,2}/\d{1,2}/\d{2,4})', sale_info, _re.IGNORECASE)
-        if not exp_match:
-            continue
-
         try:
-            exp_str = exp_match.group(1)
-            exp_dt = None
-            for fmt in ("%m/%d/%y", "%m/%d/%Y"):
-                try:
-                    exp_dt = _dt.strptime(exp_str, fmt).replace(hour=23, minute=59)
-                    break
-                except ValueError:
-                    continue
+            exp_dt = parse_sale_expiry(sale_info)
             if exp_dt is None:
+                logger.debug(f"  Sale badge without a parseable end date: {sale_info!r}")
                 continue
 
-            hours_left = (exp_dt - _dt.now()).total_seconds() / 3600
-            if 0 < hours_left <= SALE_WARN_HOURS:
-                savings_match = _re.search(r'\$(\d+\.?\d*)', sale_info)
-                savings = float(savings_match.group(1)) if savings_match else None
-                costco_cost_raw = safe_get(row, col_to_idx(COL["costco_cost"]))
-                try:
-                    regular_cost = (float(costco_cost_raw) + savings) if (costco_cost_raw and savings) else None
-                except Exception:
-                    regular_cost = None
+            hours_left = (exp_dt - datetime.now()).total_seconds() / 3600
+            tier = expiry_tier(hours_left, SALE_WARN_HOURS, SALE_URGENT_HOURS)
+            if tier is None:
+                continue
+            title = safe_get(row, col_to_idx(COL["title"]))
+            key = f"{title}|{exp_dt:%Y-%m-%d}|{tier}"
+            if already_alerted(alert_state, key):
+                continue
 
-                expiring.append({
-                    "title":               safe_get(row, col_to_idx(COL["title"])),
-                    "status":              status,
-                    "sale_expires":        exp_str,
-                    "sale_savings":        savings,
-                    "costco_url":          safe_get(row, col_to_idx(COL["costco_url"])),
-                    "ebay_url":            safe_get(row, col_to_idx(COL["ebay_listing_url"])),
-                    "current_ebay_price":  safe_get(row, col_to_idx(COL["ebay_price"])),
-                    "costco_cost":         costco_cost_raw,
-                    "regular_costco_cost": regular_cost,
-                    "fee_rate":            safe_get(row, col_to_idx(COL["fee_rate"])),
-                    "net_profit":          safe_get(row, col_to_idx(COL["net_profit"])),
-                    "hours_left":          hours_left,
-                })
+            savings_m = re.search(r'\$(\d+\.?\d*)', sale_info)
+            savings = to_float(savings_m.group(1)) if savings_m else None
+            costco_cost_raw = safe_get(row, col_to_idx(COL["costco_cost"]))
+            regular_cost = to_float(safe_get(row, col_to_idx(COL["regular_price"])))
+            if regular_cost is None and savings:
+                cost_now = to_float(costco_cost_raw)
+                regular_cost = (cost_now + savings) if cost_now else None
+
+            expiring.append({
+                "title":               title,
+                "status":              status,
+                "sale_expires":        f"{exp_dt.month}/{exp_dt.day}/{exp_dt:%y}",
+                "sale_savings":        savings,
+                "costco_url":          safe_get(row, col_to_idx(COL["costco_url"])),
+                "ebay_url":            safe_get(row, col_to_idx(COL["ebay_listing_url"])),
+                "current_ebay_price":  safe_get(row, col_to_idx(COL["ebay_price"])),
+                "costco_cost":         costco_cost_raw,
+                "regular_costco_cost": regular_cost,
+                "fee_rate":            safe_get(row, col_to_idx(COL["fee_rate"])),
+                "ship_cost":           safe_get(row, col_to_idx(COL["ship_cost"])),
+                "net_profit":          safe_get(row, col_to_idx(COL["net_profit"])),
+                "hours_left":          hours_left,
+            })
+            expiring_keys.append(key)
         except Exception as e:
             logger.debug(f"  Sale expiry parse error: {e}")
 
     if expiring:
         min_hours = min(p["hours_left"] for p in expiring)
         send_sale_expiry_alert(expiring, hours_remaining=min_hours)
+        record_alerts(alert_state, expiring_keys)
         logger.info(f"  Sale expiry alert — {len(expiring)} listing(s) expiring within {min_hours:.0f}h")
 
     # Only alert if something actually needs action
@@ -1185,6 +1229,8 @@ def main():
                         help="(recheck only) Re-run Costco + eBay on ALL products, not just missing-data rows")
     parser.add_argument("--add-limit", type=int, default=None,
                         help="Max new products to add to sheet during discovery")
+    parser.add_argument("--row", type=int, default=None,
+                        help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
                         help="(ebay_sync only) Report without writing units_sold")
     args = parser.parse_args()
@@ -1209,7 +1255,8 @@ def main():
     try:
         service = get_sheets_service()
         if args.mode == "active":
-            run_active_monitor(config, COL, service, sheet_name, start_row, end_row)
+            run_active_monitor(config, COL, service, sheet_name, start_row, end_row,
+                               only_rows={args.row} if args.row else None)
         elif args.mode == "daily":
             run_daily_sweep(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "research":
