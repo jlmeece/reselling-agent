@@ -15,10 +15,16 @@ Never touches eBay data and never changes any price. Run via
 Known Stage-1 limit: GetMyeBaySelling's ActiveList only holds live listings, so a
 listing that sold out completely drops off it. Its last sale is therefore NOT
 written to units_sold and the row surfaces under active_not_on_ebay ("sold out /
-removed / never listed"). Stage 2 would add the SoldList to tell those apart.
+removed"). Stage 2 would add the SoldList to tell those apart.
+
+ACTIVE rows with a blank col Q are reported as "no URL in col Q" (the item may well be
+on eBay, just unlinked). When an unclaimed eBay listing's title matches the row, the
+report suggests its item ID — a suggestion only; col Q is never written.
 """
 
+import hashlib
 import html
+import json
 import os
 import re
 import socket
@@ -46,6 +52,10 @@ REQUEST_TIMEOUT   = 30
 PRICE_TOLERANCE   = 0.01        # eBay vs sheet price differences below 1¢ are rounding
 WRITE_DELAY       = 1.1         # s between sheet writes — Sheets caps writes at 60/min
 MAX_REPORT_LINES  = 15          # per section in the Telegram message
+CLOSE_MATCH_JACCARD = 0.8       # token overlap for a "close" title match (link suggestions)
+ALERT_REPEAT_HOURS  = 24        # an identical Telegram alert is re-sent at most this often
+ALERT_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "data", ".ebay_sync_alert.json")
 
 # Trading API error codes meaning the auth token is invalid/expired (tokens last
 # ~18 months, so this needs a loud alert rather than a silent empty sync).
@@ -197,9 +207,13 @@ def _parse_listing(item) -> dict | None:
         "price":         price,
         "quantity":      _num(_text(item, "Quantity"), int, 0),
         "quantity_sold": qty_sold,
+        # No tag = 0 watchers (eBay omits the field then). The field name WatchCount is
+        # unconfirmed until a live listing shows >0 watchers.
         "watch_count":   _num(_text(item, "WatchCount"), int, 0),
-        # The Trading API item field is HitCount; ViewCount kept as a fallback name.
-        "view_count":    _num(_text(item, "HitCount") or _text(item, "ViewCount"), int, 0),
+        # GetMyeBaySelling's ActiveList sends no view count (confirmed from raw XML), so
+        # this is None — "unknown", not 0. HitCount/ViewCount are still read in case eBay
+        # ever sends one; nothing in the report or Telegram output uses it.
+        "view_count":    _num(_text(item, "HitCount") or _text(item, "ViewCount"), int, None),
     }
 
 
@@ -208,7 +222,7 @@ def fetch_active_listings() -> list[dict]:
     Fetch every active eBay listing (paged, 200/page).
 
     Returns [{item_id, title, price, quantity, quantity_sold, watch_count,
-    view_count}, ...]. NEVER raises: on any failure — missing credentials, network
+    view_count}, ...] (view_count is None when eBay sends none). NEVER raises: on any failure — missing credentials, network
     error, API Ack=Failure, bad XML — it logs and returns [], and sets
     `last_error` so the caller can tell that apart from "no listings". A failure
     on a later page discards earlier pages too: a partial list would make every
@@ -339,6 +353,51 @@ def _load_defaults():
 
 # ── Matching / reporting ──────────────────────────────────────────────────────
 
+def _norm_title(s) -> str:
+    """Lowercase, punctuation stripped, whitespace collapsed — for title comparison."""
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(s).lower()).split())
+
+
+def _suggest_links(entries, pool) -> dict:
+    """
+    Suggest an eBay item for each unlinked ACTIVE row. entries: dicts with row_num +
+    title; pool: eBay listings no sheet row points at. Returns
+    {row_num: (listing, "exact" | "close")}.
+
+    exact = equal normalised titles; close = token Jaccard >= CLOSE_MATCH_JACCARD.
+    Never guesses: a row whose best score is shared by several listings, or a listing
+    wanted by several rows, gets no suggestion.
+    """
+    pool_norm = [(l, _norm_title(l["title"])) for l in pool]
+    picks = {}                                   # row_num -> (listing, kind)
+    for e in entries:
+        norm = _norm_title(e["title"])
+        if not norm:
+            continue
+        toks = set(norm.split())
+        best_score, best = None, []
+        for l, ln in pool_norm:
+            if ln == norm:
+                score, kind = (1, 1.0), "exact"
+            else:
+                union = toks | set(ln.split())
+                jac = len(toks & set(ln.split())) / len(union) if union else 0.0
+                if jac < CLOSE_MATCH_JACCARD:
+                    continue
+                score, kind = (0, jac), "close"
+            if best_score is None or score > best_score:
+                best_score, best = score, [(l, kind)]
+            elif score == best_score:
+                best.append((l, kind))
+        if len(best) == 1:
+            picks[e["row_num"]] = best[0]
+
+    wanted = {}
+    for row_num, (l, _) in picks.items():
+        wanted.setdefault(l["item_id"], []).append(row_num)
+    return {r: v for r, v in picks.items() if len(wanted[v[0]["item_id"]]) == 1}
+
+
 def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
          col_map=None, title_reader=None) -> dict:
     """
@@ -369,6 +428,7 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
     by_id = {l["item_id"]: l for l in listings}
     claimed = set()
     to_write = []
+    unlinked = []          # ACTIVE rows with a blank col Q (candidates for a link suggestion)
 
     for row in sheet_rows:
         item_id = extract_item_id(row.get("ebay_listing_url"))
@@ -387,8 +447,7 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                 "row_num": row["row_num"], "title": title, "item_id": item_id,
                 "old_units_sold": old_sold, "quantity_sold": new_sold,
                 "available": max(listing["quantity"] - new_sold, 0),
-                "watch_count": listing["watch_count"], "view_count": listing["view_count"],
-                "price": listing["price"],
+                "watch_count": listing["watch_count"], "price": listing["price"],
             }
             report["matched"].append(entry)
             if new_sold != old_sold:
@@ -406,17 +465,36 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                     "ebay_price": listing["price"], "sheet_price": sheet_price})
         elif (str(row.get("status", "")).strip().upper() == "ACTIVE"
               and str(row.get("platform", "")).strip().lower() in ("", "ebay", "both")):
+            blank_url = False
             if item_id:
                 reason = "not in eBay active listings (sold out / removed)"
             elif str(row.get("ebay_listing_url", "")).strip():
                 reason = "col Q has no parseable eBay item ID"
             else:
-                reason = "no eBay listing URL in col Q (never listed?)"
-            report["active_not_on_ebay"].append(
-                {"row_num": row["row_num"], "title": title, "item_id": item_id, "reason": reason})
+                reason = "no URL in col Q"
+                blank_url = True
+            entry = {"row_num": row["row_num"], "title": title, "item_id": item_id, "reason": reason}
+            report["active_not_on_ebay"].append(entry)
+            if blank_url:
+                unlinked.append(entry)
 
     sheet_ids = {extract_item_id(r.get("ebay_listing_url")) for r in sheet_rows}
-    report["on_ebay_not_in_sheet"] = [l for l in listings if l["item_id"] not in sheet_ids]
+    report["on_ebay_not_in_sheet"] = [dict(l) for l in listings if l["item_id"] not in sheet_ids]
+
+    # Flag-only: suggest (never write) the col Q link for unlinked ACTIVE rows.
+    pool = {l["item_id"]: l for l in report["on_ebay_not_in_sheet"]}
+    suggestions = _suggest_links(unlinked, list(pool.values()))
+    for entry in unlinked:
+        pick = suggestions.get(entry["row_num"])
+        if pick is None:
+            continue
+        listing, kind = pick
+        entry["suggested_item_id"] = listing["item_id"]
+        entry["match_kind"] = kind
+        entry["reason"] += (f" — likely = eBay item {listing['item_id']}, fill col Q"
+                            if kind == "exact" else
+                            f" — possibly = eBay item {listing['item_id']} (close title match), fill col Q")
+        pool[listing["item_id"]]["suggested_row"] = entry["row_num"]
 
     if to_write and not dry_run:
         _write_units_sold(service, sheet_name, units_col, to_write, report, title_reader)
@@ -457,6 +535,9 @@ def summarize(report: dict) -> str:
          f"price_mismatch {len(report['price_mismatch'])}, "
          f"active_not_on_ebay {len(report['active_not_on_ebay'])}, "
          f"not_in_sheet {len(report['on_ebay_not_in_sheet'])}")
+    n_links = sum(1 for g in report["active_not_on_ebay"] if g.get("suggested_item_id"))
+    if n_links:
+        s += f", link_suggestions {n_links}"
     if report.get("stale_rows"):
         s += f", stale {len(report['stale_rows'])}"
     if report.get("write_errors"):
@@ -501,6 +582,41 @@ def alert_message(report: dict) -> str | None:
     return "\n".join(msg)
 
 
+def _dedupe_alert(alert, dry_run=False, now=None):
+    """
+    Suppress an alert identical to the last one sent within ALERT_REPEAT_HOURS, so the
+    2-hourly task doesn't repeat the same "ACTIVE but not on eBay" message all day.
+    A clean run (alert None) clears the state so a recurrence alerts again. Dry runs
+    neither suppress nor write state. The alert is recorded when returned, and the
+    Telegram send swallows failures — a failed send stays suppressed until the window
+    ends (the Run Log notes still show it).
+    """
+    if dry_run:
+        return alert
+    now = time.time() if now is None else now
+    try:
+        if not alert:
+            if os.path.exists(ALERT_STATE_PATH):
+                os.remove(ALERT_STATE_PATH)
+            return alert
+        digest = hashlib.sha1(alert.encode("utf-8")).hexdigest()
+        try:
+            with open(ALERT_STATE_PATH, encoding="utf-8") as f:
+                state = json.load(f)
+        except (OSError, ValueError):
+            state = {}
+        if (state.get("hash") == digest
+                and now - float(state.get("sent_at", 0)) < ALERT_REPEAT_HOURS * 3600):
+            logger.info("ebay_sync: identical alert already sent within "
+                        f"{ALERT_REPEAT_HOURS}h — not re-sending")
+            return None
+        with open(ALERT_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump({"hash": digest, "sent_at": now}, f)
+    except (OSError, ValueError, TypeError) as e:
+        logger.warning(f"ebay_sync: alert de-dup state unavailable ({e}) — sending anyway")
+    return alert
+
+
 # ── Orchestration (called by agents/scheduler.py --mode ebay_sync) ────────────
 
 def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
@@ -527,7 +643,8 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         service, rows, listings, dry_run=dry_run, sheet_name=sheet_name, col_map=COL,
         title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
     )
-    result = {"status": "ok", "notes": summarize(report), "alert": alert_message(report)}
+    result = {"status": "ok", "notes": summarize(report),
+              "alert": _dedupe_alert(alert_message(report), dry_run=dry_run)}
     if report["write_errors"]:
         result["status"] = "error"
         result["errors"] = "; ".join(

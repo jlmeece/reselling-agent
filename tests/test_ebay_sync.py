@@ -26,6 +26,12 @@ def _no_sleep(monkeypatch):
     monkeypatch.setattr(ebay_sync, "_sleep", lambda s: None)
 
 
+@pytest.fixture(autouse=True)
+def _alert_state(monkeypatch, tmp_path):
+    """Never touch the real data/.ebay_sync_alert.json."""
+    monkeypatch.setattr(ebay_sync, "ALERT_STATE_PATH", str(tmp_path / "alert.json"))
+
+
 @pytest.fixture
 def logs():
     msgs = []
@@ -57,10 +63,13 @@ class FakeResp:
 
 
 def _item(item_id, title="Item", qty=5, sold=1, price="29.99", watch=2, hits=10):
+    """hits=None / watch=None omit the tag, as eBay does in the real ActiveList."""
+    watch_xml = f"<WatchCount>{watch}</WatchCount>" if watch is not None else ""
+    hits_xml = f"<HitCount>{hits}</HitCount>" if hits is not None else ""
     return (f"<Item><ItemID>{item_id}</ItemID><Title>{_esc(title)}</Title><Quantity>{qty}</Quantity>"
             f"<SellingStatus><CurrentPrice currencyID=\"USD\">{price}</CurrentPrice>"
             f"<QuantitySold>{sold}</QuantitySold></SellingStatus>"
-            f"<WatchCount>{watch}</WatchCount><HitCount>{hits}</HitCount></Item>")
+            f"{watch_xml}{hits_xml}</Item>")
 
 
 def _page(items, page=1, total=1, ack="Success"):
@@ -85,7 +94,7 @@ def _row(n, item_id="", title="Widget", status="ACTIVE", platform="eBay", price=
 
 def _listing(item_id, price=29.99, sold=0, qty=5, title="Widget"):
     return {"item_id": item_id, "title": title, "price": price, "quantity": qty,
-            "quantity_sold": sold, "watch_count": 0, "view_count": 0}
+            "quantity_sold": sold, "watch_count": 0, "view_count": None}
 
 
 @pytest.fixture
@@ -174,6 +183,15 @@ def test_fetch_parses_pages_and_sends_correct_request(monkeypatch, creds):
     assert sent[0].full_url == "https://api.ebay.com/ws/api.dll"
     assert b"<eBayAuthToken>tok+en=</eBayAuthToken>" in sent[0].data
     assert b"<PageNumber>1</PageNumber>" in sent[0].data and b"<PageNumber>2</PageNumber>" in sent[1].data
+
+
+def test_missing_view_and_watch_tags_give_none_and_zero(monkeypatch, creds):
+    # Real ActiveList XML has neither HitCount nor (with 0 watchers) WatchCount.
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", watch=None, hits=None)])))
+    (l,) = fetch_active_listings()
+    assert l["view_count"] is None      # unknown, NOT 0
+    assert l["watch_count"] == 0        # no tag = no watchers
 
 
 def test_api_failure_returns_empty_and_never_raises(monkeypatch, creds, logs):
@@ -345,7 +363,68 @@ def test_active_not_on_ebay_only_flags_active_ebay_rows(writes):
     rep = _sync(rows, [_listing("444444444444")])
     flagged = {r["row_num"]: r["reason"] for r in rep["active_not_on_ebay"]}
     assert set(flagged) == {4, 7, 8}
-    assert "sold out" in flagged[4] and "never listed" in flagged[7] and "parseable" in flagged[8]
+    assert "sold out" in flagged[4] and "no URL in col Q" in flagged[7] and "parseable" in flagged[8]
+    assert "never listed" not in flagged[7]
+    assert "likely" not in flagged[7]          # no matching eBay listing -> no suggestion
+
+
+def test_matched_entries_carry_no_view_count(writes):
+    rep = _sync([_row(4, "111111111111")], [_listing("111111111111", sold=1)])
+    assert "view_count" not in rep["matched"][0]
+
+
+# ── sync: col Q link suggestions (flag-only) ──────────────────────────────────
+
+def test_exact_title_suggests_item_id_and_never_writes_col_q(writes):
+    rows = [_row(14, "", title="Soy Beverage Vanilla")]
+    rep = _sync(rows, [_listing("318547418616", title="soy beverage - VANILLA!")])
+    (g,) = rep["active_not_on_ebay"]
+    assert g["reason"] == "no URL in col Q — likely = eBay item 318547418616, fill col Q"
+    assert g["suggested_item_id"] == "318547418616" and g["match_kind"] == "exact"
+    assert rep["on_ebay_not_in_sheet"][0]["suggested_row"] == 14
+    assert writes == []                        # never auto-writes col Q
+    assert "link_suggestions 1" in summarize(rep)
+
+
+def test_close_title_is_hedged(writes):
+    rows = [_row(5, "", title="Kirkland Signature Fish Oil 1000 mg 400 Softgels")]
+    rep = _sync(rows, [_listing("111111111111", title="Kirkland Signature Fish Oil 1000 mg 400 Softgels Bottle")])
+    (g,) = rep["active_not_on_ebay"]
+    assert g["match_kind"] == "close" and "possibly = eBay item 111111111111" in g["reason"]
+
+
+def test_dissimilar_title_gets_no_suggestion(writes):
+    rep = _sync([_row(5, "", title="Gold Bar 1 oz")], [_listing("111111111111", title="Air Fryer 7 Qt")])
+    (g,) = rep["active_not_on_ebay"]
+    assert "suggested_item_id" not in g and g["reason"] == "no URL in col Q"
+    assert "link_suggestions" not in summarize(rep)
+
+
+def test_ambiguous_suggestions_are_dropped(writes):
+    # one row, two identical-title listings -> ambiguous
+    rep = _sync([_row(5, "", title="Widget")],
+                [_listing("111111111111", title="Widget"), _listing("222222222222", title="Widget")])
+    assert "suggested_item_id" not in rep["active_not_on_ebay"][0]
+    # two rows, one listing -> neither row gets it
+    rep2 = _sync([_row(5, "", title="Widget"), _row(6, "", title="Widget")],
+                 [_listing("111111111111", title="Widget")])
+    assert all("suggested_item_id" not in g for g in rep2["active_not_on_ebay"])
+    assert "suggested_row" not in rep2["on_ebay_not_in_sheet"][0]
+
+
+def test_already_linked_listing_is_never_suggested(writes):
+    rows = [_row(4, "111111111111", title="Widget"), _row(5, "", title="Widget")]
+    rep = _sync(rows, [_listing("111111111111", title="Widget")])
+    (g,) = rep["active_not_on_ebay"]
+    assert g["row_num"] == 5 and "suggested_item_id" not in g
+
+
+def test_suggestion_text_is_html_escaped_in_alert(writes):
+    rep = _sync([_row(5, "", title="<i>Tom & Jerry</i>")],
+                [_listing("111111111111", title="<i>Tom & Jerry</i>")])
+    msg = alert_message(rep)
+    assert "likely = eBay item 111111111111" in msg
+    assert "<i>Tom" not in msg and "&lt;i&gt;Tom &amp; Jerry" in msg
 
 
 # ── report formatting ─────────────────────────────────────────────────────────
@@ -409,6 +488,42 @@ def test_run_happy_path_writes_and_summarizes(monkeypatch, creds, writes):
     assert "matched 1" in res["notes"] and "price_mismatch 1" in res["notes"] \
         and "active_not_on_ebay 1" in res["notes"]
     assert res["alert"] and "Price mismatch" in res["alert"]
+
+
+def test_run_repeated_alert_is_suppressed_but_notes_stay(monkeypatch, creds, writes):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="40.00", sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows",
+                        lambda *a, **k: [_row(4, "111111111111", price="$29.99", sold="0")])
+    first = run_ebay_sync(*_cfg_args())
+    second = run_ebay_sync(*_cfg_args())
+    assert first["alert"] and second["alert"] is None
+    assert "price_mismatch 1" in second["notes"]
+
+
+# ── alert de-duplication ──────────────────────────────────────────────────────
+
+def test_dedupe_alert_window_and_reset():
+    d = ebay_sync._dedupe_alert
+    assert d("A", now=1000) == "A"                                   # first send passes
+    assert d("A", now=1000 + 3600) is None                           # identical, inside 24h
+    assert d("B", now=1000 + 3600) == "B"                            # changed text passes
+    assert d("B", now=1000 + 3600 + ebay_sync.ALERT_REPEAT_HOURS * 3600) == "B"   # window over
+    assert d(None, now=5000) is None                                 # clean run clears state
+    assert d("B", now=5001) == "B"                                   # recurrence alerts again
+
+
+def test_dedupe_alert_dry_run_neither_suppresses_nor_writes():
+    d = ebay_sync._dedupe_alert
+    assert d("A", dry_run=True, now=1) == "A"
+    assert not os.path.exists(ebay_sync.ALERT_STATE_PATH)
+    assert d("A", now=2) == "A"                                      # dry run recorded nothing
+    assert d("A", dry_run=True, now=3) == "A"                        # ...and isn't suppressed
+
+
+def test_dedupe_alert_unwritable_state_still_sends(monkeypatch, tmp_path):
+    monkeypatch.setattr(ebay_sync, "ALERT_STATE_PATH", str(tmp_path / "no_such_dir" / "a.json"))
+    assert ebay_sync._dedupe_alert("A", now=1) == "A"
 
 
 # ── scheduler wiring ──────────────────────────────────────────────────────────
