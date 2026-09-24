@@ -44,6 +44,22 @@ DEFAULT_QUANTITY = 99
 # eBay retired some category IDs and auto-migrates them; never emit the old ones.
 _CATEGORY_MIGRATIONS = {"11896": "183904"}   # Pharmacy: Other Vitamins & Supplements
 
+# Legacy-range (118xx) Pharmacy IDs from categories.yaml that may have been retired like
+# 11896 was, but whose replacement is unconfirmed. Not remapped — guessing an ID would
+# silently mis-categorize listings. Warn at export so the first live upload settles it,
+# then add the real ID to _CATEGORY_MIGRATIONS.
+UNVERIFIED_CATEGORY_IDS = {"11892", "11894"}   # fish oil / omega, calcium — verify on next live upload
+_warned_unverified = set()
+
+
+def _warn_if_unverified(cat_id):
+    if cat_id in UNVERIFIED_CATEGORY_IDS and cat_id not in _warned_unverified:
+        _warned_unverified.add(cat_id)
+        logger.warning(
+            f"eBay category {cat_id} is in the legacy 118xx range and unconfirmed — "
+            f"verify on next live upload (add to _CATEGORY_MIGRATIONS if eBay rejects or remaps it)"
+        )
+
 # Value for a required item specific when there is no real one — eBay rejects blanks.
 NOT_APPLICABLE = "Does Not Apply"
 
@@ -544,6 +560,7 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
         if live_cat:
             cat_id = live_cat
         cat_id = _CATEGORY_MIGRATIONS.get(cat_id, cat_id)
+        _warn_if_unverified(cat_id)
         logger.debug(f"  {title[:40]} → eBay category: {cat_id} ({category})")
         if not cat_id:
             logger.warning(f"  Skipping {title[:40]} — no eBay category ID configured for '{category}'")

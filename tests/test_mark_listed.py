@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import agents.telegram_bot as tb
 from agents.telegram_bot import PROTECTED_COLS
 
-COL = {"status": "A", "title": "C", "ebay_listing_url": "Q"}
+COL = {"status": "A", "platform": "E", "title": "C", "ebay_listing_url": "Q"}
 URL = "https://www.ebay.com/itm/123456789012"
 
 
@@ -70,7 +70,12 @@ def test_mark_listed_button_only_for_ready():
 @pytest.mark.parametrize("text,expected", [
     (URL, URL),
     ("  " + URL + " ", URL),
-    ("123456789012", "123456789012"),
+    ("123456789012", "https://www.ebay.com/itm/123456789012"),
+    ("  123456789012\n", "https://www.ebay.com/itm/123456789012"),
+    ("123456789", "https://www.ebay.com/itm/123456789"),
+    ("12345678901234", "https://www.ebay.com/itm/12345678901234"),
+    ("123456789012345", None),
+    ("12345678", None),
     ("http://ebay.co.uk/itm/1", "http://ebay.co.uk/itm/1"),
     ("=HYPERLINK(\"http://evil\")", None),
     ("https://evil.com/ebay.com", None),
@@ -90,18 +95,22 @@ def test_confirm_with_url_writes_status_and_url_then_shows_home(sheet):
 
     asyncio.run(tb.cb_listed_confirm(update, ctx, "4"))
 
-    assert sheet["writes"] == [(4, [("A", "ACTIVE"), ("Q", URL)])]
+    assert sheet["writes"] == [(4, [("A", "ACTIVE"), ("E", "eBay"), ("Q", URL)])]
     text, markup = _screen(query)
     assert "Marked ACTIVE — monitoring" in text
     assert "menu:root" in _buttons(markup)
     assert "pending_listed" not in ctx.user_data
 
 
-def test_confirm_bare_item_id_written_as_is(sheet):
-    update, _ = _query_update()
-    ctx = _ctx({"pending_listed": {"row_num": 4, "title": "Gold Bar", "value": "123456789012"}})
-    asyncio.run(tb.cb_listed_confirm(update, ctx, "4"))
-    assert sheet["writes"] == [(4, [("A", "ACTIVE"), ("Q", "123456789012")])]
+def test_typed_bare_item_id_reaches_sheet_as_full_url(sheet):
+    update, msg = _text_update("123456789012")
+    ctx = _ctx({"awaiting_listing": {"row_num": 4, "title": "Gold Bar"}})
+    asyncio.run(tb.on_text(update, ctx))
+    assert URL in msg.reply_text.call_args.args[0]  # confirm screen shows the URL
+
+    cb_update, _ = _query_update()
+    asyncio.run(tb.cb_listed_confirm(cb_update, ctx, "4"))
+    assert sheet["writes"] == [(4, [("A", "ACTIVE"), ("E", "eBay"), ("Q", URL)])]
 
 
 def test_skip_then_confirm_writes_status_only(sheet):
@@ -113,7 +122,7 @@ def test_skip_then_confirm_writes_status_only(sheet):
     assert "listed:confirm:4" in _buttons(_screen(query)[1])
 
     asyncio.run(tb.cb_listed_confirm(update, ctx, "4"))
-    assert sheet["writes"] == [(4, [("A", "ACTIVE")])]
+    assert sheet["writes"] == [(4, [("A", "ACTIVE"), ("E", "eBay")])]  # platform set even with no ID
     assert "Marked ACTIVE — monitoring" in _screen(query)[0]
 
 

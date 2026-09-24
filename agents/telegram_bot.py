@@ -1490,12 +1490,15 @@ def _clear_listing_state(context):
 
 def _parse_listing_input(text):
     """
-    Validate a typed eBay item ID or URL. Returns the cleaned value, or None
+    Validate a typed eBay item ID or URL. Returns the cleaned value (a bare ID
+    becomes https://www.ebay.com/itm/<ID> so col Q stays clickable), or None
     if it is neither. Rejecting everything else also keeps a typed "=..."
     from ever reaching the sheet as a formula.
     """
     value = (text or "").strip()
-    if _EBAY_ITEM_ID_RE.match(value) or _EBAY_URL_RE.match(value):
+    if _EBAY_ITEM_ID_RE.match(value):
+        return f"https://www.ebay.com/itm/{value}"
+    if _EBAY_URL_RE.match(value):
         return value
     return None
 
@@ -1596,7 +1599,7 @@ async def cb_listed_confirm(update, context, arg):
         )
         return
 
-    pairs = [(col_map["status"], "ACTIVE")]
+    pairs = [(col_map["status"], "ACTIVE"), (col_map["platform"], "eBay")]
     if pending["value"]:
         pairs.append((col_map["ebay_listing_url"], pending["value"]))
     safe_write_row(service, sheet_name, row_num, pairs)

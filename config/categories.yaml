@@ -271,9 +271,9 @@ categories:
     ebay_category_map:
       "energy shot": "181001"               # Energy & Endurance Supplements (leaf)
       "energy drink": "181001"              # Energy & Endurance Supplements (leaf)
-      "fish oil": "11892"                   # Fish Oil & Omega-3 (leaf)
-      "omega": "11892"                      # Fish Oil & Omega-3 (leaf)
-      "calcium": "11894"                    # Calcium (leaf)
+      "fish oil": "11892"                   # Fish Oil & Omega-3 (leaf) — 118xx range, verify on next live upload
+      "omega": "11892"                      # Fish Oil & Omega-3 (leaf) — verify on next live upload
+      "calcium": "11894"                    # Calcium (leaf) — 118xx range, verify on next live upload
       "vitamin d": "183904"                 # Vitamin D (leaf; was 11896, eBay migrated it)
       "vitamin c": "183904"                 # Vitamins & Minerals (leaf; was 11896)
       "probiotic": "183904"                 # Other Vitamins (leaf; was 11896)
