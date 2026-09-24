@@ -36,6 +36,7 @@ from loguru import logger
 
 load_dotenv(encoding="utf-8", override=True)
 
+from tools import ebay_taxonomy
 from tools.sheet_writer import get_sheets_service, read_sheet
 
 # Listing quantity when the product has no Costco purchase limit (col W).
@@ -59,6 +60,13 @@ def _warn_if_unverified(cat_id):
             f"eBay category {cat_id} is in the legacy 118xx range and unconfirmed — "
             f"verify on next live upload (add to _CATEGORY_MIGRATIONS if eBay rejects or remaps it)"
         )
+
+# Taxonomy-required aspects are always filled. With YAML_FLOOR on, the hand-kept
+# `ebay_required_specifics` are filled too (union). Live check 2026-09-23: the API requires
+# far less than the yaml lists for most Pharmacy/appliance categories, and we can't tell which
+# yaml entries came from real eBay rejections (error 21919303) — so the yaml stays a floor until
+# `python tools/ebay_taxonomy.py --check` drift is reviewed. Set False to trust the API alone.
+YAML_FLOOR = True
 
 # Value for a required item specific when there is no real one — eBay rejects blanks.
 NOT_APPLICABLE = "Does Not Apply"
@@ -303,14 +311,18 @@ def _fmt_dim(value: float) -> str:
 
 
 def _fill_common_specifics(specifics: dict, title: str, category: str, brand: str,
-                           notes: str, cat_config: dict) -> None:
+                           notes: str, cat_config: dict, required: list | None = None) -> None:
     """
-    Guarantees every key in the category's `ebay_required_specifics` is non-blank —
-    eBay rejects listings with a missing required specific (error 21919303).
-    Real values (Costco specs line in notes, title) win; otherwise a category default
-    or NOT_APPLICABLE is used.
+    Guarantees every required specific is non-blank — eBay rejects listings with a
+    missing required specific (error 21919303). `required` is the Taxonomy API's
+    REQUIRED aspect list for the row's category; when None (API unavailable) the
+    category's hand-kept `ebay_required_specifics` is used.
+    Real values (Costco specs line in notes, title) win; otherwise the category's
+    optional `ebay_aspect_defaults` entry or NOT_APPLICABLE is used.
     """
-    required = cat_config.get("ebay_required_specifics", [])
+    if required is None:
+        required = cat_config.get("ebay_required_specifics", [])
+    aspect_defaults = cat_config.get("ebay_aspect_defaults") or {}
     title_lower = title.lower()
     fallbacks = []
 
@@ -346,7 +358,7 @@ def _fill_common_specifics(specifics: dict, title: str, category: str, brand: st
     # Last line of defence: any other required key still blank
     for key in required:
         if not specifics.get(key):
-            specifics[key] = NOT_APPLICABLE
+            specifics[key] = aspect_defaults.get(key) or NOT_APPLICABLE
             fallbacks.append(key)
 
     if fallbacks:
@@ -354,11 +366,13 @@ def _fill_common_specifics(specifics: dict, title: str, category: str, brand: st
 
 
 def _infer_item_specifics(title: str, category: str, brand: str, cat_config: dict,
-                          notes: str = "") -> dict:
+                          notes: str = "", required: list | None = None,
+                          aspects: dict | None = None) -> dict:
     """
     Infers eBay item specifics from product title + category config (+ the "Costco specs:"
-    line in notes). Returns a flat dict of C:FieldName → value; every key listed in the
-    category's `ebay_required_specifics` is guaranteed non-blank.
+    line in notes). Returns a flat dict of C:FieldName → value; every required key is
+    guaranteed non-blank. `required`/`aspects` come from the Taxonomy API (see
+    _required_specifics); left None, the category's `ebay_required_specifics` is used.
     """
     title_lower = title.lower()
     specifics = {}
@@ -505,8 +519,76 @@ def _infer_item_specifics(title: str, category: str, brand: str, cat_config: dic
         if model:
             specifics["C:Model"] = model.group(1)
 
-    _fill_common_specifics(specifics, title, category, brand, notes, cat_config)
+    _fill_common_specifics(specifics, title, category, brand, notes, cat_config, required)
+    _apply_aspect_constraints(specifics, required or [], aspects or {})
     return specifics
+
+
+_logged_drift = set()
+
+
+def _required_specifics(cat_id: str, cat_config: dict) -> tuple[list, dict]:
+    """
+    Required item specifics for an eBay category → (["C:Name", ...], {"C:Name": aspect meta}).
+    The Taxonomy API is authoritative; if it is unavailable (None) fall back to the
+    category's hand-kept `ebay_required_specifics` so the export still works offline.
+    Aspect names are mapped onto our existing column spelling where they match
+    case-insensitively, so the infer logic keyed on "C:Color" etc. keeps working.
+    """
+    yaml_required = list(cat_config.get("ebay_required_specifics", []))
+    aspects = ebay_taxonomy.get_item_aspects(cat_id)
+    if aspects is None:
+        return yaml_required, {}
+
+    known = {c.casefold(): c for c in _EBAY_COLUMNS if c.startswith("C:")}
+    required, by_key = [], {}
+    for aspect in aspects:
+        raw = "C:" + aspect["name"]
+        key = known.get(raw.casefold(), raw)
+        if key not in by_key:
+            required.append(key)
+            by_key[key] = aspect
+
+    api_keys = {k.casefold() for k in required}
+    yaml_keys = {y.casefold() for y in yaml_required}
+    if cat_id not in _logged_drift:
+        _logged_drift.add(cat_id)
+        api_only = sorted(k for k in required if k.casefold() not in yaml_keys)
+        yaml_only = sorted(y for y in yaml_required if y.casefold() not in api_keys)
+        if api_only or yaml_only:
+            logger.info(f"  eBay category {cat_id}: Taxonomy requires {api_only or 'nothing extra'} "
+                        f"beyond yaml; yaml lists {yaml_only or 'nothing'} that Taxonomy does not require"
+                        f"{' (still filled: YAML_FLOOR)' if YAML_FLOOR and yaml_only else ''}")
+    if YAML_FLOOR:
+        required += [y for y in yaml_required if y.casefold() not in api_keys]
+    return required, by_key
+
+
+def _apply_aspect_constraints(specifics: dict, required: list, aspects: dict) -> None:
+    """Make required values acceptable to eBay: SELECTION_ONLY aspects must use one of the
+    allowed values (case-insensitive match → canonical spelling; otherwise "Other" if
+    allowed, else NOT_APPLICABLE), and values are cut to the aspect's max length."""
+    for key in required:
+        meta = aspects.get(key)
+        value = specifics.get(key)
+        if not meta or not value:
+            continue
+        allowed = meta.get("values") or []
+        # A list at the storage cap was truncated — can't tell what's missing, so don't judge.
+        if (meta.get("mode") == "SELECTION_ONLY" and allowed
+                and len(allowed) < ebay_taxonomy.MAX_STORED_VALUES):
+            match = next((a for a in allowed if a.casefold() == value.casefold()), None)
+            if match:
+                value = match
+            else:
+                fallback = next((a for a in allowed if a.casefold() == "other"), NOT_APPLICABLE)
+                logger.warning(f"  {key}: '{value}' is not an allowed eBay value — using '{fallback}'"
+                               + (" (needs a real value before upload)" if fallback == NOT_APPLICABLE else ""))
+                value = fallback
+        max_length = meta.get("max_length")
+        if max_length and len(value) > max_length:
+            value = value[:max_length].rstrip()
+        specifics[key] = value
 
 
 def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> str:
@@ -519,11 +601,8 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
     payment  = os.getenv("EBAY_PAYMENT_PROFILE", "")
     location = os.getenv("EBAY_LOCATION", "United States")
 
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=_EBAY_COLUMNS, lineterminator="\n")
-    writer.writeheader()
-
-    exported = 0
+    records = []          # built first: Taxonomy-required aspects can add CSV columns
+    extra_columns = []    # C:<Aspect> columns beyond _EBAY_COLUMNS, in first-seen order
     skipped  = 0
 
     for sheet_row, row in rows_with_idx:
@@ -578,7 +657,13 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
         # CustomLabel: use SKU if set, otherwise sheet row number for reference
         custom_label = sku if sku else f"ROW{sheet_row}"
 
-        writer.writerow({
+        required, aspects = _required_specifics(cat_id, cat_config)
+        specifics = _infer_item_specifics(title, category, brand, cat_config, notes, required, aspects)
+        for key in required:
+            if key not in _EBAY_COLUMNS and key not in extra_columns:
+                extra_columns.append(key)
+
+        records.append({
             "Action":              "Add",
             "SiteID":              "0",
             "Country":             "US",
@@ -593,16 +678,21 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             "ConditionID":         "1000",
             "Location":            location,
             "PicURL":              pic_url,
-            **{k: v for k, v in _infer_item_specifics(title, category, brand, cat_config, notes).items()
-               if k in _EBAY_COLUMNS},
+            **{k: v for k, v in specifics.items() if k in _EBAY_COLUMNS or k in required},
             "ShippingProfileName": shipping,
             "ReturnProfileName":   returns,
             "PaymentProfileName":  payment,
             "CustomLabel":         custom_label,
         })
-        exported += 1
+    # Extra aspect columns go just before the profile columns, like the built-in C: ones.
+    split = _EBAY_COLUMNS.index("ShippingProfileName")
+    columns = _EBAY_COLUMNS[:split] + extra_columns + _EBAY_COLUMNS[split:]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=columns, restval="", lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(records)
 
-    logger.info(f"  CSV rows: {exported} exported, {skipped} skipped")
+    logger.info(f"  CSV rows: {len(records)} exported, {skipped} skipped")
     return output.getvalue()
 
 
