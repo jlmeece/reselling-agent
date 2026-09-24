@@ -14,12 +14,20 @@ Each aspect: {"name", "mode" (FREE_TEXT|SELECTION_ONLY), "values", "multi", "max
 `values` is only stored for SELECTION_ONLY aspects (capped) so Brand-style lists don't
 bloat the cache.
 
+  get_category_suggestions(title) -> list[dict] | None
+      Category suggestions for a product title, in eBay's relevance order (best first):
+      [{"id", "name", "level", "path"}, ...]; [] = eBay had no match, None = unavailable.
+      Deliberately NOT re-sorted by tree depth: every suggestion is already a leaf, and
+      deepest-first promoted junk (air fryer -> commercial deep fryers, watch -> watch dials).
+
 Nothing here raises. Results are cached in data/ebay_taxonomy_cache.json (30 days;
-a permanently bad category ID is cached negatively for 1 day).
+a permanently bad category ID and an empty suggestion result are cached for 1 day).
 
 USAGE:
-  python tools/ebay_taxonomy.py --check     # validate every category ID in categories.yaml
-                                            # and report drift vs ebay_required_specifics
+  python tools/ebay_taxonomy.py --check     # for every category in categories.yaml: is each
+                                            # hardcoded ID a valid leaf, what does eBay suggest
+                                            # for a representative title, and how do the required
+                                            # aspects drift from ebay_required_specifics
 """
 
 from __future__ import annotations
@@ -42,8 +50,10 @@ from loguru import logger
 load_dotenv(encoding="utf-8", override=True)
 
 TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
-ASPECTS_URL = ("https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/"
-               "get_item_aspects_for_category")   # tree 0 = eBay US
+TREE_URL = "https://api.ebay.com/commerce/taxonomy/v1/category_tree/0"   # tree 0 = eBay US
+ASPECTS_URL = f"{TREE_URL}/get_item_aspects_for_category"
+SUGGESTIONS_URL = f"{TREE_URL}/get_category_suggestions"
+MAX_QUERY_CHARS = 200
 OAUTH_SCOPE = "https://api.ebay.com/oauth/api_scope"
 REQUEST_TIMEOUT = 20
 
@@ -175,20 +185,28 @@ def _save_cache() -> None:
         logger.warning(f"eBay taxonomy cache write failed: {e}")
 
 
-def _cache_get(category_id: str):
-    """(hit, aspects). A fresh negative entry is a hit with aspects=None."""
-    entry = _load_cache().get(category_id)
-    if not isinstance(entry, dict):
+def _cache_ttl(field: str, value) -> int:
+    """Long for a real answer; short for a negative one (bad category ID -> None, or a
+    title eBay had no suggestion for -> [])."""
+    if isinstance(value, list) and not (field == "suggestions" and not value):
+        return CACHE_TTL_SECONDS
+    return NEGATIVE_TTL_SECONDS
+
+
+def _cache_get(key: str, field: str = "aspects"):
+    """(hit, value). Category-ID keys hold "aspects"; "q:<title>" keys hold "suggestions".
+    A fresh negative entry is a hit (aspects None, or suggestions [])."""
+    entry = _load_cache().get(key)
+    if not isinstance(entry, dict) or field not in entry:
         return False, None
-    aspects = entry.get("aspects")
-    ttl = CACHE_TTL_SECONDS if isinstance(aspects, list) else NEGATIVE_TTL_SECONDS
-    if _now() - float(entry.get("fetched_at", 0)) < ttl:
-        return True, aspects if isinstance(aspects, list) else None
+    value = entry[field]
+    if _now() - float(entry.get("fetched_at", 0)) < _cache_ttl(field, value):
+        return True, value if isinstance(value, list) else None
     return False, None
 
 
-def _cache_put(category_id: str, aspects) -> None:
-    _load_cache()[category_id] = {"fetched_at": _now(), "aspects": aspects}
+def _cache_put(key: str, value, field: str = "aspects") -> None:
+    _load_cache()[key] = {"fetched_at": _now(), field: value}
     _save_cache()
 
 
@@ -227,8 +245,8 @@ def _normalize(aspect: dict) -> dict | None:
     }
 
 
-def _fetch_aspects(category_id: str):
-    """One category's raw response with 401 re-auth and a single 429/5xx retry.
+def _authed_get(url: str):
+    """GET with the app token, 401 re-auth (once) and a single 429/5xx retry.
     Returns (status, body); status 0 = no token / network failure."""
     reauthed = retried = False
     while True:
@@ -236,8 +254,7 @@ def _fetch_aspects(category_id: str):
         if not token:
             return 0, {}
         req = urllib.request.Request(
-            f"{ASPECTS_URL}?{urllib.parse.urlencode({'category_id': category_id})}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         )
         status, body = _send(req)
         if status == 401 and not reauthed:
@@ -265,7 +282,7 @@ def get_item_aspects(category_id, refresh: bool = False):
             if _now() < _fail_until.get(cid, 0.0):
                 return None
 
-        status, body = _fetch_aspects(cid)
+        status, body = _authed_get(f"{ASPECTS_URL}?{urllib.parse.urlencode({'category_id': cid})}")
         raw = body.get("aspects")
         if status == 200 and isinstance(raw, list):
             aspects = [a for a in (_normalize(x) for x in raw if isinstance(x, dict) and _is_required(x)) if a]
@@ -285,7 +302,132 @@ def get_item_aspects(category_id, refresh: bool = False):
         return None
 
 
+# ── Category suggestions ─────────────────────────────────────────────────────
+
+def _normalize_suggestion(entry: dict) -> dict | None:
+    cat = entry.get("category") or {}
+    cid = str(cat.get("categoryId") or "").strip()
+    if not cid:
+        return None
+    try:
+        level = int(entry.get("categoryTreeNodeLevel") or 0)
+    except (TypeError, ValueError):
+        level = 0
+
+    def _lvl(a):
+        try:
+            return int(a.get("categoryTreeNodeLevel") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    ancestors = [a for a in (entry.get("categoryTreeNodeAncestors") or []) if isinstance(a, dict)]
+    path = [str(a.get("categoryName") or "") for a in sorted(ancestors, key=_lvl)]   # root first
+    path.append(str(cat.get("categoryName") or ""))
+    return {"id": cid, "name": str(cat.get("categoryName") or ""), "level": level,
+            "path": " > ".join(p for p in path if p)}
+
+
+def get_category_suggestions(title, refresh: bool = False):
+    """Category suggestions for a product title in eBay's relevance order (best first).
+    `level` is informational only — see the module docstring for why we don't sort on it.
+    list = eBay's answer ([] = no match), None = unavailable. Never raises."""
+    try:
+        query = " ".join(str(title or "").split())[:MAX_QUERY_CHARS].rstrip()
+        if not query:
+            return None
+        key = "q:" + query.casefold()
+        if not refresh:
+            hit, cached = _cache_get(key, "suggestions")
+            if hit:
+                return cached
+            if _now() < _fail_until.get(key, 0.0):
+                return None
+
+        status, body = _authed_get(f"{SUGGESTIONS_URL}?{urllib.parse.urlencode({'q': query})}")
+        if status == 200:
+            raw = body.get("categorySuggestions") or []
+            found = [x for x in (_normalize_suggestion(e) for e in raw if isinstance(e, dict)) if x]
+            _cache_put(key, found, "suggestions")
+            return found
+        logger.warning(f"eBay category suggestions for '{query[:40]}' unavailable (HTTP {status})")
+        _fail_until[key] = _now() + FAILURE_COOLDOWN_SECONDS
+        return None
+    except Exception as e:
+        logger.warning(f"eBay category suggestion lookup crashed for '{str(title)[:40]}': {e}")
+        return None
+
+
 # ── CLI: validate categories.yaml against the API ────────────────────────────
+
+KNOWLEDGE_DIR = Path(__file__).parent.parent / "data" / "knowledge" / "products"
+
+
+def _load_known_titles(knowledge_dir=None) -> dict:
+    """{category: [titles]} from the local knowledge store (no network)."""
+    titles: dict = {}
+    for f in sorted(Path(knowledge_dir or KNOWLEDGE_DIR).glob("*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(d, dict) and d.get("title") and d.get("category"):
+            titles.setdefault(d["category"], []).append(str(d["title"]))
+    return titles
+
+
+def _representative_title(category: str, keyword: str, known: dict) -> str:
+    """A real product title for this category (containing `keyword` when there is one);
+    falls back to the keyword itself, then the category name."""
+    pool = known.get(category, [])
+    if keyword and keyword != "default":
+        for t in pool:
+            if keyword.casefold() in t.casefold():
+                return t
+        return keyword
+    return pool[0] if pool else category
+
+
+def _drift_status(hardcoded_id: str, hardcoded_valid: bool, suggestions) -> str:
+    """OK = same ID; STALE = hardcoded ID isn't a valid leaf; DIFFERS = both valid but
+    different; NO SUGGESTION = eBay returned nothing usable."""
+    if not suggestions:
+        return "STALE (no suggestion)" if not hardcoded_valid else "NO SUGGESTION"
+    if not hardcoded_valid:
+        return "STALE"
+    return "OK" if suggestions[0]["id"] == str(hardcoded_id) else "DIFFERS"
+
+
+def check_category_suggestions(categories: dict, known: dict) -> int:
+    """Print hardcoded-vs-suggested for every yaml category entry. Returns the number of
+    entries that are not OK."""
+    not_ok = 0
+    for name, cfg in categories.items():
+        entries = []                                    # (keyword, hardcoded id)
+        if cfg.get("ebay_category_id"):
+            entries.append(("default", str(cfg["ebay_category_id"])))
+        for kw, cid in (cfg.get("ebay_category_map") or {}).items():
+            if kw != "default" and cid:
+                entries.append((kw, str(cid)))
+        for kw, cid in entries:
+            title = _representative_title(name, kw, known)
+            synthetic = title not in known.get(name, [])      # no real product matched the keyword
+            valid = get_item_aspects(cid, refresh=True) is not None
+            sugg = get_category_suggestions(title, refresh=True)
+            status = _drift_status(cid, valid, sugg)
+            if status != "OK":
+                not_ok += 1
+            top = sugg[0] if sugg else None
+            print(f"[{name}] '{kw}'  yaml {cid} ({'valid leaf' if valid else 'NOT a valid leaf'})  ->  {status}")
+            print(f"    title: {title[:70]}" + ("   (synthetic - no real product matched; weak signal)" if synthetic else ""))
+            if top:
+                print(f"    suggested: {top['id']} {top['name']} (level {top['level']})  {top['path']}")
+                extra = [f"{x['id']} {x['name']}" for x in sugg[1:3]]
+                if extra:
+                    print(f"    also:      {'; '.join(extra)}")
+            elif sugg is None:
+                print("    suggested: (API unavailable)")
+    return not_ok
+
 
 def check_categories() -> int:
     """Print validity + drift for every category ID in config/categories.yaml.
@@ -293,6 +435,10 @@ def check_categories() -> int:
     import yaml
     with open(Path(__file__).parent.parent / "config" / "categories.yaml", encoding="utf-8") as f:
         categories = yaml.safe_load(f)["categories"]
+
+    print("=== Category resolution: yaml ID vs eBay suggestion ===")
+    check_category_suggestions(categories, _load_known_titles())
+    print("\n=== Required aspects: API vs ebay_required_specifics ===")
 
     unconfirmed = 0
     for name, cfg in categories.items():
@@ -302,7 +448,7 @@ def check_categories() -> int:
                 ids[str(cid)] = None
         yaml_req = {k.casefold(): k for k in cfg.get("ebay_required_specifics", [])}
         for cid in ids:
-            aspects = get_item_aspects(cid, refresh=True)
+            aspects = get_item_aspects(cid)      # cache-warm from the pass above
             if aspects is None:
                 unconfirmed += 1
                 print(f"[{name}] {cid}: NOT CONFIRMED (invalid/non-leaf category, or API unavailable)")

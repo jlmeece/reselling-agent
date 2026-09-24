@@ -20,12 +20,10 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import os
 import re
 import sys
 import yaml
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -196,71 +194,29 @@ def _brand_from_title(title: str) -> str:
     return ""
 
 
-_CAT_CACHE_PATH = Path(__file__).parent.parent / "data" / "ebay_category_cache.json"
+# eBay's category suggestions (Taxonomy API) are the primary category resolver; the yaml ID is
+# the fallback. Set False to use the yaml IDs only (instant rollback).
+SUGGESTIONS_PRIMARY = True
+_SUGGESTION_CANDIDATES = 3      # top suggestions tried until one has aspect data
+_logged_suggestions = set()
 
 
-def _load_cat_cache() -> dict:
-    if _CAT_CACHE_PATH.exists():
-        try:
-            return json.loads(_CAT_CACHE_PATH.read_text())
-        except Exception:
-            pass
-    return {}
-
-
-def _save_cat_cache(cache: dict) -> None:
-    try:
-        _CAT_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _CAT_CACHE_PATH.write_text(json.dumps(cache, indent=2))
-    except Exception:
-        pass
-
-
-def _serper_category_lookup(title: str) -> str:
+def _suggested_category_id(title: str, yaml_id: str = "") -> str:
     """
-    Uses Serper to find a real eBay browse URL for this product title,
-    then extracts the category ID from the URL pattern /b/Name/CATID/...
-    Results cached in data/ebay_category_cache.json so each title only hits the API once.
-    Returns category ID string, or "" on failure (falls back to categories.yaml).
+    Category for `title` from eBay's suggestions: the first of the top few (deepest-first)
+    whose item aspects load — so it is a real leaf, and the specifics come from the very
+    category that gets written. "" = nothing usable (API down, no match, none valid), in
+    which case the caller keeps the yaml ID.
     """
-    serper_key = os.getenv("SERPER_API_KEY", "")
-    if not serper_key:
-        return ""
-
-    cache = _load_cat_cache()
-    cache_key = title.lower().strip()
-    if cache_key in cache:
-        cached = cache[cache_key]
-        if cached:
-            logger.debug(f"  Category cache hit: {title[:40]} → {cached}")
-        return cached
-
-    try:
-        query = f"{title} site:ebay.com/b/"
-        payload = json.dumps({"q": query, "num": 5}).encode()
-        req = urllib.request.Request(
-            "https://google.serper.dev/search",
-            data=payload,
-            headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-
-        for result in data.get("organic", []):
-            link = result.get("link", "")
-            m = re.search(r"ebay\.com/b/[^/]+/(\d+)/", link)
-            if m:
-                cat_id = m.group(1)
-                logger.info(f"  Serper category: '{title[:40]}' → {cat_id}")
-                cache[cache_key] = cat_id
-                _save_cat_cache(cache)
-                return cat_id
-
-    except Exception as e:
-        logger.warning(f"  Serper category lookup failed for '{title[:40]}': {e}")
-
-    cache[cache_key] = ""
-    _save_cat_cache(cache)
+    suggestions = ebay_taxonomy.get_category_suggestions(title)
+    for s in (suggestions or [])[:_SUGGESTION_CANDIDATES]:
+        if ebay_taxonomy.get_item_aspects(s["id"]) is None:
+            continue
+        if s["id"] != yaml_id and (yaml_id, s["id"]) not in _logged_suggestions:
+            _logged_suggestions.add((yaml_id, s["id"]))
+            logger.info(f"  eBay suggests {s['id']} ({s['path']}) for '{title[:40]}' "
+                        f"— replaces yaml category {yaml_id or '(none)'}")
+        return s["id"]
     return ""
 
 
@@ -635,9 +591,8 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
         quantity   = _quantity_from_limit(_safe(row, _COL["purchase_limit"]))
         cat_id     = _ebay_category_id(title, category, config)
         cat_config = config["categories"].get(category, {})
-        live_cat   = _serper_category_lookup(title)
-        if live_cat:
-            cat_id = live_cat
+        if SUGGESTIONS_PRIMARY:
+            cat_id = _suggested_category_id(title, cat_id) or cat_id
         cat_id = _CATEGORY_MIGRATIONS.get(cat_id, cat_id)
         _warn_if_unverified(cat_id)
         logger.debug(f"  {title[:40]} → eBay category: {cat_id} ({category})")

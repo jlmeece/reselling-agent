@@ -26,7 +26,10 @@ from tools import ebay_taxonomy as et
 class FakeEbay:
     """Routes the two eBay endpoints; records every request."""
 
-    def __init__(self, aspects_response=None, token_status=200, expires_in=7200):
+    def __init__(self, aspects_response=None, token_status=200, expires_in=7200,
+                 suggestions_response=None):
+        self.suggestions_response = suggestions_response if suggestions_response is not None else (200, {})
+        self.suggestion_calls = 0
         self.calls = []                     # (kind, request)
         self.token_status = token_status
         self.expires_in = expires_in
@@ -42,6 +45,11 @@ class FakeEbay:
                 return self.token_status, {"error": "invalid_client"}
             self.tokens_issued += 1
             return 200, {"access_token": f"tok{self.tokens_issued}", "expires_in": self.expires_in}
+        if url.startswith(et.SUGGESTIONS_URL):
+            self.calls.append(("suggestions", req))
+            self.suggestion_calls += 1
+            resp = self.suggestions_response
+            return resp(self.suggestion_calls) if callable(resp) else resp
         assert url.startswith(et.ASPECTS_URL)
         self.calls.append(("aspects", req))
         self.aspects_calls += 1
@@ -457,3 +465,318 @@ def test_export_rows_share_columns_and_missing_cells_are_blank(monkeypatch):
     text = ee.generate_ebay_csv([(4, _row()), (5, _row(category="Other", title="Widget"))], cfg)
     a, b = list(csv.DictReader(io.StringIO(text)))
     assert a["C:Capacity"] == "Does Not Apply" and b["C:Capacity"] == ""
+
+
+# ── Category suggestions ─────────────────────────────────────────────────────
+
+def suggestion(cat_id, name, level, ancestors=()):
+    """A categorySuggestions[] entry; `ancestors` = [(id, name, level), ...] in eBay's leaf-first order."""
+    return {
+        "category": {"categoryId": str(cat_id), "categoryName": name},
+        "categoryTreeNodeLevel": level,
+        "categoryTreeNodeAncestors": [
+            {"categoryId": str(i), "categoryName": n, "categoryTreeNodeLevel": lv} for i, n, lv in ancestors],
+        "relevancy": "1.0",
+    }
+
+
+def suggest_response(*entries):
+    return 200, {"categoryTreeId": "0", "categorySuggestions": list(entries)}
+
+
+@pytest.fixture
+def sugg_ebay(monkeypatch, creds):
+    fake = FakeEbay(aspects_response=(200, {"aspects": [aspect("Brand")]}),
+                    suggestions_response=suggest_response(
+                        suggestion(111, "Air Fryers", 4, [(30, "Kitchen", 2), (20, "Home", 1)])))
+    monkeypatch.setattr(et, "_http_json", fake)
+    return fake
+
+
+def test_suggestions_request_url_and_bearer(sugg_ebay):
+    et.get_category_suggestions("Ninja Air Fryer 5.5 qt & more")
+    kind, req = sugg_ebay.calls[-1]
+    assert kind == "suggestions"
+    assert req.full_url == f"{et.SUGGESTIONS_URL}?q=Ninja+Air+Fryer+5.5+qt+%26+more"
+    assert req.get_header("Authorization") == "Bearer tok1"
+
+
+def test_suggestions_are_normalized_with_root_first_path(sugg_ebay):
+    (top,) = et.get_category_suggestions("Ninja Air Fryer")
+    assert top == {"id": "111", "name": "Air Fryers", "level": 4,
+                   "path": "Home > Kitchen > Air Fryers"}
+
+
+def test_suggestions_keep_ebays_relevance_order_not_depth(monkeypatch, creds):
+    # Regression: sorting deepest-first put commercial deep fryers / watch dials ahead of the
+    # real answer. eBay ranks by relevance; every suggestion is already a leaf.
+    monkeypatch.setattr(et, "_http_json", FakeEbay(suggestions_response=suggest_response(
+        suggestion(1, "Fryers", 4),
+        suggestion(2, "Commercial Electric Fryers", 6),
+        suggestion(3, "Toaster Ovens", 4))))
+    got = et.get_category_suggestions("air fryer")
+    assert [x["id"] for x in got] == ["1", "2", "3"]
+    assert got[1]["level"] == 6                         # level is still reported
+
+
+def test_no_match_is_empty_list_not_none(monkeypatch, creds):
+    monkeypatch.setattr(et, "_http_json", FakeEbay(suggestions_response=(200, {"categoryTreeId": "0"})))
+    assert et.get_category_suggestions("zzzz") == []
+
+
+def test_malformed_suggestion_entries_are_skipped(monkeypatch, creds):
+    monkeypatch.setattr(et, "_http_json", FakeEbay(suggestions_response=suggest_response(
+        {"category": {}}, "junk", suggestion(7, "Ok", 3))))
+    assert [x["id"] for x in et.get_category_suggestions("t")] == ["7"]
+
+
+def test_title_is_trimmed_and_capped(sugg_ebay):
+    et.get_category_suggestions("  " + "word " * 100)
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(sugg_ebay.calls[-1][1].full_url).query)["q"][0]
+    assert len(q) <= et.MAX_QUERY_CHARS and q == q.strip()
+
+
+def test_blank_title_is_none_without_http(sugg_ebay):
+    assert et.get_category_suggestions("   ") is None and et.get_category_suggestions(None) is None
+    assert sugg_ebay.calls == []
+
+
+def test_suggestions_cached_per_title_case_insensitively(sugg_ebay):
+    first = et.get_category_suggestions("Ninja Air Fryer")
+    assert et.get_category_suggestions("  ninja  AIR fryer ") == first
+    assert sugg_ebay.suggestion_calls == 1
+    et.get_category_suggestions("Different Title")
+    assert sugg_ebay.suggestion_calls == 2
+
+
+def test_suggestion_cache_persists_and_does_not_collide_with_category_keys(sugg_ebay):
+    first = et.get_category_suggestions("Ninja Air Fryer")
+    et.get_item_aspects("111")
+    on_disk = json.loads(et.CACHE_PATH.read_text(encoding="utf-8"))
+    assert on_disk["q:ninja air fryer"]["suggestions"] == first
+    assert "aspects" in on_disk["111"] and "suggestions" not in on_disk["111"]
+    et.reset_state()
+    assert et.get_category_suggestions("Ninja Air Fryer") == first
+    assert sugg_ebay.suggestion_calls == 1
+
+
+def test_suggestion_cache_expires_and_empty_result_expires_sooner(monkeypatch, creds, clock):
+    fake = FakeEbay(suggestions_response=suggest_response(suggestion(1, "A", 3)))
+    monkeypatch.setattr(et, "_http_json", fake)
+    et.get_category_suggestions("has match")
+    clock["now"] += et.NEGATIVE_TTL_SECONDS + 10           # past 1 day, well inside 30 days
+    et.get_category_suggestions("has match")
+    assert fake.suggestion_calls == 1
+    clock["now"] += et.CACHE_TTL_SECONDS
+    et.get_category_suggestions("has match")
+    assert fake.suggestion_calls == 2
+
+    fake.suggestions_response = (200, {})
+    et.get_category_suggestions("no match")                 # cached as []
+    et.get_category_suggestions("no match")
+    assert fake.suggestion_calls == 3
+    clock["now"] += et.NEGATIVE_TTL_SECONDS + 1
+    et.get_category_suggestions("no match")
+    assert fake.suggestion_calls == 4
+
+
+def test_refresh_bypasses_suggestion_cache(sugg_ebay):
+    et.get_category_suggestions("t")
+    et.get_category_suggestions("t", refresh=True)
+    assert sugg_ebay.suggestion_calls == 2
+
+
+def test_suggestions_failure_is_none_uncached_with_cooldown(monkeypatch, creds, clock):
+    fake = FakeEbay(suggestions_response=(500, {}))
+    monkeypatch.setattr(et, "_http_json", fake)
+    assert et.get_category_suggestions("t") is None
+    assert fake.suggestion_calls == 2                      # original + one retry
+    assert not et.CACHE_PATH.exists()
+    assert et.get_category_suggestions("t") is None        # cooldown: no hammering
+    assert fake.suggestion_calls == 2
+    clock["now"] += et.FAILURE_COOLDOWN_SECONDS + 1
+    fake.suggestions_response = suggest_response(suggestion(9, "Z", 3))
+    assert [x["id"] for x in et.get_category_suggestions("t")] == ["9"]
+
+
+def test_suggestions_401_reauths_once(monkeypatch, creds):
+    fake = FakeEbay(suggestions_response=lambda n: (401, {}) if n == 1 else suggest_response(suggestion(9, "Z", 3)))
+    monkeypatch.setattr(et, "_http_json", fake)
+    assert [x["id"] for x in et.get_category_suggestions("t")] == ["9"]
+    assert fake.tokens_issued == 2
+
+
+def test_suggestions_no_creds_or_crash_never_raise(monkeypatch):
+    monkeypatch.delenv("EBAY_APP_ID", raising=False)
+    monkeypatch.delenv("EBAY_CERT_ID", raising=False)
+    assert et.get_category_suggestions("t") is None
+
+    def boom(req):
+        raise RuntimeError("kaboom")
+    monkeypatch.setenv("EBAY_APP_ID", "a")
+    monkeypatch.setenv("EBAY_CERT_ID", "b")
+    et.reset_state()
+    monkeypatch.setattr(et, "_http_json", boom)
+    assert et.get_category_suggestions("t") is None
+
+
+# ── --check drift helpers ────────────────────────────────────────────────────
+
+def test_drift_status():
+    top = [{"id": "111"}]
+    assert et._drift_status("111", True, top) == "OK"
+    assert et._drift_status("222", True, top) == "DIFFERS"
+    assert et._drift_status("222", False, top) == "STALE"
+    assert et._drift_status("222", False, []) == "STALE (no suggestion)"
+    assert et._drift_status("222", True, None) == "NO SUGGESTION"
+
+
+def test_representative_title_prefers_keyword_match_then_keyword_then_first():
+    known = {"Jewelry": ["Gold Ring 14kt", "Gold Bracelet 14kt", "Silver Chain"]}
+    assert et._representative_title("Jewelry", "bracelet", known) == "Gold Bracelet 14kt"
+    assert et._representative_title("Jewelry", "earring", known) == "earring"      # no match -> keyword
+    assert et._representative_title("Jewelry", "default", known) == "Gold Ring 14kt"
+    assert et._representative_title("Toys", "default", known) == "Toys"
+
+
+def test_load_known_titles_from_knowledge_dir(tmp_path):
+    (tmp_path / "a.json").write_text(json.dumps({"title": "T1", "category": "Jewelry"}), encoding="utf-8")
+    (tmp_path / "b.json").write_text(json.dumps({"title": "T2", "category": "Jewelry"}), encoding="utf-8")
+    (tmp_path / "c.json").write_text("{broken", encoding="utf-8")
+    (tmp_path / "d.json").write_text(json.dumps({"title": "no category"}), encoding="utf-8")
+    assert et._load_known_titles(tmp_path) == {"Jewelry": ["T1", "T2"]}
+
+
+def test_check_category_suggestions_reports_stale_and_ok(monkeypatch, creds, capsys):
+    def aspects_resp(cat_id, n):
+        return (200, {"aspects": [aspect("Brand")]}) if cat_id == "111" else (400, {"errors": [{"message": "x"}]})
+    fake = FakeEbay(aspects_response=aspects_resp,
+                    suggestions_response=suggest_response(suggestion(111, "Air Fryers", 4)))
+    monkeypatch.setattr(et, "_http_json", fake)
+    cats = {"Small Appliances": {"ebay_category_id": "111", "ebay_category_map": {"air fryer": "111", "coffee": "999"}}}
+    not_ok = et.check_category_suggestions(cats, {"Small Appliances": ["Ninja Air Fryer"]})
+    out = capsys.readouterr().out
+    assert out.count("synthetic") == 1                  # only the 'coffee' row lacks a real product title
+    assert not_ok == 1
+    assert "yaml 111 (valid leaf)  ->  OK" in out
+    assert "yaml 999 (NOT a valid leaf)  ->  STALE" in out
+    assert "suggested: 111 Air Fryers" in out
+
+
+# ── Export: suggestions resolve the category ─────────────────────────────────
+
+def _spy_aspects(monkeypatch, valid):
+    """Fake get_item_aspects: aspects for ids in `valid`, None otherwise; records ids asked."""
+    asked = []
+
+    def fake(cat_id, **kw):
+        asked.append(cat_id)
+        return [et._normalize(aspect("Brand"))] if cat_id in valid else None
+    monkeypatch.setattr(ee.ebay_taxonomy, "get_item_aspects", fake)
+    return asked
+
+
+def _suggest(monkeypatch, result):
+    monkeypatch.setattr(ee.ebay_taxonomy, "get_category_suggestions", lambda title, **kw: result)
+
+
+def _sg(cat_id, name="Cat", level=4):
+    return {"id": str(cat_id), "name": name, "level": level, "path": f"Root > {name}"}
+
+
+def test_suggestion_overrides_yaml_id_and_feeds_aspects(monkeypatch):
+    asked = _spy_aspects(monkeypatch, valid={"777"})
+    _suggest(monkeypatch, [_sg(777, "Air Fryers")])
+    _, rows = _export()
+    assert rows[0]["Category"] == "777"                 # yaml said 14070
+    assert "777" in asked and asked[-1] == "777"        # specifics come from the written category
+    assert "14070" not in asked
+
+
+def test_export_falls_back_to_yaml_id_when_suggestions_unavailable(monkeypatch):
+    _spy_aspects(monkeypatch, valid={"14070"})
+    _suggest(monkeypatch, None)
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070"
+
+
+def test_export_falls_back_to_yaml_id_when_no_suggestions(monkeypatch):
+    _spy_aspects(monkeypatch, valid={"14070"})
+    _suggest(monkeypatch, [])
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070"
+
+
+def test_invalid_top_suggestion_is_skipped_for_next_valid_one(monkeypatch):
+    _spy_aspects(monkeypatch, valid={"222"})
+    _suggest(monkeypatch, [_sg(111), _sg(222)])          # 111 is not a valid leaf
+    _, rows = _export()
+    assert rows[0]["Category"] == "222"
+
+
+def test_all_suggestions_invalid_falls_back_to_yaml_id(monkeypatch):
+    _spy_aspects(monkeypatch, valid=set())
+    _suggest(monkeypatch, [_sg(111), _sg(222), _sg(333)])
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070"
+
+
+def test_only_top_candidates_are_tried(monkeypatch):
+    asked = _spy_aspects(monkeypatch, valid={"5"})
+    _suggest(monkeypatch, [_sg(1), _sg(2), _sg(3), _sg(4), _sg(5)])
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070" and "4" not in asked and "5" not in asked
+
+
+def test_suggestions_primary_off_uses_yaml_only(monkeypatch):
+    monkeypatch.setattr(ee, "SUGGESTIONS_PRIMARY", False)
+    _spy_aspects(monkeypatch, valid={"777", "14070"})
+    _suggest(monkeypatch, [_sg(777)])
+    _, rows = _export()
+    assert rows[0]["Category"] == "14070"
+
+
+def test_migration_still_applies_to_yaml_fallback_id(monkeypatch):
+    _spy_aspects(monkeypatch, valid=set())
+    _suggest(monkeypatch, None)
+    cfg = {"business": {}, "categories": {"Pharmacy": {"ebay_category_id": "11896"}}}
+    text = ee.generate_ebay_csv([(4, _row(category="Pharmacy", title="Vitamin D"))], cfg)
+    assert list(csv.DictReader(io.StringIO(text)))[0]["Category"] == "183904"
+
+
+def test_override_is_logged_once_per_pair(monkeypatch):
+    from loguru import logger
+    ee._logged_suggestions.clear()
+    _spy_aspects(monkeypatch, valid={"777"})
+    _suggest(monkeypatch, [_sg(777, "Air Fryers")])
+    msgs = []
+    sink = logger.add(lambda m: msgs.append(str(m)), level="INFO")
+    try:
+        ee._suggested_category_id("Ninja Air Fryer", "14070")
+        ee._suggested_category_id("Ninja Air Fryer", "14070")
+    finally:
+        logger.remove(sink)
+    assert sum("eBay suggests 777" in m for m in msgs) == 1
+
+
+def test_suggestion_matching_yaml_id_is_silent(monkeypatch):
+    ee._logged_suggestions.clear()
+    _spy_aspects(monkeypatch, valid={"14070"})
+    _suggest(monkeypatch, [_sg(14070)])
+    assert ee._suggested_category_id("t", "14070") == "14070" and not ee._logged_suggestions
+
+
+def test_export_end_to_end_through_http_seam(monkeypatch, creds):
+    fake = FakeEbay(aspects_response=(200, {"aspects": [aspect("Brand")]}),
+                    suggestions_response=suggest_response(suggestion(777, "Air Fryers", 4)))
+    monkeypatch.setattr(et, "_http_json", fake)
+    _, rows = _export()
+    assert rows[0]["Category"] == "777"
+    aspect_urls = [r.full_url for k, r in fake.calls if k == "aspects"]
+    assert aspect_urls and all(u.endswith("category_id=777") for u in aspect_urls)
+    _export()                                            # second run served from cache
+    assert fake.suggestion_calls == 1 and fake.aspects_calls == 1
+
+
+def test_serper_lookup_is_gone():
+    assert not hasattr(ee, "_serper_category_lookup")
