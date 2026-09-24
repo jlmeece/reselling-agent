@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
 
 from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial
-from tools.costco_scraper import scrape_costco, make_browser
+from tools.costco_scraper import scrape_costco, make_browser, price_miss_message
 from tools.cookie_refresh import refresh_costco_cookies, cookie_expiry_stats, expiry_refresh_needed
 from tools.status_logic import (
     determine_status, suggest_reprice, check_scored_staleness,
@@ -1230,6 +1230,14 @@ def main():
         elif args.mode == "ebay_sync":
             _run_results.update(run_ebay_sync_mode(config, COL, service, sheet_name,
                                                    start_row, end_row, dry_run=args.dry_run))
+        # One alert per run if the Costco price API stopped returning prices (col G would
+        # otherwise freeze silently, as it did after the Sep 2026 redesign).
+        _miss = price_miss_message()
+        if _miss:
+            logger.error(_miss)
+            _tok, _chat = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+            if _tok and _chat:
+                _send_telegram(_tok, _chat, _miss)
     except Exception as e:
         _run_results["status"] = "error"
         _run_results["errors"] = traceback.format_exc()[-600:]

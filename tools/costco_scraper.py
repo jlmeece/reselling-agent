@@ -26,6 +26,7 @@ import random
 import sys
 import subprocess
 import urllib.request
+from urllib.parse import parse_qs, urlparse
 from datetime import datetime
 from contextlib import contextmanager
 from loguru import logger
@@ -673,17 +674,121 @@ def _extract_image_urls(page):
     return urls
 
 
+# Per-process tally of loaded product pages that yielded no API price. A Costco redesign that
+# breaks the price endpoint again would otherwise freeze col G with no error (Sep 2026).
+PRICE_MISS_MIN   = 3       # ...at least this many misses
+PRICE_MISS_RATIO = 0.2     # ...and at least this share of the pages scraped
+_price_stats = {"pages": 0, "misses": 0}
+
+
+def price_miss_message(stats=None):
+    """Telegram text when the price API looks broken this run, else None. Pure given stats."""
+    s = stats or _price_stats
+    if s["misses"] >= PRICE_MISS_MIN and s["misses"] >= PRICE_MISS_RATIO * s["pages"]:
+        return (f"⚠️ <b>Costco price API returned nothing</b> for {s['misses']} of {s['pages']} "
+                "product pages this run — col G is NOT being updated. Costco may have changed "
+                "the price endpoint again (tools/costco_scraper.py _parse_price_payload).")
+    return None
+
+
+def _money(value):
+    """'$1,299.00' / 38.99 / '43.99' -> float > 0; blank/garbage/zero -> None."""
+    try:
+        f = float(str(value).replace("$", "").replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
+
+
+def _price_from_entry(entry):
+    """One per-warehouse displayPrice entry -> {"price", "original_price", "savings"} | None.
+
+    Sep-2026 shape (display-price-lite): onlinePrice = regular price,
+    aggregatedDiscountAmt = instant savings, deliveredPrice = what you pay
+    (= onlinePrice - aggregatedDiscountAmt). deliveredPrice is not trusted blindly: if it
+    disagrees with online - discount (e.g. shipping folded in), online - discount wins so
+    col G never double-counts the ship cost held in col AD.
+    """
+    if not isinstance(entry, dict):
+        return None
+    online = _money(entry.get("onlinePrice"))
+    disc = _money(entry.get("aggregatedDiscountAmt")) or 0.0
+    delivered = _money(entry.get("deliveredPrice"))
+    if online is not None:
+        expected = round(online - disc, 2)
+        price = delivered if delivered is not None and abs(delivered - expected) < 0.015 else expected
+    else:
+        price = delivered
+    if price is None or price <= 0:
+        return None
+    on_sale = online is not None and disc > 0 and online > price
+    # "authoritative": the entry carries discount fields, so "no discount" is a real answer
+    # and the DOM sale-text patterns (which false-positive on "Save $100" banners for OTHER
+    # products) must not override it.
+    has_discount_info = online is not None and ("aggregatedDiscountAmt" in entry or "deliveredPrice" in entry)
+    return {"price": price,
+            "original_price": online if on_sale else None,
+            "savings": round(online - price, 2) if on_sale else None,
+            "authoritative": has_discount_info}
+
+
+def _parse_price_payload(data, whs_order=()):
+    """
+    Parse a Costco price-API JSON body -> {"price", "original_price", "savings",
+    "authoritative", "item_id"} or None when it carries no usable price. Pure (no browser).
+
+    Handles, in order:
+      * display-price-lite (Sep 2026): {"priceData": [{"id", "displayPrice": [ {per-warehouse}, ...]}]}.
+        Warehouses differ in price (item 1711796: wh 847 = $39.99 -> $31.99, wh 1 = $34.99), so
+        the entry is chosen by whs_order (the response URL's whsNumber list, store first, "1" =
+        Costco.com last) — the store the browser session is set to, which is what the page shows;
+        else the first entry.
+      * legacy dispprice-api: {"priceData": {"displayPrice": {"onlinePrice": x}}}
+      * legacy AjaxGetContractPrice: {"finalOnlinePrice": x}
+    """
+    if not isinstance(data, dict):
+        return None
+    pd = data.get("priceData")
+    items = pd if isinstance(pd, list) else ([pd] if isinstance(pd, dict) else [])
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        dp = item.get("displayPrice")
+        entries = dp if isinstance(dp, list) else ([dp] if isinstance(dp, dict) else [])
+        entries = [e for e in entries if isinstance(e, dict)]
+        chosen = None
+        for w in whs_order:
+            chosen = next((e for e in entries if str(e.get("warehouseNumber")) == str(w)), None)
+            if chosen:
+                break
+        for entry in ([chosen] if chosen else entries):
+            parsed = _price_from_entry(entry)
+            if parsed:
+                parsed["item_id"] = str(item["id"]) if item.get("id") else None
+                return parsed
+    legacy = _money(data.get("finalOnlinePrice"))
+    if legacy:
+        return {"price": legacy, "original_price": None, "savings": None,
+                "authoritative": False, "item_id": None}
+    return None
+
+
 def scrape_costco(url, page):
     """
     Scrapes a Costco product URL using the CDP-connected Chrome page.
     Price is captured by intercepting Costco's display-price API call
     (it never appears in the DOM — Costco renders it client-side via a
-    separate fetch to gdx-api.costco.com/catalog/product/dispprice-api).
+    separate fetch to gdx-api.costco.com/catalog/product/dispprice-api/v3/display-price-lite).
+    The same response supplies the regular price and savings (see _parse_price_payload), so
+    price / original_price / sale_savings all come from one source; the DOM sale patterns are
+    only a fallback when the API has no discount.
 
     Returns: {"price": float|None, "stock_status": str, "image_urls": list,
               "title": str|None, "brand": str|None, "model": str|None,
               "dimensions": {"length","width","height"} inches|None,
               "item_number": str|None, "purchase_limit": int|None,
+              "on_sale": bool, "sale_savings": float|None, "original_price": float|None,
+              "sale_expires": str|None, "free_shipping": bool,
               "in_stock": bool, "error": str|None, "http_status": int|None}
     """
     result = {
@@ -707,20 +812,15 @@ def scrape_costco(url, page):
     def _on_price_response(response):
         url = response.url
         try:
-            if "AjaxGetContractPrice" in url:
-                data = response.json()
-                price = data.get("finalOnlinePrice")
-                if price and float(price) > 0:
-                    captured_price.append(float(price))
-            elif "dispprice-api" in url:
-                data = response.json()
-                price = (
-                    data.get("priceData", {})
-                        .get("displayPrice", {})
-                        .get("onlinePrice")
-                )
-                if price and float(price) > 0:
-                    captured_price.append(float(price))
+            if not any(k in url for k in ("AjaxGetContractPrice", "dispprice-api", "display-price")):
+                return
+            whs = parse_qs(urlparse(url).query).get("whsNumber", [""])[0]
+            parsed = _parse_price_payload(response.json(),
+                                          [w for w in whs.split(",") if w.strip()])
+            if parsed:
+                captured_price.append(parsed)
+            else:
+                logger.debug(f"  Price API response had no usable price: {url[:120]}")
         except Exception:
             pass
 
@@ -767,10 +867,19 @@ def scrape_costco(url, page):
             result["stock_status"] = "CHECK FAILED"
             return result
 
-        # Price from intercepted API call
-        if captured_price:
-            result["price"] = captured_price[0]
-            logger.debug(f"  Price from API: ${captured_price[0]}")
+        # Price (+ regular price / savings when discounted) from the intercepted API call
+        api = captured_price[0] if captured_price else None
+        _price_stats["pages"] += 1
+        if not api:
+            _price_stats["misses"] += 1
+            logger.warning(f"  No price from the Costco price API for {url[:90]} — "
+                           "col G will not update; endpoint may have changed")
+        if api:
+            result["price"] = api["price"]
+            if api.get("item_id") and not result["item_number"]:
+                result["item_number"] = api["item_id"]
+            logger.debug(f"  Price from API: ${api['price']} "
+                         f"(regular {api['original_price']}, savings {api['savings']})")
 
         # ── Stock detection ───────────────────────────────────────────────────
         # Priority 1: "Add to Cart" button present = definitely In Stock.
@@ -819,28 +928,31 @@ def scrape_costco(url, page):
         #   "Instant Savings $X"    — coupon-style
         #   Strikethrough original price in DOM (crossed-out price element)
         #   API price < DOM original price by >5% (caught via strikethrough check)
-        savings = None
+        # The API's own discount is authoritative (same source as the price); the DOM
+        # patterns below only run when it reports none.
+        savings = api["savings"] if api and api.get("savings") else None
+        dom_fallback = not (api and api.get("authoritative"))
         exp_str = None
 
         # Pattern 1: "After $X OFF" (most explicit)
-        m = re.search(r"after\s+\$?([\d,]+\.?\d*)\s+off", prod_text, re.IGNORECASE)
+        m = re.search(r"after\s+\$?([\d,]+\.?\d*)\s+off", prod_text, re.IGNORECASE) if savings is None and dom_fallback else None
         if m:
             savings = float(m.group(1).replace(",", ""))
 
         # Pattern 2: "Save $X" / "Saving $X" / "Savings of $X"
-        if savings is None:
+        if savings is None and dom_fallback:
             m = re.search(r"\bsav(?:e|ing|ings?)\s+(?:of\s+)?\$\s*([\d,]+\.?\d*)", prod_text, re.IGNORECASE)
             if m:
                 savings = float(m.group(1).replace(",", ""))
 
         # Pattern 3: "Instant Savings $X" or "Instant Rebate $X"
-        if savings is None:
+        if savings is None and dom_fallback:
             m = re.search(r"instant\s+(?:savings?|rebate)\s+\$?\s*([\d,]+\.?\d*)", prod_text, re.IGNORECASE)
             if m:
                 savings = float(m.group(1).replace(",", ""))
 
         # Pattern 4: "Member Only Price — was $X" or "Regular $X / Member $Y"
-        if savings is None:
+        if savings is None and dom_fallback:
             m = re.search(r"(?:was|regular|orig(?:inal)?)\s+\$\s*([\d,]+\.?\d*)", prod_text, re.IGNORECASE)
             if m and result["price"]:
                 orig = float(m.group(1).replace(",", ""))
@@ -849,7 +961,7 @@ def scrape_costco(url, page):
                     savings = round(diff, 2)
 
         # Pattern 5: strikethrough price element in DOM (crossed-out original price)
-        if savings is None and result["price"]:
+        if savings is None and dom_fallback and result["price"]:
             try:
                 strike_els = page.query_selector_all(
                     "span[class*='strike'], span[class*='crossed'], "
@@ -871,8 +983,10 @@ def scrape_costco(url, page):
         if savings and savings > 0:
             result["on_sale"] = True
             result["sale_savings"] = savings
-            if result["price"] is not None:
-                result["original_price"] = result["price"] + savings
+            if api and api.get("original_price"):
+                result["original_price"] = api["original_price"]
+            elif result["price"] is not None:
+                result["original_price"] = round(result["price"] + savings, 2)
             # Extract expiry: "valid M/D/YY through M/D/YY" or "ends M/D" or "through MM/DD"
             exp_m = re.search(
                 r"(?:through|ends?|valid\s+through)\s+(\d{1,2}/\d{1,2}/\d{2,4})",

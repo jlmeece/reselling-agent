@@ -1071,7 +1071,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             reg_price = ""
             if on_sale and sale_savings and live_price:
                 try:
-                    reg_price = round(
+                    # API regular price when the scrape has it, else live + savings
+                    reg_price = costco_data.get("original_price") or round(
                         float(str(live_price).replace("$", "").replace(",", "")) + float(sale_savings), 2
                     )
                     updates.append((COL["regular_price"], f"${reg_price:,.2f}"))
