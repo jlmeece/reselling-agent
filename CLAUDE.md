@@ -26,6 +26,7 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 | `refresh-notes` | Retroactively reformat Col T summary line (one-shot) |
 | `recheck` | Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot) |
 | `audit` | Graveyard pass — remove junk, flag borderline rows (every 2 days) |
+| `ebay_sync` | Sync active eBay listings (Trading API, read-only) → `units_sold` col U; flags price mismatch / ACTIVE-not-on-eBay. `--dry-run` skips the write. Runs anywhere (no Chrome) |
 
 `python tools/ebay_export.py` is a separate standalone script (not a scheduler mode) that generates the Seller Hub CSV from READY products.
 
@@ -42,6 +43,7 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 - `tools/spot_price.py` — live gold/silver/platinum via Yahoo Finance (1hr cache)
 - `tools/listing_copy.py` — Claude-powered listing copy generation
 - `tools/ebay_export.py` — generates Seller Hub CSV for READY products
+- `tools/ebay_sync.py` — eBay Trading API `GetMyeBaySelling` → sheet sync (`fetch_active_listings`, `extract_item_id`, `sync`)
 - `config/categories.yaml` — fee rates, discovery URLs, eBay category IDs, purchase limits
 - `config/col_map.yaml` — Google Sheet column map (A–BA, 53 cols)
 - `skills/scoring.py` — category-specific scoring (extends shared base_scoring)
@@ -82,6 +84,7 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 
 ## Recent Changes
 
+- eBay sync Stage 1 (`tools/ebay_sync.py`, `--mode ebay_sync [--dry-run]`, `tests/test_ebay_sync.py`): read-only on eBay, flag-only on the sheet — **col U `units_sold` is the only write** (via `safe_write_row`, only when QuantitySold changed; titles re-verified first so auditor row shifts can't misdirect a write). Matches by item ID parsed from col Q. Reports `price_mismatch`, `active_not_on_ebay`, `on_ebay_not_in_sheet` to the Run Log notes; Telegram only for price_mismatch / active_not_on_ebay / a rejected auth token (error 931/932/16110). Blank `EBAY_AUTH_TOKEN` = logged skip, no crash. An API failure returns `[]` and never computes `active_not_on_ebay` (an outage must not flag every ACTIVE row). **Stage-1 gap:** ActiveList drops fully sold-out listings, so their final sale isn't written to col U — they surface as `active_not_on_ebay`; Stage 2 = SoldList. `safe_write_row`/`PROTECTED_COLS` moved from `telegram_bot.py` to `tools/sheet_writer.py` (bot re-imports them). `tools/register_ebay_sync_task.ps1` registers `WAT-EbaySync` (2h) — **not yet registered**; never smoke-tested against the live eBay API
 - Bot "📦 Mark Listed": READY cards (Search, search:pick, single-match `/lookup`) get a button → prompt for eBay ID/URL (or Skip) → confirm → `safe_write_row` status ACTIVE + platform (col E) "eBay" (+ col Q if given; a bare ID is stored as `https://www.ebay.com/itm/<ID>`). Confirm re-reads the row and refuses unless it is still the same READY title (row numbers shift when the auditor deletes). State lives in `user_data["awaiting_listing"]`/`["pending_listed"]`, cleared by `_clear_listing_state` on navigation. Tests: `tests/test_mark_listed.py`. Needs a bot `/restart`; never smoke-tested against live Telegram
 - Run-lock file (`data/.scheduler_lock`) prevents overlapping scheduler runs (45-min staleness before it's reclaimed)
 - Cookie auto-refresh (24h throttle, `tools/cookie_refresh.py`) triggers on file age ≥25d **or** >20% cookies expired (scheduler `_check_cookie_age` and scraper `_load_cookies`)

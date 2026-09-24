@@ -458,7 +458,7 @@ def test_protected_cols_matches_col_map_formula_columns():
 
 def test_safe_write_row_raises_on_protected_column(monkeypatch):
     calls = []
-    monkeypatch.setattr("agents.telegram_bot.write_row_partial", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr("tools.sheet_writer.write_row_partial", lambda *a, **k: calls.append((a, k)))
     with pytest.raises(ValueError):
         safe_write_row(None, "Product Tracker", 42, [("J", "0.5")])
     assert calls == []
@@ -470,14 +470,14 @@ def test_safe_write_row_raises_when_any_pair_is_protected():
 
 
 def test_safe_write_row_case_insensitive_protected_check(monkeypatch):
-    monkeypatch.setattr("agents.telegram_bot.write_row_partial", lambda *a, **k: None)
+    monkeypatch.setattr("tools.sheet_writer.write_row_partial", lambda *a, **k: None)
     with pytest.raises(ValueError):
         safe_write_row(None, "Product Tracker", 42, [("j", "0.5")])
 
 
 def test_safe_write_row_passes_through_clean_columns(monkeypatch):
     calls = []
-    monkeypatch.setattr("agents.telegram_bot.write_row_partial", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr("tools.sheet_writer.write_row_partial", lambda *a, **k: calls.append((a, k)))
     safe_write_row(None, "Product Tracker", 42, [("A", "APPROVED")])
     assert len(calls) == 1
 

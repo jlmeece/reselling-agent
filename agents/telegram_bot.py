@@ -41,7 +41,13 @@ load_dotenv(encoding="utf-8", override=True)
 
 from tools.ebay_export import export_approved_products
 from tools.graveyard_writer import write_to_graveyard
-from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial
+from tools.sheet_writer import (
+    PROTECTED_COLS,
+    get_sheets_service,
+    read_sheet,
+    safe_write_row,
+    write_row_partial,
+)
 from tools.spot_price import get_spot_price, parse_gold_weight
 
 
@@ -58,6 +64,7 @@ LOG_FILES = {
     "discovery":     os.path.join(_BASE_DIR, "data", "logs", "discovery.log"),
     "refresh-notes": os.path.join(_BASE_DIR, "data", "logs", "refresh-notes.log"),
     "recheck":       os.path.join(_BASE_DIR, "data", "logs", "recheck.log"),
+    "ebay_sync":     os.path.join(_BASE_DIR, "data", "logs", "ebay_sync.log"),
     "telegram_bot":  os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
 }
 
@@ -1015,27 +1022,11 @@ def _authorized(update, chat_id):
 
 
 # ── Sheet write guard ────────────────────────────────────────────────────────
-
-# config/col_map.yaml's own header comment documents these as formula columns
-# (net_profit, net_margin, comp_saturation, total_cost, ebay_fees, tax_est,
-# site_profit, ad_budget) — never overwrite them with an agent/bot write.
-PROTECTED_COLS = {"I", "J", "N", "Z", "AC", "AF", "AG", "AH"}
-
-
-def safe_write_row(service, sheet_name, row_num, col_value_pairs):
-    """
-    Wraps tools.sheet_writer.write_row_partial with a hard stop against ever
-    writing to a formula column. Raises ValueError rather than silently
-    dropping the offending pair — a silent drop would look like a successful
-    write to the caller while quietly doing nothing, which is worse than a
-    loud failure for a money-affecting sheet. Every bot write-back action
-    (Approve/Pause/Audit/Keep/Delete) must go through this, never
-    write_row_partial directly.
-    """
-    bad = [col for col, _ in col_value_pairs if col.upper() in PROTECTED_COLS]
-    if bad:
-        raise ValueError(f"Refusing to write protected formula column(s): {bad}")
-    return write_row_partial(service, sheet_name, row_num, col_value_pairs)
+# safe_write_row / PROTECTED_COLS now live in tools/sheet_writer.py (shared with
+# tools/ebay_sync.py, which must not import this module). Re-imported at the top
+# so `agents.telegram_bot.safe_write_row` / `.PROTECTED_COLS` keep working.
+# Every bot write-back action (Approve/Pause/Audit/Keep/Delete) must go through
+# safe_write_row, never write_row_partial directly.
 
 
 # ── Handlers ─────────────────────────────────────────────────────────────────
@@ -1048,7 +1039,7 @@ async def cmd_help(update, context):
         "/menu — button-driven home screen (Dashboard, Search, Review, Alerts, Operations, Logs)\n"
         "/start — show the persistent button keyboard\n"
         "/status — last run time, pass/fail, cookie age\n"
-        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, telegram_bot)\n"
+        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, ebay_sync, telegram_bot)\n"
         "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
         "/dashboard — funnel, top Ready opportunities, ad budget, sale urgency, category health\n"
         "/restart — reload bot after a code update\n"

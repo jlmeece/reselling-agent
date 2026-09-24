@@ -219,3 +219,24 @@ def write_row_partial(service, sheet_name, row_num, col_value_pairs):
             spreadsheetId=sheet_id,
             body={"valueInputOption": "USER_ENTERED", "data": data}
         ), "write_row_partial")
+
+
+# config/col_map.yaml's own header comment documents these as formula columns
+# (net_profit, net_margin, comp_saturation, total_cost, ebay_fees, tax_est,
+# site_profit, ad_budget) — never overwrite them with an agent/bot write.
+PROTECTED_COLS = {"I", "J", "N", "Z", "AC", "AF", "AG", "AH"}
+
+
+def safe_write_row(service, sheet_name, row_num, col_value_pairs):
+    """
+    Wraps write_row_partial with a hard stop against ever writing to a formula
+    column. Raises ValueError rather than silently dropping the offending pair —
+    a silent drop would look like a successful write to the caller while
+    quietly doing nothing, which is worse than a loud failure for a
+    money-affecting sheet. Every bot/sync write-back action must go through
+    this, never write_row_partial directly.
+    """
+    bad = [col for col, _ in col_value_pairs if col.upper() in PROTECTED_COLS]
+    if bad:
+        raise ValueError(f"Refusing to write protected formula column(s): {bad}")
+    return write_row_partial(service, sheet_name, row_num, col_value_pairs)

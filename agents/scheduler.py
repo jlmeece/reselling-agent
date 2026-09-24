@@ -3,7 +3,7 @@ Costco -> eBay Monitoring Agent
 ================================
 WAT Framework: Agent layer for monitoring and status management.
 
-Eight run modes (--mode flag):
+Nine run modes (--mode flag):
   active        3x/day  ACTIVE listings — stock/price, reprice alerts, URGENT SMS
   daily         1x/day  APPROVED->READY (copy+stock verify), PAUSED_OOS stock check
   research      1x/day  PENDING rows — full research + scoring (calls researcher.py logic)
@@ -12,6 +12,7 @@ Eight run modes (--mode flag):
   refresh-notes one-shot  Retroactively reformat Col T summary line
   recheck       one-shot  Retry Costco scrape for CHECK FAILED and empty-price rows
   audit         every 2 days  Graveyard pass — remove junk, flag borderline rows
+  ebay_sync     every ~2h  Sync eBay active listings -> units_sold (col U); flag price/removed mismatches
 
 Run locally: python agents/scheduler.py --mode active
 Scheduled via Windows Task Scheduler.
@@ -45,6 +46,7 @@ from tools.alert_sender import send_urgent_alert, send_routine_alert, send_ready
 from tools.run_logger import log_run_start, log_run_end
 from tools.spot_price import check_spot_movement
 from agents.auditor import run_audit
+from tools import ebay_sync
 
 
 # ── Config loaders ────────────────────────────────────────────────────────────
@@ -1002,9 +1004,29 @@ def _send_telegram(token: str, chat_id: str, text: str) -> None:
                                      headers={"Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=10)
-        logger.info("Telegram cookie-age warning sent.")
+        logger.info("Telegram message sent.")
     except Exception as e:
         logger.warning(f"Telegram message failed (non-fatal): {e}")
+
+
+def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
+    """
+    ebay_sync mode: fetch eBay listings, write units_sold, return Run Log keys
+    (status/notes/errors). Telegram fires ONLY when tools.ebay_sync built an alert
+    (price mismatch, ACTIVE-but-not-on-eBay, or a rejected auth token) — silent
+    otherwise.
+    """
+    result = ebay_sync.run_ebay_sync(config, COL, service, sheet_name, start_row,
+                                     end_row, dry_run=dry_run)
+    alert = result.pop("alert", None)
+    if alert:
+        token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if token and chat_id:
+            _send_telegram(token, chat_id, alert)
+        else:
+            logger.warning("ebay_sync: alert not sent — TELEGRAM_BOT_TOKEN/CHAT_ID unset")
+    return result
 
 
 def _attempt_cookie_autorefresh(reason: str = "age") -> tuple[bool, str]:
@@ -1135,7 +1157,7 @@ def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
-        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "audit"],
+        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "audit", "ebay_sync"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -1145,7 +1167,8 @@ def main():
             "rotation:       Score all active products, flag underperformers, send weekly digest (1x/week)\n"
             "refresh-notes:  Retroactively reformat Col T summary line (one-shot)\n"
             "recheck:        Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot)\n"
-            "audit:          Graveyard pass — remove junk, flag borderline rows (every 2 days)"
+            "audit:          Graveyard pass — remove junk, flag borderline rows (every 2 days)\n"
+            "ebay_sync:      Sync eBay active listings -> units_sold; flag price mismatch / removed listings"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -1156,6 +1179,8 @@ def main():
                         help="(recheck only) Re-run Costco + eBay on ALL products, not just missing-data rows")
     parser.add_argument("--add-limit", type=int, default=None,
                         help="Max new products to add to sheet during discovery")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="(ebay_sync only) Report without writing units_sold")
     args = parser.parse_args()
 
     if not _acquire_lock(args.mode):
@@ -1196,6 +1221,9 @@ def main():
         elif args.mode == "recheck":
             run_recheck(config, COL, service, sheet_name, start_row, end_row,
                         force=args.force)
+        elif args.mode == "ebay_sync":
+            _run_results.update(run_ebay_sync_mode(config, COL, service, sheet_name,
+                                                   start_row, end_row, dry_run=args.dry_run))
     except Exception as e:
         _run_results["status"] = "error"
         _run_results["errors"] = traceback.format_exc()[-600:]
