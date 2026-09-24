@@ -3,7 +3,7 @@ Costco -> eBay Monitoring Agent
 ================================
 WAT Framework: Agent layer for monitoring and status management.
 
-Nine run modes (--mode flag):
+Eleven run modes (--mode flag):
   active        3x/day  ACTIVE listings — stock/price, reprice alerts, URGENT SMS
   daily         1x/day  APPROVED->READY (copy+stock verify), PAUSED_OOS stock check
   research      1x/day  PENDING rows — full research + scoring (calls researcher.py logic)
@@ -12,7 +12,9 @@ Nine run modes (--mode flag):
   refresh-notes one-shot  Retroactively reformat Col T summary line
   recheck       one-shot  Retry Costco scrape for CHECK FAILED and empty-price rows
   audit         every 2 days  Graveyard pass — remove junk, flag borderline rows
-  ebay_sync     every ~2h  Sync eBay active listings -> units_sold (col U); flag price/removed mismatches
+  ebay_sync     4x/day     Sync eBay active listings -> units_sold (col U); flag margin breaches
+  sale-digest   1x/day     "Sale Radar" Telegram digest of items really on sale (read-only, --dry-run prints)
+  sale-refresh  on demand  Re-scrape non-ACTIVE rows with unverified sale badges (writes G/X/AW only)
 
 Run locally: python agents/scheduler.py --mode active
 Scheduled via Windows Task Scheduler.
@@ -49,8 +51,9 @@ from tools.sale_history import log_sale
 from tools.sale_monitor import (
     PRICE_FLAG_YES, already_alerted, classify_cost_event, expiry_tier, load_alert_state,
     margin_note_sale_start, parse_rate, parse_sale_expiry, price_flag_still_needed,
-    record_alerts, sale_badge, sale_end_alert, to_float,
+    record_alerts, sale_column_updates, sale_end_alert, to_float, badge_verified,
 )
+from tools.sale_digest import select_sale_items, format_digest
 from tools.spot_price import check_spot_movement
 from agents.auditor import run_audit
 from tools import ebay_sync
@@ -243,18 +246,11 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
 
             # Sale columns X (badge) / AW (regular price): refreshed while on sale, cleared when
             # the sale is gone. A scrape with no price never touches them.
-            sale_updates = []
+            sale_updates = sale_column_updates(
+                COL, costco_data, had_badge, bool(safe_get(row, col_to_idx(COL["regular_price"]))))
             sale_note = None
             sale_item = None
             flag_update = None      # new col P value, when it changes
-            if new_price:
-                if on_sale:
-                    orig = costco_data.get("original_price")
-                    badge = sale_badge(costco_data.get("sale_savings"), costco_data.get("sale_expires"))
-                    sale_updates = [(COL["sale_info"], badge),
-                                    (COL["regular_price"], orig if orig else "")]
-                elif had_badge or safe_get(row, col_to_idx(COL["regular_price"])):
-                    sale_updates = [(COL["sale_info"], ""), (COL["regular_price"], "")]
 
             existing_flag = safe_get(row, col_to_idx(COL["price_change"]))
             target = suggest_reprice(new_price or old, fee_f, ship_f) if (fee_f is not None and (new_price or old)) else None
@@ -545,6 +541,10 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                 ]
                 if new_price:
                     updates.append((COL["costco_cost"], new_price))
+                    # X/AW too — the sweep used to update G only, leaving a stale sale badge
+                    updates += sale_column_updates(
+                        COL, costco_data, bool(safe_get(row, col_to_idx(COL["sale_info"]))),
+                        bool(safe_get(row, col_to_idx(COL["regular_price"]))))
 
                 if status == "APPROVED":
                     if stock_status == "OUT OF STOCK":
@@ -603,6 +603,15 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
 
                 write_row_partial(service, sheet_name, sheet_row, updates)
                 time.sleep(2)
+
+    # ── Heal stale sale badges on SCORED/WATCH rows (capped; G/X/AW only) ─────
+    if sys.platform == "win32":
+        try:
+            _r = run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
+                                  limit=8, statuses={"SCORED", "WATCH"})
+            logger.info(f"  {_r['notes']}")
+        except Exception as e:
+            logger.warning(f"  sale-refresh pass failed (non-fatal): {e}")
 
     # ── Copy generation for queued APPROVED products ──────────────────────────
     if products_need_copy:
@@ -1049,8 +1058,8 @@ _COOKIE_WARN_INTERVAL_SEC = 7 * 86400  # don't re-warn within 7 days
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _send_telegram(token: str, chat_id: str, text: str) -> None:
-    """Fire-and-forget Telegram message. Logs on failure, never raises."""
+def _send_telegram(token: str, chat_id: str, text: str) -> bool:
+    """Fire-and-forget Telegram message. Logs on failure, never raises. True iff it was sent."""
     url     = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
     req     = urllib.request.Request(url, data=payload,
@@ -1058,8 +1067,111 @@ def _send_telegram(token: str, chat_id: str, text: str) -> None:
     try:
         urllib.request.urlopen(req, timeout=10)
         logger.info("Telegram message sent.")
+        return True
     except Exception as e:
         logger.warning(f"Telegram message failed (non-fatal): {e}")
+        return False
+
+
+def run_sale_digest(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
+    """
+    sale-digest mode ("Sale Radar"): ONE Telegram message listing every tracked item that is
+    really on sale (tools.sale_digest filters out the stale/false-positive col X badges).
+    Read-only, no Chrome. Silent when nothing is on sale. dry_run prints instead of sending.
+    Returns Run Log keys (status/notes/errors).
+    """
+    rows = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
+    now = datetime.now()
+    items, skipped = select_sale_items(rows, COL, now=now, start_row=start_row)
+    message = format_digest(items, top=10, now=now,
+                            warn_hours=int(config["business"].get("sale_warn_hours", 48)))
+    skipped_txt = ", ".join(f"{k} {v}" for k, v in sorted(skipped.items())) or "none"
+    notes = (f"{'[dry-run] ' if dry_run else ''}{len(items)} on sale (shown {min(len(items), 10)}); "
+             f"ignored badges: {skipped_txt}")
+    logger.info(f"sale-digest: {notes}")
+    result = {"status": "ok", "notes": notes}
+    if message is None:
+        return result                      # nothing on sale -> silent
+    if dry_run:
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # cp1252 can't print 🛒
+        except Exception:
+            pass
+        print(message)
+        return result
+    token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if not (token and chat_id) or not _send_telegram(token, chat_id, message):
+        result["status"] = "error"
+        result["errors"] = "Sale Radar not delivered: Telegram not configured or send failed"
+    return result
+
+
+SALE_REFRESH_STATUSES = {"SCORED", "WATCH", "READY", "APPROVED", "PAUSED_MARGIN", "PAUSED_OOS"}
+
+
+def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
+                     limit=12, statuses=None) -> dict:
+    """
+    sale-refresh mode: heal unverified col X sale badges on non-ACTIVE rows (the active monitor
+    only covers ACTIVE; pre-fix rows hold DOM false-positives like "-$100" on a $15 item).
+    Candidates: badge present, status in `statuses`, Costco URL, badge not verified
+    (tools.sale_monitor.badge_verified). Re-scrapes up to `limit` and writes ONLY cols G / X / AW
+    (no status change, no last_checked — that would defer SCORED->PENDING staleness, no alerts).
+    Verified badges stop being candidates, so repeated runs converge. Needs Chrome (local only).
+    """
+    statuses = SALE_REFRESH_STATUSES if statuses is None else statuses
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
+    now = datetime.now()
+
+    targets = []
+    for idx, row in enumerate(all_data):
+        if not row:
+            continue
+        badge = safe_get(row, col_to_idx(COL["sale_info"]))
+        if (not badge
+                or safe_get(row, col_to_idx(COL["status"])) not in statuses
+                or not safe_get(row, col_to_idx(COL["costco_url"])).startswith("http")
+                or badge_verified(badge, safe_get(row, col_to_idx(COL["costco_cost"])),
+                                  safe_get(row, col_to_idx(COL["regular_price"])), now)):
+            continue
+        targets.append((idx + start_row, row))
+    total = len(targets)
+    targets = targets[:limit]
+    if not targets:
+        return {"status": "ok", "notes": "sale-refresh: no unverified badges"}
+    if sys.platform != "win32":
+        return {"status": "ok", "notes": f"sale-refresh: {total} candidates, Chrome scrape skipped (non-Windows)"}
+
+    from tools.costco_scraper import refresh_session
+    still_on, cleared, failed = 0, 0, 0
+    with make_browser() as page:
+        for n, (sheet_row, row) in enumerate(targets):
+            if n and n % 10 == 0:
+                refresh_session(page)
+            title = safe_get(row, col_to_idx(COL["title"]))
+            logger.info(f"  [sale-refresh] row {sheet_row}: {title[:50]}")
+            data = scrape_costco(safe_get(row, col_to_idx(COL["costco_url"])), page=page)
+            if data.get("stock_status") == "CHECK FAILED" or not data.get("price"):
+                failed += 1
+                time.sleep(3)
+                continue
+            updates = [(COL["costco_cost"], data["price"])] + sale_column_updates(
+                COL, data, True, bool(safe_get(row, col_to_idx(COL["regular_price"]))))
+            write_row_partial(service, sheet_name, sheet_row, updates)
+            if data.get("on_sale"):
+                still_on += 1
+                orig = data.get("original_price")
+                log_sale(service, title, safe_get(row, col_to_idx(COL["category"])), data["price"],
+                         f"{orig:.2f}" if orig else "", updates[1][1],
+                         coupon_type=data.get("coupon_type") or "",
+                         coupon_label=data.get("coupon_label") or "")
+            else:
+                cleared += 1
+            time.sleep(2)
+    notes = (f"sale-refresh: {len(targets)} of {total} candidates — {still_on} on sale, "
+             f"{cleared} badges cleared, {failed} scrape failures")
+    logger.info(notes)
+    return {"status": "ok", "notes": notes}
 
 
 def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
@@ -1211,7 +1323,8 @@ def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
-        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "audit", "ebay_sync"],
+        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "audit", "ebay_sync",
+                 "sale-digest", "sale-refresh"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -1236,13 +1349,14 @@ def main():
     parser.add_argument("--row", type=int, default=None,
                         help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
-                        help="(ebay_sync only) Report without writing units_sold")
+                        help="(ebay_sync / sale-digest only) Report without writing units_sold / print the digest instead of sending")
     args = parser.parse_args()
 
     if not _acquire_lock(args.mode):
         return
 
-    _check_cookie_age()
+    if args.mode != "sale-digest":     # Chrome-free mode: a cookie refresh/alert is irrelevant to it
+        _check_cookie_age()
 
     config     = load_config()
     COL        = load_col_map()
@@ -1281,6 +1395,12 @@ def main():
         elif args.mode == "ebay_sync":
             _run_results.update(run_ebay_sync_mode(config, COL, service, sheet_name,
                                                    start_row, end_row, dry_run=args.dry_run))
+        elif args.mode == "sale-digest":
+            _run_results.update(run_sale_digest(config, COL, service, sheet_name,
+                                                start_row, end_row, dry_run=args.dry_run))
+        elif args.mode == "sale-refresh":
+            _run_results.update(run_sale_refresh(config, COL, service, sheet_name,
+                                                 start_row, end_row, limit=args.limit or 12))
         # One alert per run if the Costco price API stopped returning prices (col G would
         # otherwise freeze silently, as it did after the Sep 2026 redesign).
         _miss = price_miss_message()
@@ -1302,7 +1422,7 @@ def main():
         _release_lock()
         log_run_end(args.mode, _run_start, _run_results, service)
         # Heartbeat ping — tells healthchecks.io this run completed successfully
-        _hc_key = f"HEALTHCHECK_URL_{args.mode.upper()}"
+        _hc_key = f"HEALTHCHECK_URL_{args.mode.upper().replace('-', '_')}"
         _hc_url = os.getenv(_hc_key)
         if _hc_url and _run_results["status"] == "ok":
             try:

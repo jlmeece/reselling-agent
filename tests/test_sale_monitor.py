@@ -108,3 +108,32 @@ def test_helpers():
     assert parse_rate(0.1325) == pytest.approx(0.1325)
     assert parse_rate("13.25") == pytest.approx(0.1325)
     assert parse_rate("") is None
+
+
+# ── sale_column_updates / badge_verified (shared by monitor, daily sweep, sale-refresh) ─────────
+
+from tools.sale_monitor import badge_verified, sale_column_updates   # noqa: E402
+
+_COL = {"sale_info": "X", "regular_price": "AW"}
+
+
+def test_sale_column_updates_cases():
+    on = {"price": 31.99, "on_sale": True, "original_price": 39.99, "sale_savings": 8.0,
+          "sale_expires": "10/18/26"}
+    assert sale_column_updates(_COL, on, False, False) == [("X", "🔥 -$8 ends 10/18/26"), ("AW", 39.99)]
+    assert sale_column_updates(_COL, {**on, "original_price": None}, False, False)[1] == ("AW", "")
+    off = {"price": 39.99, "on_sale": False}
+    assert sale_column_updates(_COL, off, True, False) == [("X", ""), ("AW", "")]      # stale badge
+    assert sale_column_updates(_COL, off, False, True) == [("X", ""), ("AW", "")]      # stale AW
+    assert sale_column_updates(_COL, off, False, False) == []                          # nothing to clear
+    assert sale_column_updates(_COL, {"price": None, "on_sale": False}, True, True) == []   # scrape miss
+
+
+def test_badge_verified():
+    now = datetime(2026, 9, 24, 12, 0)
+    assert badge_verified("🔥 -$8 ends 10/18/26", "31.99", "39.99", now) is True
+    assert badge_verified("🔥 -$8 ends 10/18/26", "31.99", "", now) is False           # no AW
+    assert badge_verified("🔥 -$8 ends 10/18/26", "31.99", "31.99", now) is False      # AW not above G
+    assert badge_verified("🔥 -$8", "31.99", "39.99", now) is False                    # undated
+    assert badge_verified("🔥 -$8 ends 7/19/26", "31.99", "39.99", now) is False       # expired
+    assert badge_verified("🔥 -$100 ends 9/30/26", "", "14.99", now) is False          # no price

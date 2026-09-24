@@ -77,6 +77,39 @@ def sale_badge(savings, expires):
     return badge
 
 
+def sale_column_updates(COL, costco_data, had_badge, has_regular):
+    """
+    (col, value) pairs for the sale columns X (badge) / AW (regular price) after a scrape.
+    Shared by the active monitor, the daily sweep and sale-refresh so they cannot drift:
+      on sale                      -> badge + regular price (AW blank when the API had none)
+      not on sale, badge/AW stale  -> clear both
+      no price scraped             -> nothing (a scrape miss is not evidence either way)
+    """
+    if not costco_data.get("price"):
+        return []
+    if costco_data.get("on_sale"):
+        orig = costco_data.get("original_price")
+        return [(COL["sale_info"], sale_badge(costco_data.get("sale_savings"),
+                                              costco_data.get("sale_expires"))),
+                (COL["regular_price"], orig if orig else "")]
+    if had_badge or has_regular:
+        return [(COL["sale_info"], ""), (COL["regular_price"], "")]
+    return []
+
+
+def badge_verified(sale_info, price, regular, now=None):
+    """
+    True when a col X badge looks API-written and still live: the regular price (AW) is a real
+    number above the sale price (G) and the badge carries a future end date. Anything else is
+    "unverified" and worth re-scraping (pre-fix rows hold DOM false-positives like '-$100').
+    """
+    p, r = to_float(price), to_float(regular)
+    if p is None or r is None or not r > p > 0:
+        return False
+    end = parse_sale_expiry(sale_info, now)
+    return end is not None and end >= (now or datetime.now())
+
+
 def margin_note_sale_start(old, new):
     return f"on sale — margin +${old - new:.2f}"
 

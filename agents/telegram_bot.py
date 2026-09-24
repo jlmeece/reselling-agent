@@ -65,6 +65,7 @@ LOG_FILES = {
     "refresh-notes": os.path.join(_BASE_DIR, "data", "logs", "refresh-notes.log"),
     "recheck":       os.path.join(_BASE_DIR, "data", "logs", "recheck.log"),
     "ebay_sync":     os.path.join(_BASE_DIR, "data", "logs", "ebay_sync.log"),
+    "sale-digest":   os.path.join(_BASE_DIR, "data", "logs", "sale_digest.log"),
     "telegram_bot":  os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
 }
 
@@ -1039,7 +1040,7 @@ async def cmd_help(update, context):
         "/menu — button-driven home screen (Dashboard, Search, Review, Alerts, Operations, Logs)\n"
         "/start — show the persistent button keyboard\n"
         "/status — last run time, pass/fail, cookie age\n"
-        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, ebay_sync, telegram_bot)\n"
+        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, ebay_sync, sale-digest, telegram_bot)\n"
         "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
         "/dashboard — funnel, top Ready opportunities, ad budget, sale urgency, category health\n"
         "/restart — reload bot after a code update\n"

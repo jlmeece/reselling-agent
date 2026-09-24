@@ -3,7 +3,7 @@
 Energy Shot (4000099948): regular $39.99, on sale $31.99. Sale start must write G/AW/X and
 NOT flag col P or alert; the reverse ($31.99 -> $39.99) must flag P and send the urgent alert."""
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 
@@ -14,6 +14,13 @@ CONFIG = {"business": {"price_change_threshold": 0.50, "min_margin_threshold": 0
                        "min_demand_score": 5, "sale_warn_hours": 48, "sale_urgent_hours": 24},
           "categories": {}}
 START_ROW = 4
+NOW = datetime(2026, 9, 24, 12, 0)      # frozen clock: expiry tiers depend on hours-to-23:59 of a DATE
+
+
+class _FixedDT(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return NOW
 
 
 def _row(**cells):
@@ -64,6 +71,7 @@ def harness(monkeypatch):
     monkeypatch.setattr(sch, "load_alert_state", lambda: {})
     monkeypatch.setattr(sch, "record_alerts", lambda st, keys, **k: calls["recorded"].extend(keys))
     monkeypatch.setattr(sch.time, "sleep", lambda s: None)
+    monkeypatch.setattr(sch, "datetime", _FixedDT)
 
     def run(rows, scrape, only_rows=None):
         for key in ("writes", "urgent", "expiry", "sales", "recorded"):
@@ -103,8 +111,7 @@ def test_sale_start_passes_coupon_type_to_sale_history(harness):
 
 
 def test_sale_end_rise_flags_p_and_sends_urgent_reprice_up(harness):
-    future = (datetime.now() + timedelta(days=20)).strftime("%m/%d/%y")
-    calls = harness([_energy_row(31.99, badge=f"🔥 -$8 ends {future}", regular="39.99", ebay_price="41.48")],
+    calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/14/26", regular="39.99", ebay_price="41.48")],
                     _scrape(39.99, False))
     row, w = _written(calls)
     assert w[COL["costco_cost"]] == 39.99
@@ -162,8 +169,7 @@ def test_existing_p_flag_survives_a_quiet_run_until_repriced(harness):
 
 
 def test_expiry_countdown_fires_from_freshly_written_sale_data(harness):
-    end = datetime.now() + timedelta(hours=30)
-    exp = f"{end.month}/{end.day}/{end:%y}"
+    exp = "9/25/26"      # 23:59 tomorrow = ~36h after the frozen 12:00 -> 48h "warn" tier
     calls = harness([_energy_row(39.99)],
                     _scrape(31.99, True, original=39.99, savings=8.0, expires=exp))
     # the row had no badge in the sheet before this run; the badge written THIS run is counted
@@ -174,8 +180,7 @@ def test_expiry_countdown_fires_from_freshly_written_sale_data(harness):
 
 
 def test_expiry_urgent_tier_inside_24h(harness):
-    end = datetime.now() + timedelta(hours=1)
-    exp = f"{end.month}/{end.day}/{end:%y}"     # 23:59 today: always < 24h away
+    exp = "9/24/26"      # 23:59 today = ~12h after the frozen 12:00 -> "urgent" tier
     calls = harness([_energy_row(31.99, badge=f"🔥 -$8 ends {exp}", regular="39.99")],
                     _scrape(31.99, True, original=39.99, savings=8.0, expires=exp))
     assert calls["recorded"][0].endswith("|urgent")
