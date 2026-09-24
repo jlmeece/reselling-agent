@@ -301,7 +301,9 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             if on_sale and new_price and (event == "sale_start" or not had_badge):
                 orig = costco_data.get("original_price")
                 log_sale(service, title, category, new_price,
-                         f"{orig:.2f}" if orig else "", sale_updates[0][1])
+                         f"{orig:.2f}" if orig else "", sale_updates[0][1],
+                         coupon_type=costco_data.get("coupon_type") or "",
+                         coupon_label=costco_data.get("coupon_label") or "")
 
             # Collect items needing action
             if reason_code not in ("ok", "ebay_url_detected"):
@@ -952,7 +954,9 @@ def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=Fals
                 if sale_val:
                     orig = costco_data.get("original_price")
                     log_sale(service, t["title"], t["category"], new_price or t.get("cost"),
-                             f"{orig:.2f}" if orig else "", sale_val)
+                             f"{orig:.2f}" if orig else "", sale_val,
+                             coupon_type=costco_data.get("coupon_type") or "",
+                             coupon_label=costco_data.get("coupon_label") or "")
                 logger.info(f"    Costco OK: {stock_status} | ${new_price}")
                 t["needs_costco"] = False
                 time.sleep(2)

@@ -4,7 +4,11 @@ Sale History
 Append-only "Sale History" tab: one row each time the Costco scraper sees a product on
 sale at a NEW price (or again after a gap), so a later phase can predict sale cycles.
 
-Row: [product_title, category, scrape_date, sale_price, regular_price, sale_end_date]
+Row: [product_title, category, scrape_date, sale_price, regular_price, sale_end_date,
+      coupon_type, coupon_label]
+coupon_type = "MFR" (manufacturer coupon) / "STORE" (Costco instant savings) / "OTHER", from the
+price API's promotion text; blank when unknown (rows written before the columns existed, or a
+sale detected only from the page DOM). Old rows are not migrated.
 
 Dedup: a live sale must not add a row on every research/recheck run, so a row is skipped
 when the tab already holds one for the same product with the same sale price and a
@@ -27,7 +31,8 @@ from tools.sheet_writer import execute_with_retry  # noqa: E402
 
 TAB_NAME   = "Sale History"
 HEADER     = ["PRODUCT_TITLE", "CATEGORY", "SCRAPE_DATE", "SALE_PRICE",
-              "REGULAR_PRICE", "SALE_END_DATE"]
+              "REGULAR_PRICE", "SALE_END_DATE", "COUPON_TYPE", "COUPON_LABEL"]
+_header_checked = False   # per process: the live tab's header is topped up once
 DEDUP_DAYS = 7
 PRICE_EPS  = 0.005
 
@@ -96,12 +101,33 @@ def _sheet_id():
     return sid
 
 
+def _upgrade_header(service, sid):
+    """Tabs created before COUPON_TYPE/COUPON_LABEL existed get the two header cells added
+    (existing rows keep blank cells — no migration). Once per process; never raises."""
+    global _header_checked
+    if _header_checked:
+        return
+    _header_checked = True
+    try:
+        got = execute_with_retry(service.spreadsheets().values().get(
+            spreadsheetId=sid, range=f"'{TAB_NAME}'!A1:H1"), "sale_history header read")
+        have = (got.get("values") or [[]])[0]
+        if len(have) < len(HEADER):
+            execute_with_retry(service.spreadsheets().values().update(
+                spreadsheetId=sid, range=f"'{TAB_NAME}'!A1", valueInputOption="RAW",
+                body={"values": [HEADER]}), "sale_history header upgrade")
+            logger.info("Sale History header upgraded (COUPON_TYPE, COUPON_LABEL).")
+    except Exception as e:
+        logger.warning(f"Sale History header check failed (non-fatal): {e}")
+
+
 def ensure_tab(service) -> bool:
     """Create the Sale History tab (with header) if missing. Idempotent. True if created."""
     sid = _sheet_id()
     meta = execute_with_retry(service.spreadsheets().get(
         spreadsheetId=sid, fields="sheets.properties.title"), "sale_history meta")
     if TAB_NAME in {s["properties"]["title"] for s in meta.get("sheets", [])}:
+        _upgrade_header(service, sid)
         return False
     try:
         # addSheet is non-idempotent: a landed 5xx/timeout retried would 400 on the duplicate
@@ -121,11 +147,13 @@ def ensure_tab(service) -> bool:
     return True
 
 
-def log_sale(service, title, category, sale_price, regular_price, sale_info, today=None) -> bool:
+def log_sale(service, title, category, sale_price, regular_price, sale_info, today=None,
+             coupon_type="", coupon_label="") -> bool:
     """
     Append one Sale History row when sale_info (col X) is non-blank and it isn't a repeat
     (see should_append). sale_price = Costco price at scrape time; regular_price may be
-    blank. Returns True only if a row was appended. Never raises.
+    blank; coupon_type/label come from the scraper ("" = unknown). Returns True only if a
+    row was appended. Never raises.
     """
     try:
         if not str(sale_info or "").strip():
@@ -141,7 +169,8 @@ def log_sale(service, title, category, sale_price, regular_price, sale_info, tod
         row = [str(title), str(category or ""), today.isoformat(),
                price if price is not None else "",
                reg if reg is not None else "",
-               parse_sale_end(sale_info, today)]
+               parse_sale_end(sale_info, today),
+               str(coupon_type or ""), str(coupon_label or "")]
         execute_with_retry(service.spreadsheets().values().append(
             spreadsheetId=_sheet_id(), range=f"'{TAB_NAME}'!A1",
             valueInputOption="RAW", insertDataOption="INSERT_ROWS",

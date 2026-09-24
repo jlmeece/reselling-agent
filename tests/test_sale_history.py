@@ -110,8 +110,13 @@ class FakeService:
 # values().get shares a name with spreadsheets().get, so the tab-list vs rows read is told
 # apart by the presence of `range`.
 class _Svc(FakeService):
+    header = None      # what A1:H1 of an existing tab reads back (default: the current HEADER)
+
     def get(self, **kw):
         if "range" in kw:
+            if str(kw["range"]).endswith("A1:H1"):
+                hdr = sale_history.HEADER if self.header is None else self.header
+                return _Req(lambda: {"values": [list(hdr)]})
             return _Req(lambda: {"values": self.rows})
         return super().get(**kw)
 
@@ -119,21 +124,22 @@ class _Svc(FakeService):
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
     monkeypatch.setenv("GOOGLE_SHEET_ID", "sheet123")
+    monkeypatch.setattr(sale_history, "_header_checked", False)
 
 
-def test_creates_tab_with_header_then_appends_six_columns():
+def test_creates_tab_with_header_then_appends_row_with_blank_coupon_when_unknown():
     svc = _Svc()
     assert log_sale(svc, "Vitamix A3500", "Small Appliances", "$389.99", "449.99",
                     "🔥 -$60 ends 9/30/26", today=TODAY) is True
     assert [c[0] for c in svc.calls] == ["addSheet", "header", "append"]
     assert svc.calls[1][1] == sale_history.HEADER
-    assert svc.calls[2][1] == ["Vitamix A3500", "Small Appliances", "2026-09-24", 389.99, 449.99, "2026-09-30"]
+    assert svc.calls[2][1] == ["Vitamix A3500", "Small Appliances", "2026-09-24", 389.99, 449.99, "2026-09-30", "", ""]
 
 
 def test_blank_regular_price_writes_empty_string():
     svc = _Svc(tabs=("Sale History",))
     assert log_sale(svc, "Widget", "Toys", 19.99, "", "🔥 SALE", today=TODAY) is True
-    assert svc.calls == [("append", ["Widget", "Toys", "2026-09-24", 19.99, "", ""])]
+    assert svc.calls == [("append", ["Widget", "Toys", "2026-09-24", 19.99, "", "", "", ""])]
 
 
 def test_existing_tab_is_not_recreated_and_duplicate_is_skipped():
@@ -154,3 +160,30 @@ def test_not_on_sale_is_a_noop_that_never_touches_sheets():
 def test_failure_never_propagates():
     assert log_sale(_Svc(fail=True), "Widget", "Toys", 19.99, "", "🔥 SALE", today=TODAY) is False
     assert log_sale(object(), "Widget", "Toys", 19.99, "", "🔥 SALE", today=TODAY) is False
+
+
+def test_coupon_type_and_label_are_logged():
+    svc = _Svc(tabs=("Sale History",))
+    assert log_sale(svc, "Energy Shot", "Pharmacy", 31.99, "39.99", "🔥 -$8 ends 10/18/26",
+                    today=TODAY, coupon_type="MFR", coupon_label="Manufacturer Coupon") is True
+    assert svc.calls == [("append", ["Energy Shot", "Pharmacy", "2026-09-24", 31.99, 39.99,
+                                     "2026-10-18", "MFR", "Manufacturer Coupon"])]
+
+
+def test_header_has_coupon_columns_in_order():
+    assert sale_history.HEADER[-2:] == ["COUPON_TYPE", "COUPON_LABEL"]
+    assert sale_history.HEADER[:6] == ["PRODUCT_TITLE", "CATEGORY", "SCRAPE_DATE", "SALE_PRICE",
+                                       "REGULAR_PRICE", "SALE_END_DATE"]
+
+
+def test_existing_six_column_tab_gets_header_upgraded_once_and_old_rows_untouched():
+    old_row = ["Widget", "Toys", "2026-08-01", "19.99", "24.99", "2026-08-10"]     # blank coupon cells
+    svc = _Svc(tabs=("Sale History",), rows=[old_row])
+    svc.header = sale_history.HEADER[:6]
+    assert log_sale(svc, "Gadget", "Toys", 9.99, "", "🔥 SALE", today=TODAY, coupon_type="STORE",
+                    coupon_label="Instant Savings") is True
+    assert svc.calls[0] == ("header", sale_history.HEADER)                            # G1:H1 topped up
+    assert svc.calls[1][0] == "append"
+    assert log_sale(svc, "Gizmo", "Toys", 5.99, "", "🔥 SALE", today=TODAY) is True
+    assert [c[0] for c in svc.calls] == ["header", "append", "append"]               # once per process
+    assert svc.rows[0] == old_row                                                     # no migration

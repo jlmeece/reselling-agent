@@ -34,10 +34,12 @@ def _energy_row(cost, badge="", regular="", flag="", ebay_price="59.99"):
                 stock_status="In Stock")
 
 
-def _scrape(price, on_sale, original=None, savings=None, expires=None):
+def _scrape(price, on_sale, original=None, savings=None, expires=None,
+            coupon_type=None, coupon_label=None):
     return {"price": price, "stock_status": "In Stock", "image_urls": ["http://img/1.jpg"],
             "on_sale": on_sale, "original_price": original, "sale_savings": savings,
-            "sale_expires": expires, "error": None}
+            "sale_expires": expires, "coupon_type": coupon_type, "coupon_label": coupon_label,
+            "error": None}
 
 
 @pytest.fixture
@@ -54,7 +56,7 @@ def harness(monkeypatch):
     monkeypatch.setattr(sch, "scrape_costco", lambda url, page=None: state["scrape"])
     monkeypatch.setattr(sch, "write_row_partial",
                         lambda svc, sheet, row, pairs: calls["writes"].append((row, dict(pairs))))
-    monkeypatch.setattr(sch, "log_sale", lambda *a, **k: calls["sales"].append(a) or True)
+    monkeypatch.setattr(sch, "log_sale", lambda *a, **k: calls["sales"].append((a, k)) or True)
     monkeypatch.setattr(sch, "send_urgent_alert",
                         lambda subject, items, run_time=None, **k: calls["urgent"].append((subject, items)))
     monkeypatch.setattr(sch, "send_sale_expiry_alert",
@@ -90,6 +92,14 @@ def test_sale_start_writes_g_aw_x_and_does_not_reprice(harness):
     assert "on sale — margin +$8.00" in w[COL["tier_summary"]]
     assert calls["urgent"] == []                             # no reprice suggestion / alert
     assert len(calls["sales"]) == 1                          # Sale History logged
+
+
+def test_sale_start_passes_coupon_type_to_sale_history(harness):
+    calls = harness([_energy_row(39.99)],
+                    _scrape(31.99, True, original=39.99, savings=8.0, expires="10/18/26",
+                            coupon_type="MFR", coupon_label="Manufacturer Coupon"))
+    (_args, kwargs), = calls["sales"]
+    assert kwargs == {"coupon_type": "MFR", "coupon_label": "Manufacturer Coupon"}
 
 
 def test_sale_end_rise_flags_p_and_sends_urgent_reprice_up(harness):

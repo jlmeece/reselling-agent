@@ -732,43 +732,109 @@ def _price_from_entry(entry):
             "authoritative": has_discount_info}
 
 
-def _promo_end_local(item, warehouse):
-    """Sale end date "M/D/YY" (Pacific) from discounts[].promotions[].promotionEndDate, or None.
+def _select_promotion(item, warehouse):
+    """The promotion behind the sale price -> (promotion dict, end datetime) or (None, None).
 
-    promotionEndDate is UTC ("2026-10-19T06:59:00Z" = the 10/18 Pacific end of day the page
-    text names). Takes the warehouse's own discounts block (else the first); of its promotions,
-    the soonest end still in the future, else the latest one. Never raises.
+    Takes the warehouse's own discounts block (else the first); of its promotions that carry a
+    promotionEndDate, the soonest end still in the future, else the latest one. Never raises.
     """
     try:
         blocks = [b for b in (item.get("discounts") or []) if isinstance(b, dict)]
         block = next((b for b in blocks if str(b.get("warehouseNumber")) == str(warehouse)), None)
         block = block or (blocks[0] if blocks else None)
         if not block:
-            return None
-        ends = []
+            return None, None
+        dated = []
         for promo in block.get("promotions") or []:
             raw = promo.get("promotionEndDate") if isinstance(promo, dict) else None
             if raw:
-                ends.append(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
-        if not ends:
-            return None
-        now = datetime.now(ends[0].tzinfo)
-        future = [e for e in ends if e >= now]
-        end = min(future) if future else max(ends)
-        try:
-            from zoneinfo import ZoneInfo
-            local = end.astimezone(ZoneInfo("America/Los_Angeles"))
-        except Exception:   # no tzdata on this box -> assume PDT
-            local = end - timedelta(hours=7)
-        return f"{local.month}/{local.day}/{local:%y}"
+                dated.append((datetime.fromisoformat(str(raw).replace("Z", "+00:00")), promo))
+        if not dated:
+            return None, None
+        now = datetime.now(dated[0][0].tzinfo)
+        future = [d for d in dated if d[0] >= now]
+        end, promo = min(future, key=lambda d: d[0]) if future else max(dated, key=lambda d: d[0])
+        return promo, end
     except Exception:
-        return None
+        return None, None
+
+
+def _end_local(end):
+    """UTC promotionEndDate -> Pacific "M/D/YY" ("2026-10-19T06:59Z" = the 10/18 the page text names)."""
+    try:
+        from zoneinfo import ZoneInfo
+        local = end.astimezone(ZoneInfo("America/Los_Angeles"))
+    except Exception:   # no tzdata on this box -> assume PDT
+        local = end - timedelta(hours=7)
+    return f"{local.month}/{local.day}/{local:%y}"
+
+
+def _promo_end_local(item, warehouse):
+    """Sale end date "M/D/YY" (Pacific) of the promotion behind the sale price, or None."""
+    _promo, end = _select_promotion(item, warehouse)
+    return _end_local(end) if end else None
+
+
+COUPON_MFR, COUPON_STORE, COUPON_OTHER = "MFR", "STORE", "OTHER"
+_COUPON_LABELS = {COUPON_MFR: "Manufacturer Coupon", COUPON_STORE: "Instant Savings",
+                  COUPON_OTHER: "Other Promotion"}
+# Not a plain "$X off": multi-buy tiers, percent-off, freebies, mail-in style offers
+_OTHER_PROMO_RX = re.compile(r"\bbuy\s+\d|\d+\s*%|\bfree\b|\bgift\s*card|\brebate\b|\bbogo\b", re.IGNORECASE)
+
+
+def _promo_text(promo):
+    """All human text of a promotion: text.{longText,shortText,disclaimerText}.<locale>.text.
+
+    Real shape (display-price-lite, 2026-09-24): text = {"longText": {"en-US": {"text": "...",
+    "defaultTextTemplateId": "1"}}, "shortText": {...}, "disclaimerText": {...}}; an empty
+    disclaimerText can be {} or {"en-US": {"text": ""}}.
+    """
+    out = []
+    text = promo.get("text") if isinstance(promo, dict) else None
+    if isinstance(text, dict):
+        for kind in ("longText", "shortText", "disclaimerText"):
+            locales = text.get(kind)
+            if isinstance(locales, dict):
+                for loc in locales.values():
+                    if isinstance(loc, dict) and loc.get("text"):
+                        out.append(str(loc["text"]))
+    return " ".join(out)
+
+
+def classify_promotion(promo):
+    """
+    A promotion dict -> (coupon_type, label): "MFR" / "STORE" / "OTHER", or (None, None) when
+    there is no promotion to classify.
+
+      MFR    the text says "manufacturer's savings" (the item's manufacturer funds the discount;
+             Costco must label it, e.g. "$8 manufacturer's savings is valid 9/21/26 through ...")
+      OTHER  a multi-buy / percent-off / freebie / rebate style offer
+      STORE  any other amount-off (promotionType AMT_OFF_*, or "savings"/"off"/"instant" text):
+             Costco's own instant savings. Costco.com (warehouse 1) shows the same $8 promotion
+             as plain "$8 savings" with no manufacturer mention, so absence of the word = STORE.
+      Anything else unrecognisable -> OTHER.
+    promotionType alone does not separate MFR from STORE (both real samples are
+    AMT_OFF_IND_CAT_ENT).
+    """
+    if not isinstance(promo, dict):
+        return None, None
+    text = _promo_text(promo)
+    ptype = str(promo.get("promotionType") or "").upper()
+    if re.search(r"manufacturer", text, re.IGNORECASE):
+        kind = COUPON_MFR
+    elif _OTHER_PROMO_RX.search(text) or (ptype and not ptype.startswith("AMT_OFF")):
+        kind = COUPON_OTHER
+    elif ptype.startswith("AMT_OFF") or re.search(r"\bsavings?\b|\boff\b|\binstant\b", text, re.IGNORECASE):
+        kind = COUPON_STORE
+    else:
+        kind = COUPON_OTHER
+    return kind, _COUPON_LABELS[kind]
 
 
 def _parse_price_payload(data, whs_order=()):
     """
     Parse a Costco price-API JSON body -> {"price", "original_price", "savings",
-    "authoritative", "item_id", "sale_expires"} or None when it carries no usable price. Pure (no browser).
+    "authoritative", "item_id", "sale_expires", "coupon_type", "coupon_label"} or None when it carries no usable price. Pure (no browser).
 
     Handles, in order:
       * display-price-lite (Sep 2026): {"priceData": [{"id", "displayPrice": [ {per-warehouse}, ...]}]}.
@@ -798,13 +864,16 @@ def _parse_price_payload(data, whs_order=()):
             parsed = _price_from_entry(entry)
             if parsed:
                 parsed["item_id"] = str(item["id"]) if item.get("id") else None
-                parsed["sale_expires"] = (_promo_end_local(item, entry.get("warehouseNumber"))
-                                          if parsed["original_price"] else None)
+                promo, end = (_select_promotion(item, entry.get("warehouseNumber"))
+                              if parsed["original_price"] else (None, None))
+                parsed["sale_expires"] = _end_local(end) if end else None
+                parsed["coupon_type"], parsed["coupon_label"] = classify_promotion(promo)
                 return parsed
     legacy = _money(data.get("finalOnlinePrice"))
     if legacy:
         return {"price": legacy, "original_price": None, "savings": None,
-                "authoritative": False, "item_id": None, "sale_expires": None}
+                "authoritative": False, "item_id": None, "sale_expires": None,
+                "coupon_type": None, "coupon_label": None}
     return None
 
 
@@ -823,7 +892,8 @@ def scrape_costco(url, page):
               "dimensions": {"length","width","height"} inches|None,
               "item_number": str|None, "purchase_limit": int|None,
               "on_sale": bool, "sale_savings": float|None, "original_price": float|None,
-              "sale_expires": str|None, "free_shipping": bool,
+              "sale_expires": str|None, "coupon_type": "MFR"|"STORE"|"OTHER"|None,
+              "coupon_label": str|None, "free_shipping": bool,
               "in_stock": bool, "error": str|None, "http_status": int|None}
     """
     result = {
@@ -832,8 +902,8 @@ def scrape_costco(url, page):
         "brand": None, "model": None, "dimensions": None,
         "item_number": None, "purchase_limit": None, "in_stock": False,
         "on_sale": False, "sale_savings": None, "original_price": None,
-        "sale_expires": None, "free_shipping": False,
-        "error": None, "http_status": None,
+        "sale_expires": None, "coupon_type": None, "coupon_label": None,
+        "free_shipping": False, "error": None, "http_status": None,
     }
 
     # Item number from URL (most reliable — format: .product.1999611.html)
@@ -1027,6 +1097,10 @@ def scrape_costco(url, page):
                 r"(?:through|ends?|valid\s+through)\s+(\d{1,2}/\d{1,2}/\d{2,4})",
                 prod_text, re.IGNORECASE
             )
+            if api and api.get("coupon_type"):
+                # kind of sale (manufacturer coupon vs store instant savings) — pattern data for
+                # sale-cycle prediction; None when the sale came from a DOM fallback (unknown)
+                result["coupon_type"], result["coupon_label"] = api["coupon_type"], api.get("coupon_label")
             if api and api.get("sale_expires"):
                 result["sale_expires"] = api["sale_expires"]   # authoritative: API promotionEndDate
             elif exp_m:

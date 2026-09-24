@@ -1081,7 +1081,9 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             # Sale History tab (deduped inside; never raises — must not break the run)
             if sale_info_val:
                 log_sale(service, title, category, live_price or costco_cost,
-                         reg_price, sale_info_val)
+                         reg_price, sale_info_val,
+                         coupon_type=costco_data.get("coupon_type") or "",
+                         coupon_label=costco_data.get("coupon_label") or "")
             if ebay_data.get("sold_90d") is not None:
                 updates.append((COL["sold_90d"],   ebay_data["sold_90d"]))
             if ebay_data.get("avg_sold_price") is not None:

@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from tools.costco_scraper import _parse_price_payload, price_miss_message
+from tools.costco_scraper import _parse_price_payload, classify_promotion, price_miss_message
 
 FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -23,7 +23,8 @@ def test_real_sale_response_store_warehouse_first():
     # URL was whsNumber=847,1 -> the store (847): $39.99 regular, $8 off, $31.99 to pay
     p = _parse_price_payload(ENERGY, ["847", "1"])
     assert p == {"price": 31.99, "original_price": 39.99, "savings": 8.0,
-                 "authoritative": True, "item_id": "1711796", "sale_expires": "10/18/26"}
+                 "authoritative": True, "item_id": "1711796", "sale_expires": "10/18/26",
+                 "coupon_type": "MFR", "coupon_label": "Manufacturer Coupon"}
 
 
 def test_warehouse_1_is_a_different_undiscounted_price():
@@ -50,7 +51,8 @@ def _payload(**entry):
 def test_not_on_sale():
     p = _parse_price_payload(_payload(onlinePrice=24.99, aggregatedDiscountAmt=0, deliveredPrice=24.99), ["847"])
     assert p == {"price": 24.99, "original_price": None, "savings": None,
-                 "authoritative": True, "item_id": "1", "sale_expires": None}
+                 "authoritative": True, "item_id": "1", "sale_expires": None,
+                 "coupon_type": None, "coupon_label": None}
 
 
 def test_strings_dollar_signs_and_commas():
@@ -117,3 +119,59 @@ def test_sale_expires_none_when_not_on_sale_or_no_discounts():
     del data["priceData"][0]["discounts"]
     p = _parse_price_payload(data, ["847", "1"])
     assert p["price"] == 31.99 and p["sale_expires"] is None
+
+
+# ── coupon_type: what KIND of sale (manufacturer coupon vs store instant savings) ───────────────
+
+def _promo(long_text="", short_text="$8 OFF", ptype="AMT_OFF_IND_CAT_ENT", disclaimer=None):
+    def loc(t):
+        return {"en-US": {"text": t, "defaultTextTemplateId": "1"}}
+    text = {"longText": loc(long_text), "shortText": loc(short_text),
+            "disclaimerText": loc(disclaimer) if disclaimer is not None else {}}
+    return {"promotionType": ptype, "text": text, "calculatedDiscountAmount": 8}
+
+
+def test_real_energy_shot_store_warehouse_is_manufacturer_coupon():
+    p = _parse_price_payload(ENERGY, ["847", "1"])
+    assert (p["coupon_type"], p["coupon_label"]) == ("MFR", "Manufacturer Coupon")
+
+
+def test_same_item_costco_com_wording_without_manufacturer_is_store():
+    # Real capture: item 1711799 warehouse 1 says "$8 savings is valid ..." (no manufacturer)
+    p = _parse_price_payload(EXTRA, ["1", "847"])
+    assert p["original_price"] and p["sale_expires"]
+    assert (p["coupon_type"], p["coupon_label"]) == ("STORE", "Instant Savings")
+    assert _parse_price_payload(EXTRA, ["847", "1"])["coupon_type"] == "MFR"
+
+
+def test_classify_promotion_shapes():
+    mfr = _promo("$2 manufacturer's savings is valid 9/1/26 through 9/30/26. Limit 15 per member.")
+    assert classify_promotion(mfr) == ("MFR", "Manufacturer Coupon")
+    store = _promo("$8 savings is valid 9/21/26 through 10/18/26. While supplies last.")
+    assert classify_promotion(store) == ("STORE", "Instant Savings")
+    # manufacturer mention anywhere in the text (disclaimer / short text) still counts
+    assert classify_promotion(_promo("$5 savings valid ...", disclaimer="Manufacturer coupon."))[0] == "MFR"
+    assert classify_promotion(_promo("", short_text="$5 OFF"))[0] == "STORE"        # AMT_OFF, no long text
+    # multi-buy / percent / non amount-off types are OTHER
+    assert classify_promotion(_promo("Buy 3, save $15. Valid 8/31/26 through 11/22/26."))[0] == "OTHER"
+    assert classify_promotion(_promo("Save 20% on this item.", ptype="PCT_OFF_ITEM"))[0] == "OTHER"
+    assert classify_promotion(_promo("", short_text="", ptype=""))[0] == "OTHER"    # nothing recognisable
+    assert classify_promotion(_promo("Special offer.", ptype="BOGO"))[0] == "OTHER"
+
+
+@pytest.mark.parametrize("bad", [None, "x", 5, [], {}])
+def test_classify_promotion_bad_input_is_unclassified_or_other(bad):
+    kind, label = classify_promotion(bad)
+    if bad == {}:
+        assert kind == "OTHER" and label == "Other Promotion"
+    else:
+        assert (kind, label) == (None, None)
+
+
+def test_no_coupon_type_when_not_on_sale_or_no_promotions():
+    p = _parse_price_payload(ENERGY, ["1", "847"])            # warehouse 1 has no sale
+    assert p["coupon_type"] is None and p["coupon_label"] is None
+    data = json.loads(json.dumps(ENERGY))
+    data["priceData"][0]["discounts"][0]["promotions"] = []
+    p = _parse_price_payload(data, ["847", "1"])
+    assert p["price"] == 31.99 and p["coupon_type"] is None and p["sale_expires"] is None
