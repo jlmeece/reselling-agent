@@ -13,6 +13,113 @@ business:
   sale_warn_hours: 48              # first sale expiry warning — time to reprice or plan listing end
   sale_urgent_hours: 24            # urgent sale expiry warning — last chance before margin changes
 
+  # Member-Only Savings discovery (--mode savings). scrape_limit = max product pages opened per run
+  # (~7s each; Costco blocks after ~14 so the session refreshes every 10); add_limit = max NEW rows.
+  # keywords: which savings-page items are "ours". Regex fragments (word-bounded, case-insensitive);
+  # a leading "!" excludes. First matching category wins, so keep the specific ones first. Items that
+  # match no category are never added to the sheet (counted as off_category in the Run Log).
+  savings:
+    url: "https://www.costco.com/warehouse-savings.html"
+    scrape_limit: 40
+    add_limit: 10
+    keywords:
+      "Precious Metals":
+        - '(gold|silver|platinum|palladium) (bars?|coins?|rounds?|bullion)'
+        - 'bullion'
+        - 'pamp'
+        - 'krugerrand'
+        - 'maple leaf'
+        - 'american (gold|silver) eagle'
+      "Jewelry":
+        - 'bracelets?'
+        - 'necklaces?'
+        - 'earrings?'
+        - 'pendants?'
+        - 'diamond (rings?|studs?|earrings?|bands?)'
+        - 'wedding bands?'
+        - '(10|14|18|22|24) ?kt'
+        - '(10|14|18) ?k (yellow|white|rose) gold'
+        - 'sterling silver'
+      "Watches":
+        - 'citizen'
+        - 'seiko'
+        - 'luminox'
+        - 'bering'
+        - 'bulova'
+        - 'timex'
+        - 'eco-drive'
+        - 'watch(es)?'
+        - '!smart ?watch(es)?'
+        - '!apple watch'
+        - '!watch band'
+      "Outdoor Furniture":
+        - 'patio'
+        - 'adirondack'
+        - 'fire (pit|table|bowl)'
+        - 'gazebo'
+        - 'pergola'
+        - 'outdoor (seating|dining|sofa|sectional|furniture|chairs?|table|conversation|chat)'
+        - '(chat|conversation) set'
+        - '!cushion covers?'
+      "Pharmacy":
+        - 'vitamins?'
+        - 'multi-?vitamins?'
+        - 'supplements?'
+        - 'omega'
+        - 'fish oil'
+        - 'probiotics?'
+        - 'calcium'
+        - 'magnesium'
+        - 'melatonin'
+        - 'collagen'
+        - 'l-theanine'
+        - 'coq10'
+        - 'b-?12'
+        - 'zinc'
+        - 'vitamin [a-e]\d*'
+        - 'elderberry'
+        - 'turmeric'
+        - 'biotin'
+        - 'glucosamine'
+        - 'joint health'
+        - 'energy shot'
+        - 'emergen-?c'
+        - 'airborne'
+        - 'softgels?'
+        - 'gummies'
+        - '!dog'
+        - '!cat'
+        - '!pet'
+      "Small Appliances":
+        - 'air fryers?'
+        - 'blenders?'
+        - 'vitamix'
+        - 'kitchenaid'
+        - 'stand mixers?'
+        - 'food processors?'
+        - 'coffee (makers?|machines?)'
+        - 'espresso (machines?|makers?)'
+        - 'instant pot'
+        - 'multi-?cookers?'
+        - 'pressure cookers?'
+        - 'slow cookers?'
+        - 'rice cookers?'
+        - 'toasters?'
+        - 'electric kettles?'
+        - 'kettle'
+        - 'juicers?'
+        - 'waffle makers?'
+        - 'induction cooktop'
+        - 'ice cream (makers?|and frozen treat)'
+        - 'ninja'
+        - 'cuisinart'
+        - '!k-?cups?'
+        - '!cookware'
+        - '!vacuums?'
+        - '!knife'
+        - '!knives'
+        - '!tool and gadget'
+
   # Run schedule — times are local (Central). GitHub Actions workflow uses UTC offsets.
   # active:    Check ACTIVE listings — 3x/day, every run
   # daily:     APPROVED→READY, PAUSED_OOS stock check — once/day
@@ -26,6 +133,7 @@ business:
     active_2:   "18:00"    # Central — second live check. VPS UTC 23:00
     rotation:   "09:00"    # Central — Sunday digest. VPS UTC 14:00
     discovery:  "manual"   # Windows only (Chrome/Akamai). Run from menu.
+    savings:    "08:50"    # Central — daily Member-Only Savings scrape (Windows only, Chrome)
 
 categories:
 

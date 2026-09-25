@@ -424,6 +424,13 @@ def _norm_title(s) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", str(s).lower()).split())
 
 
+def token_jaccard(norm_a: str, norm_b: str) -> float:
+    """Jaccard similarity of two already-normalised titles' word sets (0.0 when both empty)."""
+    a, b = set(norm_a.split()), set(norm_b.split())
+    union = a | b
+    return len(a & b) / len(union) if union else 0.0
+
+
 def _suggest_links(entries, pool) -> dict:
     """
     Suggest an eBay item for each unlinked ACTIVE row. entries: dicts with row_num +
@@ -440,14 +447,12 @@ def _suggest_links(entries, pool) -> dict:
         norm = _norm_title(e["title"])
         if not norm:
             continue
-        toks = set(norm.split())
         best_score, best = None, []
         for l, ln in pool_norm:
             if ln == norm:
                 score, kind = (1, 1.0), "exact"
             else:
-                union = toks | set(ln.split())
-                jac = len(toks & set(ln.split())) / len(union) if union else 0.0
+                jac = token_jaccard(norm, ln)
                 if jac < CLOSE_MATCH_JACCARD:
                     continue
                 score, kind = (0, jac), "close"

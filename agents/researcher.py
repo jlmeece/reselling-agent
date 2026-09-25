@@ -159,20 +159,27 @@ def _get_existing_urls(all_data):
 def _add_new_products_batch(service, sheet_name, products, COL):
     """
     Appends all newly discovered products as PENDING rows in a single API call.
+    Optional per-product keys (used by --mode savings): sale_info (col X badge), regular_price
+    (col AW), tier_summary (col T text) — absent for plain category discovery.
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     col_value_dicts = []
     for product in products:
-        col_value_dicts.append({
+        row = {
             COL["title"]:        product["title"],
             COL["category"]:     product["category"],
             COL["costco_url"]:   product["url"],
             COL["costco_cost"]:  product.get("price") or "",
             COL["status"]:       "PENDING",
             COL["last_checked"]: now,
-            COL["tier_summary"]: "Discovered — awaiting research",
+            COL["tier_summary"]: product.get("tier_summary") or "Discovered — awaiting research",
             COL["comp_saturation"]: "=IFERROR(M{ROW}/MAX(K{ROW},1),\"\")",
-        })
+        }
+        if product.get("sale_info"):
+            row[COL["sale_info"]] = product["sale_info"]
+        if product.get("regular_price"):
+            row[COL["regular_price"]] = product["regular_price"]
+        col_value_dicts.append(row)
     append_rows_batch(service, sheet_name, col_value_dicts)
     for product in products:
         logger.info(f"  Added PENDING: {product['title'][:50]}")

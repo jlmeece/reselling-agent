@@ -3,7 +3,7 @@ Costco -> eBay Monitoring Agent
 ================================
 WAT Framework: Agent layer for monitoring and status management.
 
-Eleven run modes (--mode flag):
+Twelve run modes (--mode flag):
   active        3x/day  ACTIVE listings — stock/price, reprice alerts, URGENT SMS
   daily         1x/day  APPROVED->READY (copy+stock verify), PAUSED_OOS stock check
   research      1x/day  PENDING rows — full research + scoring (calls researcher.py logic)
@@ -15,6 +15,7 @@ Eleven run modes (--mode flag):
   ebay_sync     4x/day     Sync eBay active listings -> units_sold (col U); flag margin breaches
   sale-digest   1x/day     "Sale Radar" Telegram digest of items really on sale (read-only, --dry-run prints)
   sale-refresh  on demand  Re-scrape non-ACTIVE rows with unverified sale badges (writes G/X/AW only)
+  savings       1x/day     Costco Member-Only Savings page -> update tracked sales, alert, add in-category PENDING rows
 
 Run locally: python agents/scheduler.py --mode active
 Scheduled via Windows Task Scheduler.
@@ -37,7 +38,8 @@ from loguru import logger
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
 
-from tools.sheet_writer import get_sheets_service, read_sheet, write_row_partial
+from tools.sheet_writer import (get_sheets_service, read_sheet, write_row_partial, safe_write_row,
+                                ensure_grid_columns, required_grid_columns)
 from tools.costco_scraper import scrape_costco, make_browser, price_miss_message
 from tools.cookie_refresh import refresh_costco_cookies, cookie_expiry_stats, expiry_refresh_needed
 from tools.status_logic import (
@@ -56,7 +58,7 @@ from tools.sale_monitor import (
 from tools.sale_digest import select_sale_items, format_digest
 from tools.spot_price import check_spot_movement
 from agents.auditor import run_audit
-from tools import ebay_sync
+from tools import ebay_sync, costco_savings
 
 
 # ── Config loaders ────────────────────────────────────────────────────────────
@@ -1174,6 +1176,184 @@ def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
     return {"status": "ok", "notes": notes}
 
 
+SAVINGS_ALERT_STATE = os.path.join(_REPO_ROOT, "data", ".savings_alert.json")
+
+
+def _append_pending_rows(service, sheet_name, products, COL):
+    """Append PENDING rows via the researcher's discovery writer (imported lazily — it is heavy)."""
+    from agents.researcher import _add_new_products_batch
+    _add_new_products_batch(service, sheet_name, products, COL)
+
+
+def run_savings(config, COL, service, sheet_name, start_row, end_row,
+                dry_run=False, limit=None, add_limit=None) -> dict:
+    """
+    savings mode: scrape Costco's Member-Only Savings page (tools.costco_savings) and cross-reference
+    it with the sheet.
+      TRACKED row  -> re-verify on the product page (price API), write G / X / AW only. Never touches
+                      status or col P. A sale we did not already have (no badge, or price/end changed)
+                      goes into ONE consolidated Telegram message.
+      NEW item     -> only if it classifies into one of our categories (config business.savings.keywords):
+                      appended as PENDING with G/AW/X pre-filled, capped at add_limit per run.
+    `limit` caps product pages opened per run (tracked first, then new by savings %). dry_run scrapes
+    but writes / alerts / logs nothing and prints what it WOULD do. Needs Chrome (Windows only).
+    """
+    biz = config["business"].get("savings") or {}
+    limit = limit or int(biz.get("scrape_limit", 40))
+    add_limit = add_limit or int(biz.get("add_limit", 10))
+    tag = "[dry-run] " if dry_run else ""
+    if sys.platform != "win32":
+        return {"status": "ok", "notes": "savings: skipped (non-Windows — needs Chrome)"}
+
+    from tools.costco_scraper import refresh_session
+    keywords = costco_savings.compile_keywords(biz.get("keywords"))
+    rows = costco_savings.load_rows(
+        read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}"), COL, start_row)
+    existing_titles = {r["norm_title"] for r in rows}
+    existing_pids = {r["product_id"] for r in rows if r["product_id"]}
+    if not dry_run:
+        try:
+            ensure_grid_columns(service, sheet_name, required_grid_columns(COL))
+        except Exception as e:
+            logger.warning(f"  grid check failed (non-fatal): {e}")
+    alert_state = load_alert_state(SAVINGS_ALERT_STATE)
+    now = datetime.now()
+
+    n = {"updated": 0, "unchanged": 0, "added": 0, "not_on_sale": 0, "failed": 0,
+         "dup": 0, "over_budget": 0}
+    entries, keys, new_products, plan = [], [], [], []
+
+    with make_browser() as page:
+        items, banner_end = costco_savings.scrape_savings_listing(
+            page, biz.get("url") or costco_savings.SAVINGS_URL)
+        if not items:
+            msg = "savings: page yielded 0 items — Costco layout changed or the page was blocked"
+            logger.error(msg)
+            token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+            if not dry_run and token and chat_id:
+                _send_telegram(token, chat_id, f"⚠️ {msg}")
+            return {"status": "error", "errors": msg}
+
+        matches = costco_savings.match_items(items, rows)
+        new_in, off_category = [], 0
+        for it in matches["new"]:
+            cat = costco_savings.classify_category(it["title"], keywords)
+            if cat:
+                new_in.append((it, cat))
+            else:
+                off_category += 1
+        new_in.sort(key=lambda t: costco_savings.savings_rank(t[0]), reverse=True)
+        queue = ([("tracked", it, row) for it, row, _ in matches["tracked"]]
+                 + [("new", it, cat) for it, cat in new_in])
+        n["over_budget"] = max(0, len(queue) - limit)
+        queue = queue[:limit]
+
+        for pos, (kind, item, ref) in enumerate(queue):
+            if kind == "new" and len(new_products) >= add_limit:
+                n["over_budget"] += 1
+                continue
+            if pos and pos % 10 == 0:
+                refresh_session(page)
+            logger.info(f"  [savings] {kind}: {item['title'][:60]}")
+            data = scrape_costco(item["url"], page=page)
+            time.sleep(2)
+            if data.get("stock_status") == "CHECK FAILED" or not data.get("price"):
+                n["failed"] += 1
+                continue
+            if not data.get("on_sale"):
+                n["not_on_sale"] += 1          # listing text was only a hint; the price API disagrees
+                continue
+            if not data.get("sale_expires") and banner_end:
+                data = {**data, "sale_expires": banner_end}
+            price, orig = data["price"], data.get("original_price")
+            coupon = dict(coupon_type=data.get("coupon_type") or "",
+                          coupon_label=data.get("coupon_label") or "")
+
+            if kind == "tracked":
+                row = ref
+                old_cost, old_badge = to_float(row["costco_cost"]), row["sale_info"]
+                old_regular = to_float(row["regular_price"])
+                updates = [(COL["costco_cost"], price)] + sale_column_updates(
+                    COL, data, bool(old_badge), bool(row["regular_price"]))
+                badge = updates[1][1]
+                old_end, new_end = parse_sale_expiry(old_badge, now), parse_sale_expiry(badge, now)
+                is_new_sale = (not old_badge or old_cost is None or abs(old_cost - price) > 0.005
+                               or (old_end is not None and new_end is not None
+                                   and old_end.date() != new_end.date()))
+                changed = (old_cost is None or abs(old_cost - price) > 0.005 or badge != old_badge
+                           or (orig or None) != old_regular)
+                if not changed:
+                    n["unchanged"] += 1
+                    continue
+                plan.append(f"UPDATE row {row['row_num']}: {row['title'][:50]} — G {row['costco_cost'] or '-'}→{price}, "
+                            f"X '{badge}', AW {orig or '-'}{'  [NEW SALE]' if is_new_sale else ''}")
+                if not dry_run:
+                    safe_write_row(service, sheet_name, row["row_num"], updates)
+                    log_sale(service, row["title"], row["category"], price,
+                             f"{orig:.2f}" if orig else "", badge, **coupon)
+                    time.sleep(0.3)
+                n["updated"] += 1
+                if is_new_sale:
+                    key = f"{row['title']}|{price:.2f}|{new_end:%Y-%m-%d}" if new_end else f"{row['title']}|{price:.2f}|-"
+                    if not already_alerted(alert_state, key):
+                        entries.append({"title": row["title"], "price": price, "regular": orig,
+                                        "end": data.get("sale_expires"),
+                                        "net": costco_savings.net_profit(row, price), "new_row": False})
+                        keys.append(key)
+            else:
+                cat = ref
+                title = data.get("title") or item["title"]
+                if (costco_savings._norm_title(title) in existing_titles
+                        or costco_savings.product_id(item["url"]) in existing_pids):
+                    n["dup"] += 1              # the full title turned out to be a row we already have
+                    continue
+                updates = sale_column_updates(COL, data, False, False)
+                badge = updates[0][1]
+                new_products.append({"title": title, "category": cat, "url": item["url"], "price": price,
+                                     "sale_info": badge, "regular_price": orig or "",
+                                     "tier_summary": "Discovered via Member-Only Savings — awaiting research"})
+                existing_titles.add(costco_savings._norm_title(title))
+                plan.append(f"ADD PENDING [{cat}]: {title[:60]} — ${price}"
+                            f"{f' (was ${orig:.2f})' if orig else ''} X '{badge}'")
+                entries.append({"title": title, "price": price, "regular": orig,
+                                "end": data.get("sale_expires"), "net": None, "new_row": True})
+                keys.append(f"{title}|{price:.2f}|new")
+                if not dry_run:
+                    log_sale(service, title, cat, price, f"{orig:.2f}" if orig else "", badge, **coupon)
+
+    if new_products and not dry_run:
+        _append_pending_rows(service, sheet_name, new_products, COL)
+    n["added"] = len(new_products)
+
+    message = costco_savings.format_alert(entries)
+    result = {"status": "ok", "new_products": n["added"]}
+    if dry_run:
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # cp1252 can't print 🔔
+        except Exception:
+            pass
+        print("\n".join(plan) or "(nothing would be written)")
+        print("--- Telegram message ---")
+        print(message or "(none — no new sales)")
+    elif message:
+        token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if token and chat_id and _send_telegram(token, chat_id, message):
+            record_alerts(alert_state, keys, path=SAVINGS_ALERT_STATE)
+        else:
+            result["status"] = "error"
+            result["errors"] = "savings alert not delivered: Telegram not configured or send failed"
+
+    notes = (f"{tag}savings: {len(items)} on page — {len(matches['tracked'])} tracked, "
+             f"{len(new_in)} new in-category ({off_category} off-category skipped), "
+             f"{len(matches['possible'])} possible + {len(matches['ambiguous'])} ambiguous held back; "
+             f"updated {n['updated']}, unchanged {n['unchanged']}, added {n['added']}, "
+             f"alerted {len(entries)}, not on sale per API {n['not_on_sale']}, dup {n['dup']}, "
+             f"failed {n['failed']}, over budget {n['over_budget']}")
+    logger.info(notes)
+    result["notes"] = notes
+    return result
+
+
 def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
     """
     ebay_sync mode: fetch eBay listings, write units_sold, return Run Log keys
@@ -1324,7 +1504,7 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "audit", "ebay_sync",
-                 "sale-digest", "sale-refresh"],
+                 "sale-digest", "sale-refresh", "savings"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -1335,21 +1515,24 @@ def main():
             "refresh-notes:  Retroactively reformat Col T summary line (one-shot)\n"
             "recheck:        Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot)\n"
             "audit:          Graveyard pass — remove junk, flag borderline rows (every 2 days)\n"
-            "ebay_sync:      Sync eBay active listings -> units_sold; flag price mismatch / removed listings"
+            "ebay_sync:      Sync eBay active listings -> units_sold; flag price mismatch / removed listings\n"
+            "sale-digest:    ONE Telegram message of tracked items really on sale (read-only)\n"
+            "sale-refresh:   Re-scrape non-ACTIVE rows with unverified sale badges (G/X/AW only)\n"
+            "savings:        Scrape Costco Member-Only Savings -> update tracked sales, alert, add new PENDING rows"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
                         help="Limit research/discovery to one category (e.g. 'Jewelry')")
     parser.add_argument("--limit", type=int, default=None,
-                        help="Limit research to N products (for testing)")
+                        help="Limit research to N products (for testing); savings: max product pages opened")
     parser.add_argument("--force", action="store_true",
                         help="(recheck only) Re-run Costco + eBay on ALL products, not just missing-data rows")
     parser.add_argument("--add-limit", type=int, default=None,
-                        help="Max new products to add to sheet during discovery")
+                        help="Max new products to add to sheet during discovery / savings")
     parser.add_argument("--row", type=int, default=None,
                         help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
-                        help="(ebay_sync / sale-digest only) Report without writing units_sold / print the digest instead of sending")
+                        help="(ebay_sync / sale-digest / savings) Report without writing / print instead of sending")
     args = parser.parse_args()
 
     if not _acquire_lock(args.mode):
@@ -1401,6 +1584,10 @@ def main():
         elif args.mode == "sale-refresh":
             _run_results.update(run_sale_refresh(config, COL, service, sheet_name,
                                                  start_row, end_row, limit=args.limit or 12))
+        elif args.mode == "savings":
+            _run_results.update(run_savings(config, COL, service, sheet_name, start_row, end_row,
+                                            dry_run=args.dry_run, limit=args.limit,
+                                            add_limit=args.add_limit))
         # One alert per run if the Costco price API stopped returning prices (col G would
         # otherwise freeze silently, as it did after the Sep 2026 redesign).
         _miss = price_miss_message()
@@ -1432,7 +1619,7 @@ def main():
             except Exception as e:
                 logger.warning(f"Heartbeat ping FAILED ({_hc_key}): {e}")
         # Run summary email (skip for active monitor — already handled by send_urgent_alert)
-        if args.mode != "active":
+        if args.mode != "active" and not args.dry_run:
             try:
                 send_run_summary(args.mode, _run_results)
             except Exception as e:
