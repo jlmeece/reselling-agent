@@ -200,7 +200,7 @@ def _write_legend_tab(service, spreadsheet_id):
         ["AC (ebay_fees)",     "=H*AB",                  "eBay fees (fee_rate × price)"],
         ["AF (tax_est)",       "=G*0.0825",              "Estimated Costco tax"],
         ["AG (site_profit)",   "=H*0.90-G",             "Gross margin at 90% of price"],
-        ["AH (ad_budget)",     "=I*0.15",               "15% of net profit for promoted listings"],
+        ["AH (profit reserve)", "=I*0.15",               "15% of net profit held as reserve (not a real ad spend)"],
         ["", "", ""],
         ["KEY COLUMNS", "Column", "Notes"],
         ["AB  fee_rate",       "AB", "eBay fee rate — default 0.1325 (13.25%)"],

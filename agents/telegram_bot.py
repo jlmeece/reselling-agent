@@ -468,7 +468,7 @@ def _format_net_with_ads_line(net_profit_raw, ad_budget_raw, ebay_price_raw):
     else:
         margin_str = "—"
     sign = "-" if net_with_ads < 0 else ""
-    return f"Net after ad reserve: {sign}${abs(net_with_ads):,.2f} ({margin_str})"
+    return f"Net after reserve: {sign}${abs(net_with_ads):,.2f} ({margin_str})"
 
 
 def _parse_sale_expiry_info(sale_info_raw, now=None):
@@ -580,9 +580,9 @@ def format_product_detail(p, now=None):
 
     ad_budget = _parse_currency(p.get("ad_budget"))
     if ad_budget is not None and ad_budget > 0:
-        lines.append(f"Ad reserve ${_format_price(p.get('ad_budget'))} (15% of net profit)")
+        lines.append(f"Profit reserve ${_format_price(p.get('ad_budget'))} (15% of net profit)")
 
-    lines.append(_format_net_fragment(p.get("net_profit"), p.get("net_margin"), label="Net without ads:"))
+    lines.append(_format_net_fragment(p.get("net_profit"), p.get("net_margin"), label="Net before reserve:"))
     net_with_ads_line = _format_net_with_ads_line(p.get("net_profit"), p.get("ad_budget"), p.get("ebay_price"))
     if net_with_ads_line:
         lines.append(net_with_ads_line)
@@ -793,7 +793,7 @@ def format_top_opportunities(products, n=3):
         tier_flag = " 🥇" if tier == "Tier 1 🥇" else ""
         sat_flag = " ⚠️ saturated" if (p["comp_saturation"] or "").strip().lower() == "high" else ""
         lines.append(
-            f"{i}. {title} — Buy ${buy} · List ${list_price} · {net_frag} · Ads ${ads}{tier_flag}{sat_flag}"
+            f"{i}. {title} — Buy ${buy} · List ${list_price} · {net_frag} · Reserve ${ads}{tier_flag}{sat_flag}"
         )
     return "\n".join(lines)
 
@@ -1043,7 +1043,7 @@ async def cmd_help(update, context):
         "/status — last run time, pass/fail, cookie age\n"
         "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, ebay_sync, sale-digest, savings, telegram_bot)\n"
         "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
-        "/dashboard — funnel, top Ready opportunities, ad budget, sale urgency, category health\n"
+        "/dashboard — funnel, top Ready opportunities, profit reserve, sale urgency, category health\n"
         "/restart — reload bot after a code update\n"
         "/help — this message"
     )

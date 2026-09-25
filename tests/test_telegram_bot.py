@@ -266,7 +266,7 @@ def test_format_regular_price_line_none_when_equal_to_current():
 
 def test_format_net_with_ads_line_subtracts_ad_budget():
     line = _format_net_with_ads_line("$45.20", "$6.75", "$459.99")
-    assert line == "Net after ad reserve: $38.45 (8%)"
+    assert line == "Net after reserve: $38.45 (8%)"
 
 
 def test_format_net_with_ads_line_treats_blank_ad_budget_as_zero():
