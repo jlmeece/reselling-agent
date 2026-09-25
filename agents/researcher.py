@@ -575,6 +575,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
     # ── Step 3: Research each product ────────────────────────────
     tier1_results = []
     new_tier2 = []
+    copy_queue = []  # T1/T2 products needing listing copy — batched at end of run
 
     # Costco session guard: halt after this many consecutive CHECK FAILED results.
     # Costco rate-limits the scraper after ~14 product page hits in one session.
@@ -1155,31 +1156,18 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
 
             write_row_partial(service, sheet_name, sheet_row, updates)
 
-            # 3g. Listing copy — generate immediately for Tier 1/2 so it's ready before
-            # Jordan reads the email. Tier 3 skips (PAUSED, not worth the API spend).
+            # 3g. Queue listing copy for Tier 1/2 — generated in batches of 5 at the
+            # end of the run (prompt-caching savings). Tier 3 skips (PAUSED, not worth
+            # the API spend).
             seo_title_idx = col_to_idx(COL["seo_title"])
             if tier in (1, 2) and not safe_get(row, seo_title_idx):
-                try:
-                    copy_batch = [{
-                        "title":      title,
-                        "category":   category,
-                        "cost":       costco_cost or "",
-                        "sell_price": ebay_price or "",
-                    }]
-                    copy_result = generate_listing_copy(copy_batch)[0]
-                    copy_updates = [
-                        (COL["seo_title"],    copy_result.get("seo_title", "")),
-                        (COL["bullets"],      copy_result.get("bullets", "")),
-                        (COL["description"],  copy_result.get("description", "")),
-                        (COL["redirect_msg"], copy_result.get("redirect_msg", "")),
-                        (COL["meta_desc"],    copy_result.get("meta_desc", "")),
-                        (COL["keywords"],     copy_result.get("keywords", "")),
-                        (COL["alt_text"],     copy_result.get("alt_text", "")),
-                    ]
-                    write_row_partial(service, sheet_name, sheet_row, copy_updates)
-                    logger.info(f"  Copy generated → {copy_result.get('seo_title','')[:60]}")
-                except Exception as e:
-                    logger.warning(f"  Listing copy failed: {e}")
+                copy_queue.append({
+                    "sheet_row":  sheet_row,
+                    "title":      title,
+                    "category":   category,
+                    "cost":       costco_cost or "",
+                    "sell_price": ebay_price or "",
+                })
 
             # Tier routing
             if tier == 1 and len(tier1_results) < 3:
@@ -1235,6 +1223,37 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
         logger.info(f"MPT re-rank: {len(_ranked)} row(s) ranked across full portfolio.")
     except Exception as _rerank_err:
         logger.warning(f"MPT re-rank failed (non-fatal): {_rerank_err}")
+
+    # ── Step 3c: Batch-generate listing copy (5/call, prompt-cached) ──
+    # Deferred from the per-product loop so generate_listing_copy can batch up to
+    # 5 products per API call instead of one. Research-time copy for T1/T2 was the
+    # one call site still doing batch=1, defeating the prompt cache (see
+    # listing_copy.py: "reduces API spend by 60-80%"). A failed batch leaves copy
+    # blank — the scheduler's daily mode regenerates it for APPROVED→READY rows.
+    if copy_queue:
+        _COPY_BATCH = 5
+        for _i in range(0, len(copy_queue), _COPY_BATCH):
+            _chunk = copy_queue[_i:_i + _COPY_BATCH]
+            try:
+                _copy_results = generate_listing_copy([
+                    {"title": q["title"], "category": q["category"],
+                     "cost": q["cost"], "sell_price": q["sell_price"]}
+                    for q in _chunk
+                ])
+                for _q, _cr in zip(_chunk, _copy_results):
+                    _copy_updates = [
+                        (COL["seo_title"],    _cr.get("seo_title", "")),
+                        (COL["bullets"],      _cr.get("bullets", "")),
+                        (COL["description"],  _cr.get("description", "")),
+                        (COL["redirect_msg"], _cr.get("redirect_msg", "")),
+                        (COL["meta_desc"],    _cr.get("meta_desc", "")),
+                        (COL["keywords"],     _cr.get("keywords", "")),
+                        (COL["alt_text"],     _cr.get("alt_text", "")),
+                    ]
+                    write_row_partial(service, sheet_name, _q["sheet_row"], _copy_updates)
+                    logger.info(f"  Copy generated → {_cr.get('seo_title','')[:60]}")
+            except Exception as e:
+                logger.warning(f"  Listing copy batch failed ({len(_chunk)} products): {e}")
 
     # ── Step 4: Update Tier 2 watchlist ──────────────────────────
     tier2_watchlist = [
