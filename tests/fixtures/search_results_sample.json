@@ -1,0 +1,346 @@
+{
+ "_note": "3 real results from gdx-api search/api/v1/search (query OFF, offset 0), 2026-09-24, trimmed",
+ "results": [
+  {
+   "id": "4000290289",
+   "product": {
+    "id": "",
+    "type": "TYPE_UNSPECIFIED",
+    "primaryProductId": "",
+    "gtin": "",
+    "categories": [
+     "Appliances",
+     "Appliances > Small Kitchen Appliances",
+     "Appliances > Small Kitchen Appliances > Air Fryers"
+    ],
+    "title": "Ninja Combi All-in-One Multicooker, Oven, and Air Fryer, Glass Lid",
+    "brands": [
+     "Ninja"
+    ],
+    "languageCode": "",
+    "attributes": {
+     "promotional_statement": {
+      "text": [
+       "$40 manufacturer's savings is valid 9/1/26 through 9/30/26. While supplies last. Limit 5 per member. <a href='/promo-terms-conditions.html'>Terms & Conditions</a>"
+      ],
+      "numbers": []
+     },
+     "pills": {
+      "text": [
+       "Online Only"
+      ],
+      "numbers": []
+     },
+     "marketing_statement": {
+      "text": [
+       "$40 OFF"
+      ],
+      "numbers": []
+     }
+    },
+    "rating": {
+     "ratingCount": 327,
+     "averageRating": 4.4434,
+     "ratingHistogram": []
+    },
+    "availability": "AVAILABILITY_UNSPECIFIED",
+    "fulfillmentInfo": [],
+    "uri": "https://www.costco.com/p/-/ninja-combi-all-in-one-multicooker-oven-and-air-fryer-glass-lid/4000290289"
+   },
+   "variantRollupValues": {
+    "attributes.as400_department": [
+     "33"
+    ],
+    "variantId": [
+     "1838044"
+    ],
+    "attributes.as400_category": [
+     "HJB"
+    ],
+    "attributes.product_class_type": [
+     "Standard"
+    ],
+    "inventory(847, attributes.promotion_short_text)": [
+     "$40 OFF"
+    ],
+    "price": [
+     199.99
+    ],
+    "inventory(725-wm, attributes.availability)": [
+     "IN_STOCK"
+    ],
+    "inventory(847, price)": [
+     159.99
+    ],
+    "attributes.start_date": [
+     "2024-07-10 17:00:00.0"
+    ],
+    "inventory(283-wm, attributes.availability)": [
+     "IN_STOCK"
+    ],
+    "attributes.max_item_order_qty": [
+     "5.0"
+    ],
+    "inventory(847, originalPrice)": [
+     199.99
+    ],
+    "attributes.member_only": [
+     1.0
+    ],
+    "attributes.fsa_eligible": [
+     0.0
+    ],
+    "attributes.program_types": [
+     "Google",
+     "SiteControlledInventory",
+     "Standard",
+     "ShipIt"
+    ],
+    "inventory(731-wm, attributes.availability)": [
+     "IN_STOCK"
+    ],
+    "attributes.min_item_order_qty": [
+     "1"
+    ],
+    "attributes.variable_weight": [
+     0.0
+    ],
+    "attributes.chdi_eligible": [
+     0.0
+    ],
+    "originalPrice": [
+     199.99
+    ],
+    "attributes.buyable": [
+     1.0
+    ]
+   }
+  },
+  {
+   "id": "4000407650",
+   "product": {
+    "id": "",
+    "type": "TYPE_UNSPECIFIED",
+    "primaryProductId": "",
+    "gtin": "",
+    "categories": [
+     "Furniture",
+     "Furniture > Living Room Furniture",
+     "Furniture > Living Room Furniture > Sectional Sofas"
+    ],
+    "title": "Coddle Luke Sleeper Sectional with Reversible Chaise and Storage",
+    "brands": [
+     "Coddle"
+    ],
+    "languageCode": "",
+    "attributes": {
+     "promotional_statement": {
+      "text": [
+       "$700 manufacturer's savings is valid 9/14/26 through 9/27/26. While supplies last. Limit 5 per member. <a href='/promo-terms-conditions.html'>Terms & Conditions</a>"
+      ],
+      "numbers": []
+     },
+     "pills": {
+      "text": [
+       "Costco Direct"
+      ],
+      "numbers": []
+     },
+     "marketing_statement": {
+      "text": [
+       "$700 OFF"
+      ],
+      "numbers": []
+     }
+    },
+    "rating": {
+     "ratingCount": 359,
+     "averageRating": 4.4429,
+     "ratingHistogram": []
+    },
+    "availability": "AVAILABILITY_UNSPECIFIED",
+    "fulfillmentInfo": [],
+    "uri": "https://www.costco.com/p/-/coddle-luke-sleeper-sectional-with-reversible-chaise-and-storage/4000407650"
+   },
+   "variantRollupValues": {
+    "inventory(1470-3pl, attributes.availability)": [
+     "IN_STOCK"
+    ],
+    "attributes.as400_department": [
+     "38"
+    ],
+    "originalPrice": [
+     1899.99
+    ],
+    "attributes.member_only": [
+     0.0
+    ],
+    "attributes.min_item_order_qty": [
+     "1"
+    ],
+    "price": [
+     1899.99
+    ],
+    "attributes.as400_category": [
+     "JAK"
+    ],
+    "attributes.variable_weight": [
+     0.0
+    ],
+    "attributes.fsa_eligible": [
+     0.0
+    ],
+    "attributes.start_date": [
+     "2026-01-11 16:00:00.0"
+    ],
+    "inventory(847, price)": [
+     1199.99
+    ],
+    "attributes.buyable": [
+     1.0
+    ],
+    "inventory(1254-3pl, attributes.availability)": [
+     "IN_STOCK"
+    ],
+    "variantId": [
+     "1862180"
+    ],
+    "inventory(847, attributes.promotion_short_text)": [
+     "$50 OFF,$650 OFF"
+    ],
+    "attributes.product_class_type": [
+     "Standard"
+    ],
+    "attributes.program_types": [
+     "LocationControlledInventory",
+     "InWarehouse",
+     "LTLPickUp",
+     "Standard",
+     "ShipIt"
+    ],
+    "attributes.chdi_eligible": [
+     0.0
+    ],
+    "attributes.max_item_order_qty": [
+     "9999.0"
+    ],
+    "inventory(847, originalPrice)": [
+     1899.99
+    ]
+   }
+  },
+  {
+   "id": "4000342839",
+   "product": {
+    "id": "",
+    "type": "TYPE_UNSPECIFIED",
+    "primaryProductId": "",
+    "gtin": "",
+    "categories": [
+     "Home Improvement",
+     "Home Improvement > Garage",
+     "Home Improvement > Garage > Garage Storage & Organization",
+     "Home Improvement > Garage > Garage Storage & Organization > Overhead Garage Storage"
+    ],
+    "title": "Gorilla Rack 5-tier Rolling Bin Organizer",
+    "brands": [
+     "Gorilla Rack"
+    ],
+    "languageCode": "",
+    "attributes": {
+     "promotional_statement": {
+      "text": [
+       "$50 manufacturer's savings is valid 9/1/26 through 9/30/26. While supplies last. Limit 5 per member. <a href='/promo-terms-conditions.html'>Terms & Conditions</a>"
+      ],
+      "numbers": []
+     },
+     "pills": {
+      "text": [
+       "Online Only"
+      ],
+      "numbers": []
+     },
+     "marketing_statement": {
+      "text": [
+       "$50 OFF"
+      ],
+      "numbers": []
+     }
+    },
+    "rating": {
+     "ratingCount": 632,
+     "averageRating": 4.7468,
+     "ratingHistogram": []
+    },
+    "availability": "AVAILABILITY_UNSPECIFIED",
+    "fulfillmentInfo": [],
+    "uri": "https://www.costco.com/p/-/gorilla-rack-5-tier-rolling-bin-organizer/4000342839"
+   },
+   "variantRollupValues": {
+    "attributes.buyable": [
+     1.0
+    ],
+    "attributes.program_types": [
+     "Google",
+     "SiteControlledInventory",
+     "Standard",
+     "ShipIt"
+    ],
+    "attributes.as400_department": [
+     "23"
+    ],
+    "attributes.max_item_order_qty": [
+     "9999.0"
+    ],
+    "inventory(847, originalPrice)": [
+     169.99
+    ],
+    "attributes.variable_weight": [
+     0.0
+    ],
+    "attributes.chdi_eligible": [
+     0.0
+    ],
+    "attributes.product_class_type": [
+     "Standard"
+    ],
+    "inventory(731-wm, attributes.availability)": [
+     "IN_STOCK"
+    ],
+    "attributes.as400_category": [
+     "JAF"
+    ],
+    "attributes.fsa_eligible": [
+     0.0
+    ],
+    "variantId": [
+     "1806401"
+    ],
+    "attributes.member_only": [
+     0.0
+    ],
+    "inventory(725-wm, attributes.availability)": [
+     "IN_STOCK"
+    ],
+    "inventory(847, attributes.promotion_short_text)": [
+     "$10 OFF,$40 OFF"
+    ],
+    "originalPrice": [
+     169.99
+    ],
+    "attributes.start_date": [
+     "2025-07-29 17:00:00.0"
+    ],
+    "inventory(847, price)": [
+     119.99
+    ],
+    "attributes.min_item_order_qty": [
+     "1"
+    ],
+    "price": [
+     169.99
+    ]
+   }
+  }
+ ]
+}

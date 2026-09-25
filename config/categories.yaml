@@ -22,6 +22,39 @@ business:
     url: "https://www.costco.com/warehouse-savings.html"
     scrape_limit: 40
     add_limit: 10
+    # Phase 3: also crawl the full "OFF" search listing (~1,586 items, 24/page). search_pages caps pages
+    # crawled per run (0 = skip the crawl, warehouse-savings page only).
+    search_url: "https://www.costco.com/s?keyword=OFF&dept=All"
+    search_pages: 70
+    # Hard filters so the research queue is never flooded (research scores only a few rows a day):
+    min_discount_pct: 5        # NEW rows need a confirmed markdown of at least this % (price API, not listing text)
+    reject_cooldown_days: 3    # an item the API rejected (not on sale / below min) is not re-scraped for N days
+    max_pending: 0             # 0 = off; else NEW rows are added only while PENDING rows in the sheet < this
+    # Costco's own category path (search results) -> our category. Regex fragments matched against e.g.
+    # "Appliances > Small Kitchen Appliances > Air Fryers"; "!" excludes; first category wins.
+    # A search item matching none is off-category (its title is not consulted). Sale-set paths seen 2026-09-24:
+    # Appliances 816 (mostly major appliances), Health & Personal Care 171, Grocery 120, Electronics 78 ...;
+    # no jewelry / watch / bullion items were on sale that day, so those rules are untested guesses.
+    paths:
+      "Precious Metals":
+        - '^(gold|silver|platinum|palladium)\b'
+        - 'precious metals?'
+        - 'bullion'
+        - 'coins? (&|and) bars?'
+      "Jewelry":
+        - '^jewelry'
+        - '!watches'
+      "Watches":
+        - 'watches'
+        - '!smart ?watch'
+      "Outdoor Furniture":
+        - 'patio (&|and) outdoor furniture'
+      "Pharmacy":
+        - 'vitamins, herbals (&|and) dietary supplements'
+        - 'health (&|and) medicines > probiotics'
+      "Small Appliances":
+        - '^appliances > small kitchen appliances'
+        - '!water coolers'
     keywords:
       "Precious Metals":
         - '(gold|silver|platinum|palladium) (bars?|coins?|rounds?|bullion)'

@@ -137,6 +137,7 @@ def parse_card(raw) -> dict:
         "list_sale": sale,
         "list_savings": savings,
         "list_regular": regular,
+        "source": "page",
     }
 
 
@@ -359,3 +360,247 @@ def scrape_savings_listing(page, url=SAVINGS_URL):
     items = [it for it in (parse_card(c) for c in data.get("cards", [])) if it["title"] and it["url"]]
     logger.info(f"  savings page: {len(items)} cards parsed ({data.get('linkIds', 0)} distinct product links on page)")
     return items, page_end_date(data.get("body"))
+
+
+# ══ Source 2: the full "OFF" search listing ═══════════════════════════════════════════════════
+#
+# https://www.costco.com/s?keyword=OFF&dept=All  ->  ~1,586 items (`attributes.has_discount` is 1 on
+# 1,585 of them, so the keyword search IS the sale catalogue), 24 per page, ~67 pages.
+# Probed 2026-09-24:
+#   * The SPA POSTs gdx-api.costco.com/catalog/search/api/v1/search with
+#     {"query":"OFF","pageSize":24,"offset":(N-1)*24,"filterBy":["HIDE_OUT_OF_STOCK"],...};
+#     `&currentPage=N` on the page URL drives it (`&page=N` is ignored). Response: searchResult
+#     {results[24], totalSize, nextPageToken, facets}.
+#   * Per result: `id` (= the .product.<id>.html id), product.title / uri (`/p/-/<slug>/<id>`),
+#     product.categories (cumulative paths, e.g. "Appliances > Small Kitchen Appliances > Air Fryers"),
+#     product.attributes.promotional_statement.text ("$40 manufacturer's savings is valid 9/1/26 through
+#     9/30/26 ..."), and variantRollupValues with the store-847 hint prices:
+#     "inventory(847, price)" (sale), "inventory(847, originalPrice)" (regular),
+#     "inventory(847, attributes.promotion_short_text)" ("$40 OFF" / "$50 OFF,$650 OFF").
+# The hint prices matched the product-page price API on every item checked, but the price API stays
+# the authority: they only pre-filter which items are worth a product-page scrape.
+
+SEARCH_URL = "https://www.costco.com/s?keyword=OFF&dept=All"
+SEARCH_API = "gdx-api.costco.com/catalog/search/api/v1/search"
+SEARCH_PAGE_SIZE = 24
+
+_PROMO_VALID_RX = re.compile(r"valid\s+\d{1,2}/\d{1,2}/\d{2,4}\s+through\s+(\d{1,2}/\d{1,2}/\d{2,4})", re.IGNORECASE)
+_TAG_RX = re.compile(r"<[^>]+>")
+
+
+def _first(values):
+    """variantRollupValues entries are lists ([159.99]); first usable number or None."""
+    for v in (values if isinstance(values, list) else [values]):
+        f = to_float(v)
+        if f is not None and f > 0:
+            return f
+    return None
+
+
+def canonical_url(pid) -> str:
+    """The URL form scrape_costco and the sheet already use: works for any product id, unlike the
+    search result's /p/-/slug/id form."""
+    return f"https://www.costco.com/.product.{pid}.html"
+
+
+def promo_end(statement):
+    """Earliest 'valid M/D/YY through M/D/YY' end date in a promotional statement, else None. Only a
+    fallback for when the price API carries no promotionEndDate."""
+    best, best_key = None, None
+    for e in _PROMO_VALID_RX.findall(str(statement or "")):
+        m, d, y = (int(x) for x in e.split("/"))
+        key = (y + 2000 if y < 100 else y, m, d)
+        if best_key is None or key < best_key:
+            best, best_key = e, key
+    return best
+
+
+def parse_search_result(res):
+    """One searchResult.results[] entry -> item dict (same shape as parse_card plus category_path,
+    promo_short, promo_text, promo_end, source), or None when it has no id/title."""
+    p = res.get("product") or {}
+    pid = str(res.get("id") or "").strip()
+    title = " ".join(str(p.get("title") or "").split())
+    if not pid or not title:
+        return None
+    v = res.get("variantRollupValues") or {}
+    sale = _first(v.get("inventory(847, price)")) or _first(v.get("price"))
+    regular = _first(v.get("inventory(847, originalPrice)")) or _first(v.get("originalPrice"))
+    savings = round(regular - sale, 2) if sale and regular and regular > sale else None
+    attrs = p.get("attributes") or {}
+    stmt_parts = (attrs.get("promotional_statement") or {}).get("text") or []
+    stmt = " ".join(_TAG_RX.sub(" ", " ".join(str(x) for x in stmt_parts)).split())
+    paths = [c for c in (p.get("categories") or []) if isinstance(c, str)]
+    path = max(paths, key=lambda c: c.count(">")) if paths else ""
+    pills = (attrs.get("pills") or {}).get("text") or []
+    return {
+        "title": title,
+        "url": canonical_url(pid),
+        "product_id": pid,
+        "section": path.split(">")[0].strip() if path else "",
+        "item_number": "",
+        "limit": None,
+        "tag": ", ".join(str(t) for t in pills),
+        "list_sale": sale,
+        "list_savings": savings,
+        "list_regular": regular,
+        "category_path": path,
+        "promo_short": ", ".join(str(x) for x in (v.get("inventory(847, attributes.promotion_short_text)") or [])),
+        "promo_text": stmt,
+        "promo_end": promo_end(stmt),
+        "source": "search",
+    }
+
+
+def has_discount_hint(item) -> bool:
+    """The listing itself shows a real markdown (regular > sale > 0). Items without one are not worth a
+    product-page scrape for NEW rows. DOM cards in the 'Save $N'-only form have no prices, so they pass on
+    list_savings instead."""
+    sale, reg = item.get("list_sale"), item.get("list_regular")
+    if sale and reg:
+        return reg > sale
+    return bool(item.get("list_savings"))
+
+
+def discount_pct(price, regular) -> float:
+    """Confirmed markdown as a percentage of the regular price (0.0 when unknown / not a markdown)."""
+    if not price or not regular or regular <= price:
+        return 0.0
+    return round((regular - price) / regular * 100, 1)
+
+
+def classify_item(item, kw_compiled, path_compiled):
+    """
+    Category for a savings item. Search items carry Costco's own category path, so that decides
+    (business.savings.paths: regex fragments + '!' excludes, matched against e.g.
+    'Appliances > Small Kitchen Appliances > Air Fryers'). DOM cards have no path, so they fall back to the
+    title keywords. A search item whose path matches nothing is off-category — the title is NOT consulted,
+    so a grocery 'coffee' item never lands in Small Appliances on its name alone.
+    """
+    if item.get("source") == "search":
+        return classify_category(item.get("category_path"), path_compiled)
+    return classify_category(item.get("title"), kw_compiled)
+
+
+def merge_items(*sources) -> list:
+    """Union of items by product id. When both sources list a product the search version wins (it has
+    the category path, promo dates and store prices); items without an id are kept as-is."""
+    by_pid, order, loose = {}, [], []
+    for items in sources:
+        for it in items or []:
+            pid = it.get("product_id")
+            if not pid:
+                loose.append(it)
+            elif pid not in by_pid:
+                by_pid[pid] = it
+                order.append(pid)
+            elif it.get("source") == "search" and by_pid[pid].get("source") != "search":
+                by_pid[pid] = it
+    return [by_pid[p] for p in order] + loose
+
+
+# ── "already judged" cache: don't burn the scrape budget on the same rejects every day ─────────
+
+def load_seen(path) -> dict:
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def recently_rejected(seen, pid, today, cooldown_days) -> bool:
+    from datetime import datetime
+    rec = seen.get(str(pid))
+    if not rec or not cooldown_days:
+        return False
+    try:
+        return (today - datetime.strptime(str(rec.get("date")), "%Y-%m-%d")).days < cooldown_days
+    except ValueError:
+        return False
+
+
+def save_seen(path, seen, rejected, today, keep_days=30) -> dict:
+    """Record definitive rejects {pid: reason} as of `today`, prune old entries, persist. Never raises."""
+    import json
+    import os
+    from datetime import timedelta
+    stamp = today.strftime("%Y-%m-%d")
+    for pid, reason in rejected.items():
+        seen[str(pid)] = {"date": stamp, "reason": reason}
+    cutoff = (today - timedelta(days=keep_days)).strftime("%Y-%m-%d")
+    seen = {k: v for k, v in seen.items() if str(v.get("date", "")) >= cutoff}
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(seen, f, indent=1)
+    except OSError:
+        pass
+    return seen
+
+
+# ── browser side ─────────────────────────────────────────────────────────────
+
+def _offset_of(request):
+    import json
+    try:
+        return int(json.loads(request.post_data or "{}").get("offset", 0))
+    except (ValueError, TypeError):
+        return None
+
+
+def scrape_search_listing(page, url=SEARCH_URL, max_pages=70, refresh=None):
+    """
+    Crawl the 'OFF' search listing page by page (`&currentPage=N`), capturing each page's search-API
+    response. Bounded by `max_pages` and by totalSize. `refresh(page)` runs every 20 pages (Costco's bot
+    detection tolerates ~14 product pages; the session is refreshed on the scraper's usual cadence). Two
+    consecutive failed pages end the crawl — partial results are still returned.
+    Returns (items, meta): meta = {total, pages, failed, stopped}. Never raises.
+    """
+    import random
+    items, meta = [], {"total": None, "pages": 0, "failed": 0, "stopped": ""}
+    total_pages, n, consecutive_fail = max_pages, 1, 0
+    while n <= min(total_pages, max_pages):
+        expected = (n - 1) * SEARCH_PAGE_SIZE
+        page_url = url if n == 1 else f"{url}&currentPage={n}"
+
+        def is_this_page(r, expected=expected):
+            return (SEARCH_API in r.url and r.request.method == "POST"
+                    and _offset_of(r.request) == expected)
+        try:
+            if n > 1 and refresh and (n - 1) % 20 == 0:
+                refresh(page)
+            with page.expect_response(is_this_page, timeout=30000) as info:
+                resp = page.goto(page_url, timeout=45000, wait_until="domcontentloaded",
+                                 referer="https://www.costco.com/")
+            if resp is not None and resp.status >= 400:
+                raise RuntimeError(f"HTTP {resp.status}")
+            sr = info.value.json().get("searchResult") or {}
+            results = sr.get("results") or []
+            if not results and n == 1:
+                raise RuntimeError("no results on page 1")
+            if meta["total"] is None:
+                meta["total"] = int(sr.get("totalSize") or 0)
+                total_pages = -(-meta["total"] // SEARCH_PAGE_SIZE) if meta["total"] else max_pages
+            items.extend(it for it in (parse_search_result(r) for r in results) if it)
+            meta["pages"] += 1
+            consecutive_fail = 0
+            if not results:
+                meta["stopped"] = "empty page"
+                break
+        except Exception as e:
+            meta["failed"] += 1
+            consecutive_fail += 1
+            logger.warning(f"  search page {n} failed: {e}")
+            if consecutive_fail >= 2:
+                meta["stopped"] = f"2 consecutive failures at page {n}"
+                break
+        n += 1
+        page.wait_for_timeout(int(random.uniform(1200, 2600)))
+    if not meta["stopped"] and total_pages > max_pages:
+        meta["stopped"] = f"page budget {max_pages} of {total_pages}"
+    logger.info(f"  search listing: {len(items)} items from {meta['pages']} pages "
+                f"(total {meta['total']}, failed {meta['failed']}, {meta['stopped'] or 'complete'})")
+    return items, meta

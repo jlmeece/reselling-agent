@@ -84,5 +84,29 @@ def main(url: str) -> None:
     print(f"\nSaved to {OUT}")
 
 
+def probe_search(max_pages: int = 70) -> None:
+    """Crawl the full 'OFF' search listing and dump every parsed item + a category-path breakdown to
+    .tmp/savings_probe/search_items.json (used to design business.savings.paths)."""
+    from collections import Counter
+    from tools.costco_savings import SEARCH_URL, scrape_search_listing
+    from tools.costco_scraper import make_browser, refresh_session
+
+    os.makedirs(OUT, exist_ok=True)
+    with make_browser() as page:
+        items, meta = scrape_search_listing(page, SEARCH_URL, max_pages=max_pages, refresh=refresh_session)
+    print(meta)
+    with open(os.path.join(OUT, "search_items.json"), "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=1)
+    top = Counter(i["section"] for i in items)
+    print(f"{len(items)} items; distinct ids {len({i['product_id'] for i in items})}")
+    print("top-level:", top.most_common(30))
+    lvl3 = Counter(" > ".join(i["category_path"].split(" > ")[:3]) for i in items)
+    for path, n in sorted(lvl3.items()):
+        print(f"{n:4d}  {path}")
+
+
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else SAVINGS_URL)
+    if "--search" in sys.argv:
+        probe_search()
+    else:
+        main(next((a for a in sys.argv[1:] if not a.startswith("--")), SAVINGS_URL))

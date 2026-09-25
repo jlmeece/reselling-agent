@@ -210,7 +210,8 @@ def _scrape(price, orig=None, savings=None, end="10/18/26", on_sale=True, title=
 @pytest.fixture
 def env(monkeypatch, tmp_path):
     ctx = {"writes": [], "sent": [], "appended": [], "logged": [], "scraped": [],
-           "sheet": [], "items": [], "scrapes": {}, "banner": "10/18/26"}
+           "sheet": [], "items": [], "scrapes": {}, "banner": "10/18/26",
+           "search": [], "smeta": {"pages": 0, "stopped": ""}}
 
     @contextmanager
     def fake_browser():
@@ -231,8 +232,11 @@ def env(monkeypatch, tmp_path):
     monkeypatch.setattr(sch, "ensure_grid_columns", lambda *a, **k: False)
     monkeypatch.setattr(sch.time, "sleep", lambda s: None)
     monkeypatch.setattr(sch, "SAVINGS_ALERT_STATE", str(tmp_path / "savings_alert.json"))
+    monkeypatch.setattr(sch, "SAVINGS_SEEN_STATE", str(tmp_path / "savings_seen.json"))
     monkeypatch.setattr("tools.costco_scraper.refresh_session", lambda page: None)
     monkeypatch.setattr(cs, "scrape_savings_listing", lambda page, url=None: (ctx["items"], ctx["banner"]))
+    monkeypatch.setattr(cs, "scrape_search_listing",
+                        lambda page, url=None, max_pages=70, refresh=None: (ctx["search"], ctx["smeta"]))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "c")
     ctx["run"] = lambda **kw: sch.run_savings(CONFIG, COL, object(), "Product Tracker", 4, 500, **kw)
@@ -280,7 +284,7 @@ def test_listing_hint_not_confirmed_by_price_api_is_ignored(env):
     env["items"] = [_i("Extra Strength D3", LIST_D3)]
     env["scrapes"][LIST_D3] = _scrape(43.99, on_sale=False)
     res = env["run"]()
-    assert env["writes"] == [] and env["sent"] == [] and "not on sale per API 1" in res["notes"]
+    assert env["writes"] == [] and env["sent"] == [] and "not_on_sale 1" in res["notes"]
 
 
 def test_new_in_category_added_pending_off_category_never_scraped(env):
@@ -297,7 +301,7 @@ def test_new_in_category_added_pending_off_category_never_scraped(env):
     assert p["sale_info"] == "🔥 -$5 ends 10/18/26" and p["regular_price"] == 24.99
     assert env["writes"] == []                        # nothing tracked -> no cell writes
     assert env["sent"][0].startswith("🆕") and "added PENDING" in env["sent"][0]
-    assert "1 off-category" in res["notes"] and res["new_products"] == 1
+    assert "off-category 1" in res["notes"] and res["new_products"] == 1
 
 
 def test_add_limit_caps_new_rows(env):
@@ -363,3 +367,340 @@ def test_non_windows_is_skipped(env, monkeypatch):
     monkeypatch.setattr(sch.sys, "platform", "linux")
     res = env["run"]()
     assert res["status"] == "ok" and "non-Windows" in res["notes"] and env["scraped"] == []
+
+
+# ══ Phase 3: the "OFF" search listing ═══════════════════════════════════════════════════════
+
+from datetime import datetime  # noqa: E402
+
+_FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "search_results_sample.json")
+SEARCH_RESULTS = json.load(open(_FIX, encoding="utf-8"))["results"]
+PATHS = cs.compile_keywords(CONFIG["business"]["savings"]["paths"])
+
+
+def test_parse_search_result_real_shape():
+    it = cs.parse_search_result(SEARCH_RESULTS[0])                 # Ninja Combi, real API payload
+    assert it["product_id"] == "4000290289" and it["source"] == "search"
+    assert it["url"] == "https://www.costco.com/.product.4000290289.html"       # canonical, not /p/-/slug/id
+    assert (it["list_sale"], it["list_regular"], it["list_savings"]) == (159.99, 199.99, 40.0)
+    assert it["category_path"] == "Appliances > Small Kitchen Appliances > Air Fryers"
+    assert it["section"] == "Appliances" and it["promo_short"] == "$40 OFF"
+    assert it["promo_end"] == "9/30/26" and "manufacturer's savings" in it["promo_text"]
+    assert "<a" not in it["promo_text"]                                          # html stripped
+
+
+def test_parse_search_result_uses_store_847_price_not_generic():
+    it = cs.parse_search_result(SEARCH_RESULTS[1])                 # generic price == originalPrice here
+    assert (it["list_sale"], it["list_regular"]) == (1199.99, 1899.99)
+
+
+def test_parse_search_result_skips_unusable_entries():
+    assert cs.parse_search_result({"id": "", "product": {"title": "x"}}) is None
+    assert cs.parse_search_result({"id": "1", "product": {"title": ""}}) is None
+    it = cs.parse_search_result({"id": "9", "product": {"title": "No prices", "categories": []}})
+    assert it["list_sale"] is None and it["category_path"] == "" and not cs.has_discount_hint(it)
+
+
+def test_promo_end_picks_earliest_and_handles_absence():
+    txt = "$5 savings valid 9/1/26 through 10/18/26. Also valid 9/14/26 through 9/27/26."
+    assert cs.promo_end(txt) == "9/27/26"
+    assert cs.promo_end("no dates") is None and cs.promo_end(None) is None
+
+
+@pytest.mark.parametrize("path,cat", [
+    ("Health & Personal Care > Vitamins, Herbals & Dietary Supplements > Fish Oil & Omega-3", "Pharmacy"),
+    ("Health & Personal Care > Vitamins, Herbals & Dietary Supplements > Energy Drinks", "Pharmacy"),
+    ("Health & Personal Care > Health & Medicines > Probiotics", "Pharmacy"),
+    ("Appliances > Small Kitchen Appliances > Air Fryers", "Small Appliances"),
+    ("Appliances > Small Kitchen Appliances > Coffee, Tea & Espresso Makers > Single Serve Coffee Makers", "Small Appliances"),
+    ("Patio, Lawn & Garden > Patio & Outdoor Furniture > Outdoor Patio Conversation Sets", "Outdoor Furniture"),
+    ("Jewelry > Rings", "Jewelry"),
+    ("Jewelry > Watches", "Watches"),
+    ("Gold > Bars & Rounds", "Precious Metals"),
+])
+def test_classify_by_category_path(path, cat):
+    assert cs.classify_category(path, PATHS) == cat
+
+
+@pytest.mark.parametrize("path", [
+    "Appliances > Refrigerators",
+    "Appliances > Small Kitchen Appliances > Water Coolers & Dispensers",
+    "Grocery & Household Essentials > Coffee > K-Cups, Coffee Pods & Capsules",
+    "Health & Personal Care > Health & Medicines > Pain & Fever",
+    "Health & Personal Care > Nutrition > Protein",
+    "Patio, Lawn & Garden > Patio Covers & Shade Structures > Gazebos",
+    "Patio, Lawn & Garden > Outdoor Storage Sheds",
+    "Home & Kitchen > Cookware & Bakeware > Cookware Sets",
+    "Furniture > Living Room Furniture > Sectional Sofas",
+    "Silverware > Flatware",                          # 'silver' prefix must be a whole word
+    "",
+])
+def test_off_category_paths(path):
+    assert cs.classify_category(path, PATHS) is None
+
+
+def test_search_items_are_classified_by_path_not_title():
+    kw = cs.compile_keywords(CONFIG["business"]["savings"]["keywords"])
+    k_cup = {"source": "search", "title": "Lavazza Espresso Machine Coffee Pods", "category_path":
+             "Grocery & Household Essentials > Coffee > K-Cups, Coffee Pods & Capsules"}
+    assert cs.classify_category(k_cup["title"], kw) == "Small Appliances"     # the title alone WOULD match
+    assert cs.classify_item(k_cup, kw, PATHS) is None                         # the path says grocery
+    page_card = {"source": "page", "title": "Kirkland Signature Fish Oil 400 Softgels"}
+    assert cs.classify_item(page_card, kw, PATHS) == "Pharmacy"               # no path -> keywords
+
+
+def test_merge_items_search_version_wins_and_order_is_stable():
+    page = {"product_id": "1", "title": "A", "source": "page"}
+    search = {"product_id": "1", "title": "A", "source": "search", "category_path": "X > Y"}
+    only_page = {"product_id": "2", "title": "B", "source": "page"}
+    merged = cs.merge_items([search], [page, only_page])
+    assert [i["product_id"] for i in merged] == ["1", "2"] and merged[0]["source"] == "search"
+    assert cs.merge_items([page], [search])[0]["source"] == "search"          # order of sources irrelevant
+
+
+def test_discount_helpers():
+    assert cs.discount_pct(80.0, 100.0) == 20.0
+    assert cs.discount_pct(100.0, 100.0) == 0.0 and cs.discount_pct(None, 100.0) == 0.0
+    assert cs.has_discount_hint({"list_sale": 8.0, "list_regular": 10.0})
+    assert not cs.has_discount_hint({"list_sale": 10.0, "list_regular": 10.0})
+    assert cs.has_discount_hint({"list_savings": 3.0})                        # 'Save $3' card, no prices
+
+
+def test_seen_cache_cooldown_and_pruning(tmp_path):
+    path = str(tmp_path / "seen.json")
+    today = datetime(2026, 9, 24)
+    seen = cs.save_seen(path, {}, {"111": "not_on_sale"}, today)
+    assert cs.recently_rejected(seen, "111", today, 3)
+    assert cs.recently_rejected(cs.load_seen(path), "111", datetime(2026, 9, 26), 3)     # persisted
+    assert not cs.recently_rejected(seen, "111", datetime(2026, 9, 27), 3)               # cooldown over
+    assert not cs.recently_rejected(seen, "111", today, 0)                               # 0 = disabled
+    assert not cs.recently_rejected(seen, "999", today, 3)
+    pruned = cs.save_seen(path, seen, {"222": "below_min"}, datetime(2026, 11, 1))
+    assert "111" not in pruned and "222" in pruned                                        # >30d dropped
+
+
+# ── crawler against a fake Playwright page ───────────────────────────────────
+
+class _Req:
+    def __init__(self, offset):
+        self.method, self.post_data = "POST", json.dumps({"query": "OFF", "offset": offset})
+
+
+class _Resp:
+    def __init__(self, offset, n_results, total, status=200, fail=False):
+        self.url, self.request, self.status = "https://gdx-api.costco.com/catalog/search/api/v1/search", _Req(offset), status
+        self._body = {"searchResult": {"totalSize": total, "results": [
+            {"id": str(offset + i + 1), "product": {"title": f"Item {offset + i + 1}", "categories": ["A > B"]},
+             "variantRollupValues": {}} for i in range(n_results)]}}
+        self._fail = fail
+
+    def json(self):
+        if self._fail:
+            raise ValueError("bad json")
+        return self._body
+
+
+class _Ctx:
+    def __init__(self, page, pred):
+        self.page, self.pred = page, pred
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    @property
+    def value(self):
+        if self.page.last is None or not self.pred(self.page.last):
+            raise TimeoutError("no matching response")
+        return self.page.last
+
+
+class _FakePage:
+    """goto('...&currentPage=N') 'fires' the search response for offset (N-1)*24."""
+    def __init__(self, total, bad_pages=(), page_size=24):
+        self.total, self.bad, self.last, self.urls, self.size = total, set(bad_pages), None, [], page_size
+
+    def expect_response(self, pred, timeout=0):
+        return _Ctx(self, pred)
+
+    def goto(self, url, **kw):
+        self.urls.append(url)
+        n = int(url.split("currentPage=")[1]) if "currentPage=" in url else 1
+        if n in self.bad:
+            self.last = None
+            return type("R", (), {"status": 200})()
+        off = (n - 1) * self.size
+        self.last = _Resp(off, max(0, min(self.size, self.total - off)), self.total)
+        return type("R", (), {"status": 200})()
+
+    def wait_for_timeout(self, ms):
+        pass
+
+
+def test_crawl_paginates_by_current_page_until_total():
+    page = _FakePage(total=50)                                     # 24 + 24 + 2
+    items, meta = cs.scrape_search_listing(page, "https://x/s?keyword=OFF&dept=All", max_pages=70)
+    assert len(items) == 50 and meta == {"total": 50, "pages": 3, "failed": 0, "stopped": ""}
+    assert page.urls == ["https://x/s?keyword=OFF&dept=All", "https://x/s?keyword=OFF&dept=All&currentPage=2",
+                         "https://x/s?keyword=OFF&dept=All&currentPage=3"]
+
+
+def test_crawl_honours_page_budget():
+    page = _FakePage(total=500)
+    items, meta = cs.scrape_search_listing(page, "https://x/s?k=1", max_pages=2)
+    assert len(items) == 48 and meta["pages"] == 2 and "page budget 2 of 21" in meta["stopped"]
+
+
+def test_crawl_refreshes_session_every_20_pages():
+    calls = []
+    page = _FakePage(total=24 * 45)
+    cs.scrape_search_listing(page, "https://x/s?k=1", max_pages=45, refresh=lambda p: calls.append(1))
+    assert len(calls) == 2                                          # before page 21 and page 41
+
+
+def test_crawl_survives_one_bad_page_but_stops_after_two_in_a_row():
+    items, meta = cs.scrape_search_listing(_FakePage(total=24 * 6, bad_pages={3}), "https://x/s?k=1")
+    assert meta["failed"] == 1 and meta["pages"] == 5 and len(items) == 24 * 5 and not meta["stopped"]
+    items, meta = cs.scrape_search_listing(_FakePage(total=24 * 6, bad_pages={3, 4}), "https://x/s?k=1")
+    assert meta["pages"] == 2 and "2 consecutive failures at page 4" in meta["stopped"]
+
+
+def test_crawl_page_one_failure_returns_nothing_without_raising():
+    items, meta = cs.scrape_search_listing(_FakePage(total=100, bad_pages={1, 2}), "https://x/s?k=1")
+    assert items == [] and meta["pages"] == 0
+
+
+# ── run_savings with the search source ───────────────────────────────────────
+
+def _s(pid, title, path, sale=None, regular=None, end=None):
+    return {"title": title, "url": cs.canonical_url(pid), "product_id": pid, "source": "search",
+            "category_path": path, "section": path.split(" > ")[0], "list_sale": sale, "list_regular": regular,
+            "list_savings": round(regular - sale, 2) if sale and regular and regular > sale else None,
+            "promo_end": end, "promo_short": "", "promo_text": ""}
+
+
+PH = "Health & Personal Care > Vitamins, Herbals & Dietary Supplements > Herbal Supplements"
+
+
+def _arm(env, pid, price, orig, savings, **kw):
+    env["scrapes"][cs.canonical_url(pid)] = _scrape(price, orig=orig, savings=savings, **kw)
+
+
+def test_search_new_item_added_with_category_path_in_tier_summary(env):
+    env["search"] = [_s("501", "Zinc Plus 100 ct", PH, 15.99, 19.99)]
+    _arm(env, "501", 15.99, 19.99, 4.0, title="Zinc Plus 100 Tablets")
+    res = env["run"]()
+    (p,) = env["appended"]
+    assert p["category"] == "Pharmacy" and p["url"] == cs.canonical_url("501") and p["price"] == 15.99
+    assert "Costco savings search" in p["tier_summary"] and "Herbal Supplements" in p["tier_summary"]
+    assert "found 1 (0 page + 1 search" in res["notes"] and res["new_products"] == 1
+
+
+def test_off_category_search_items_are_never_scraped(env):
+    env["search"] = [_s("601", "LG Refrigerator", "Appliances > Refrigerators", 999.0, 1299.0),
+                     _s("602", "Espresso K-Cups", "Grocery & Household Essentials > Coffee > K-Cups, Coffee Pods & Capsules", 30.0, 40.0)]
+    res = env["run"]()
+    assert env["scraped"] == [] and env["appended"] == []
+    assert "off-category 2" in res["notes"] and "in-category 0" in res["notes"]
+
+
+def test_items_without_a_listed_discount_or_a_trivial_one_are_dropped_before_scraping(env):
+    env["search"] = [_s("701", "Vitamin C 500 ct", PH, None, None),            # listing shows no markdown
+                     _s("702", "Vitamin D 500 ct", PH, 19.99, 20.99),          # 4.8% < 5% floor
+                     _s("703", "Vitamin E 500 ct", PH, 16.0, 20.0)]            # 20% -> goes through
+    _arm(env, "703", 16.0, 20.0, 4.0)
+    res = env["run"]()
+    assert env["scraped"] == [cs.canonical_url("703")]
+    assert "no_hint 1" in res["notes"] and "below_min 1" in res["notes"] and res["new_products"] == 1
+
+
+def test_api_confirmed_discount_below_floor_is_rejected_and_not_rescraped_within_cooldown(env):
+    env["search"] = [_s("801", "Magnesium 250 ct", PH, 15.0, 20.0)]           # hint says 25% ...
+    _arm(env, "801", 19.5, 20.0, 0.5)                                         # ... API says 2.5%
+    res = env["run"]()
+    assert env["appended"] == [] and "below_min 1" in res["notes"]
+    env["scraped"].clear()
+    res = env["run"]()                                                        # next day: skipped, budget saved
+    assert env["scraped"] == [] and "cooldown 1" in res["notes"]
+
+
+def test_hint_not_confirmed_by_price_api_is_recorded_as_rejected(env):
+    env["search"] = [_s("901", "Turmeric 90 ct", PH, 15.0, 20.0)]
+    env["scrapes"][cs.canonical_url("901")] = _scrape(20.0, on_sale=False)
+    env["run"]()
+    assert env["appended"] == [] and "901" in cs.load_seen(sch.SAVINGS_SEEN_STATE)
+    env["scraped"].clear()
+    env["run"]()
+    assert env["scraped"] == []
+
+
+def test_dry_run_does_not_record_rejects(env):
+    env["search"] = [_s("901", "Turmeric 90 ct", PH, 15.0, 20.0)]
+    env["scrapes"][cs.canonical_url("901")] = _scrape(20.0, on_sale=False)
+    env["run"](dry_run=True)
+    assert not os.path.exists(sch.SAVINGS_SEEN_STATE)
+
+
+def test_search_source_also_finds_tracked_rows_the_event_page_misses(env):
+    d3 = "https://www.costco.com/kirkland-d3.product.4000100002.html"
+    env["sheet"] = [_row(status="ACTIVE", title="Kirkland Extra Strength D3", costco_url=d3, costco_cost="43.99")]
+    env["search"] = [_s("4000100002", "Extra Strength D3", PH, 35.99, 43.99, end="10/2/26")]
+    _arm(env, "4000100002", 35.99, 43.99, 8.0, end=None)                       # API carries no end date
+    res = env["run"]()
+    (row, ups), = env["writes"]
+    assert row == 4 and ups[COL["sale_info"]] == "🔥 -$8 ends 10/2/26"       # search promo date is the fallback
+    assert "tracked 1" in res["notes"] and len(env["sent"]) == 1
+
+
+def test_max_pending_guard_stops_adds_and_scrapes(env, monkeypatch):
+    monkeypatch.setitem(CONFIG["business"]["savings"], "max_pending", 2)
+    env["sheet"] = [_row(status="PENDING", title=f"Pending thing {i} alpha", costco_url=f"https://x/.product.{i}.html")
+                    for i in range(2)]
+    env["search"] = [_s("1001", "Calcium 500 ct", PH, 15.0, 20.0)]
+    res = env["run"]()
+    assert env["scraped"] == [] and env["appended"] == [] and "backlog 1" in res["notes"]
+
+
+def test_max_pending_leaves_only_the_remaining_room(env, monkeypatch):
+    monkeypatch.setitem(CONFIG["business"]["savings"], "max_pending", 3)
+    env["sheet"] = [_row(status="PENDING", title="Pending thing alpha", costco_url="https://x/.product.1.html")]
+    env["search"] = [_s(f"11{i}", f"Multivitamin Brand{i} 100 ct", PH, 15.0, 20.0) for i in range(4)]
+    for i in range(4):
+        _arm(env, f"11{i}", 15.0, 20.0, 5.0, title=f"Multivitamin Brand{i} 100 ct")
+    res = env["run"]()
+    assert len(env["appended"]) == 2 and res["new_products"] == 2             # 3 cap - 1 pending
+
+
+def test_search_only_and_page_only_items_merge_and_search_count_is_reported(env):
+    env["items"] = [_i("Kirkland Fish Oil Softgels 400", "https://www.costco.com/.product.2001.html")]
+    env["search"] = [_s("2002", "Biotin 5000 mcg 100 ct", PH, 8.0, 10.0)]
+    env["smeta"] = {"pages": 67, "stopped": "page budget 60 of 67"}
+    _arm(env, "2001", 15.0, 20.0, 5.0, title="Kirkland Fish Oil Softgels 400")
+    _arm(env, "2002", 8.0, 10.0, 2.0, title="Biotin 5000 mcg 100 ct")
+    res = env["run"]()
+    assert res["new_products"] == 2
+    assert "found 2 (1 page + 1 search [search 67 pages, page budget 60 of 67])" in res["notes"]
+
+
+def test_search_listing_failure_degrades_to_the_event_page(env):
+    d3 = "https://www.costco.com/kirkland-d3.product.4000100002.html"
+    env["sheet"] = [_row(status="SCORED", title="Kirkland Extra Strength D3", costco_url=d3, costco_cost="43.99")]
+    env["items"] = [_i("Extra Strength D3", LIST_D3)]
+    env["search"], env["smeta"] = [], {"pages": 0, "stopped": "2 consecutive failures at page 2"}
+    env["scrapes"][LIST_D3] = _scrape(35.99, orig=43.99, savings=8.0)
+    res = env["run"]()
+    assert res["status"] == "ok" and len(env["writes"]) == 1
+    assert "2 consecutive failures at page 2" in res["notes"]
+
+
+def test_never_priced_pending_row_is_updated_but_not_alerted(env):
+    env["sheet"] = [_row(status="PENDING", title="Kirkland Extra Strength D3", costco_url=D3_URL, costco_cost="")]
+    env["search"] = [_s("4000100002", "Extra Strength D3", PH, 35.99, 43.99)]
+    _arm(env, "4000100002", 35.99, 43.99, 8.0)
+    res = env["run"]()
+    assert len(env["writes"]) == 1 and env["sent"] == [] and "alerted 0" in res["notes"]
+    env["sheet"] = [_row(status="ACTIVE", title="Kirkland Extra Strength D3", costco_url=D3_URL, costco_cost="")]
+    env["run"]()                                     # a blank-G ACTIVE row is still worth a heads-up
+    assert len(env["sent"]) == 1

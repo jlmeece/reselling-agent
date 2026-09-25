@@ -1177,6 +1177,7 @@ def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
 
 
 SAVINGS_ALERT_STATE = os.path.join(_REPO_ROOT, "data", ".savings_alert.json")
+SAVINGS_SEEN_STATE = os.path.join(_REPO_ROOT, "data", ".savings_seen.json")
 
 
 def _append_pending_rows(service, sheet_name, products, COL):
@@ -1188,46 +1189,67 @@ def _append_pending_rows(service, sheet_name, products, COL):
 def run_savings(config, COL, service, sheet_name, start_row, end_row,
                 dry_run=False, limit=None, add_limit=None) -> dict:
     """
-    savings mode: scrape Costco's Member-Only Savings page (tools.costco_savings) and cross-reference
-    it with the sheet.
+    savings mode: find sales across Costco and cross-reference them with the sheet. Two sources
+    (tools.costco_savings): the Member-Only Savings page (~186 cards) and the full "OFF" search
+    listing (~1,586 items, crawled page by page — `business.savings.search_pages`, 0 = off).
       TRACKED row  -> re-verify on the product page (price API), write G / X / AW only. Never touches
                       status or col P. A sale we did not already have (no badge, or price/end changed)
                       goes into ONE consolidated Telegram message.
-      NEW item     -> only if it classifies into one of our categories (config business.savings.keywords):
-                      appended as PENDING with G/AW/X pre-filled, capped at add_limit per run.
-    `limit` caps product pages opened per run (tracked first, then new by savings %). dry_run scrapes
+      NEW item     -> hard-filtered so the research queue is never flooded: it must classify into one of
+                      our categories (search items by Costco's category path, page cards by title
+                      keywords), show a discount in the listing, clear `min_discount_pct`, not have been
+                      rejected within `reject_cooldown_days`, and then be CONFIRMED on sale by the price
+                      API. Appended as PENDING with G/AW/X pre-filled, at most `add_limit` per run (and
+                      only while PENDING rows < `max_pending`, when that is set).
+    `limit` caps product pages opened per run (tracked first, then new by discount). dry_run scrapes
     but writes / alerts / logs nothing and prints what it WOULD do. Needs Chrome (Windows only).
     """
     biz = config["business"].get("savings") or {}
     limit = limit or int(biz.get("scrape_limit", 40))
     add_limit = add_limit or int(biz.get("add_limit", 10))
+    min_pct = float(biz.get("min_discount_pct") or 0)
+    cooldown = int(biz.get("reject_cooldown_days") or 0)
+    max_pending = int(biz.get("max_pending") or 0)
+    search_pages = int(biz.get("search_pages") or 0)
     tag = "[dry-run] " if dry_run else ""
     if sys.platform != "win32":
         return {"status": "ok", "notes": "savings: skipped (non-Windows — needs Chrome)"}
 
     from tools.costco_scraper import refresh_session
-    keywords = costco_savings.compile_keywords(biz.get("keywords"))
+    kw_rules = costco_savings.compile_keywords(biz.get("keywords"))
+    path_rules = costco_savings.compile_keywords(biz.get("paths"))
     rows = costco_savings.load_rows(
         read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}"), COL, start_row)
     existing_titles = {r["norm_title"] for r in rows}
     existing_pids = {r["product_id"] for r in rows if r["product_id"]}
+    pending_now = sum(1 for r in rows if r["status"] == "PENDING")
+    room = add_limit if not max_pending else max(0, min(add_limit, max_pending - pending_now))
     if not dry_run:
         try:
             ensure_grid_columns(service, sheet_name, required_grid_columns(COL))
         except Exception as e:
             logger.warning(f"  grid check failed (non-fatal): {e}")
     alert_state = load_alert_state(SAVINGS_ALERT_STATE)
+    seen = costco_savings.load_seen(SAVINGS_SEEN_STATE)
+    rejected = {}                                   # pid -> reason, persisted after the run
     now = datetime.now()
 
-    n = {"updated": 0, "unchanged": 0, "added": 0, "not_on_sale": 0, "failed": 0,
-         "dup": 0, "over_budget": 0}
+    n = {"updated": 0, "unchanged": 0, "added": 0, "failed": 0, "over_budget": 0,
+         "no_hint": 0, "below_min": 0, "cooldown": 0, "backlog": 0, "not_on_sale": 0, "dup": 0}
     entries, keys, new_products, plan = [], [], [], []
 
     with make_browser() as page:
-        items, banner_end = costco_savings.scrape_savings_listing(
+        dom_items, banner_end = costco_savings.scrape_savings_listing(
             page, biz.get("url") or costco_savings.SAVINGS_URL)
+        search_items, smeta = [], {}
+        if search_pages > 0:
+            search_items, smeta = costco_savings.scrape_search_listing(
+                page, biz.get("search_url") or costco_savings.SEARCH_URL,
+                max_pages=search_pages, refresh=refresh_session)
+        items = costco_savings.merge_items(search_items, dom_items)
         if not items:
-            msg = "savings: page yielded 0 items — Costco layout changed or the page was blocked"
+            msg = (f"savings: 0 items from the savings page and {len(search_items)} from the search listing — "
+                   f"Costco layout changed or the site blocked us")
             logger.error(msg)
             token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
             if not dry_run and token and chat_id:
@@ -1237,11 +1259,22 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
         matches = costco_savings.match_items(items, rows)
         new_in, off_category = [], 0
         for it in matches["new"]:
-            cat = costco_savings.classify_category(it["title"], keywords)
-            if cat:
-                new_in.append((it, cat))
-            else:
+            cat = costco_savings.classify_item(it, kw_rules, path_rules)
+            if not cat:
                 off_category += 1
+                continue
+            pct = costco_savings.discount_pct(it.get("list_sale"), it.get("list_regular"))
+            if not costco_savings.has_discount_hint(it):
+                n["no_hint"] += 1                   # the listing itself shows no markdown
+            elif min_pct and pct and pct < min_pct:
+                n["below_min"] += 1                 # priced hint says the markdown is trivial
+            elif costco_savings.recently_rejected(seen, it["product_id"], now, cooldown):
+                n["cooldown"] += 1                  # the price API rejected it within the cooldown
+            else:
+                new_in.append((it, cat))
+        if room == 0 and new_in:
+            n["backlog"] = len(new_in)              # PENDING backlog at max_pending: add nothing, scrape nothing
+            new_in = []
         new_in.sort(key=lambda t: costco_savings.savings_rank(t[0]), reverse=True)
         queue = ([("tracked", it, row) for it, row, _ in matches["tracked"]]
                  + [("new", it, cat) for it, cat in new_in])
@@ -1249,7 +1282,7 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
         queue = queue[:limit]
 
         for pos, (kind, item, ref) in enumerate(queue):
-            if kind == "new" and len(new_products) >= add_limit:
+            if kind == "new" and len(new_products) >= room:
                 n["over_budget"] += 1
                 continue
             if pos and pos % 10 == 0:
@@ -1262,9 +1295,12 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
                 continue
             if not data.get("on_sale"):
                 n["not_on_sale"] += 1          # listing text was only a hint; the price API disagrees
+                if kind == "new":
+                    rejected[item["product_id"]] = "not_on_sale"
                 continue
-            if not data.get("sale_expires") and banner_end:
-                data = {**data, "sale_expires": banner_end}
+            fallback_end = item.get("promo_end") or (banner_end if item.get("source") != "search" else None)
+            if not data.get("sale_expires") and fallback_end:
+                data = {**data, "sale_expires": fallback_end}
             price, orig = data["price"], data.get("original_price")
             coupon = dict(coupon_type=data.get("coupon_type") or "",
                           coupon_label=data.get("coupon_label") or "")
@@ -1293,7 +1329,9 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
                              f"{orig:.2f}" if orig else "", badge, **coupon)
                     time.sleep(0.3)
                 n["updated"] += 1
-                if is_new_sale:
+                # A never-priced PENDING row (blank G) has no "before": we record the sale but a
+                # "new sale" alert would be a guess, and search coverage makes these frequent.
+                if is_new_sale and not (old_cost is None and row["status"] == "PENDING"):
                     key = f"{row['title']}|{price:.2f}|{new_end:%Y-%m-%d}" if new_end else f"{row['title']}|{price:.2f}|-"
                     if not already_alerted(alert_state, key):
                         entries.append({"title": row["title"], "price": price, "regular": orig,
@@ -1307,13 +1345,22 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
                         or costco_savings.product_id(item["url"]) in existing_pids):
                     n["dup"] += 1              # the full title turned out to be a row we already have
                     continue
+                savings_amt = data.get("sale_savings")
+                pct = costco_savings.discount_pct(price, orig or (price + savings_amt if savings_amt else None))
+                if min_pct and pct < min_pct:
+                    n["below_min"] += 1        # confirmed on sale, but too small a markdown to research
+                    rejected[item["product_id"]] = "below_min"
+                    continue
                 updates = sale_column_updates(COL, data, False, False)
                 badge = updates[0][1]
+                leaf = " > ".join(item.get("category_path", "").split(" > ")[-2:])[:70]   # the leaf is what triage needs
+                where = (f"Costco savings search: {leaf}"
+                         if item.get("source") == "search" else "Member-Only Savings page")
                 new_products.append({"title": title, "category": cat, "url": item["url"], "price": price,
                                      "sale_info": badge, "regular_price": orig or "",
-                                     "tier_summary": "Discovered via Member-Only Savings — awaiting research"})
+                                     "tier_summary": f"Discovered via {where} — awaiting research"})
                 existing_titles.add(costco_savings._norm_title(title))
-                plan.append(f"ADD PENDING [{cat}]: {title[:60]} — ${price}"
+                plan.append(f"ADD PENDING [{cat}] ({item.get('source', 'page')}, {pct:g}% off): {title[:60]} — ${price}"
                             f"{f' (was ${orig:.2f})' if orig else ''} X '{badge}'")
                 entries.append({"title": title, "price": price, "regular": orig,
                                 "end": data.get("sale_expires"), "net": None, "new_row": True})
@@ -1324,6 +1371,8 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
     if new_products and not dry_run:
         _append_pending_rows(service, sheet_name, new_products, COL)
     n["added"] = len(new_products)
+    if rejected and not dry_run:
+        costco_savings.save_seen(SAVINGS_SEEN_STATE, seen, rejected, now)
 
     message = costco_savings.format_alert(entries)
     result = {"status": "ok", "new_products": n["added"]}
@@ -1343,16 +1392,21 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
             result["status"] = "error"
             result["errors"] = "savings alert not delivered: Telegram not configured or send failed"
 
-    notes = (f"{tag}savings: {len(items)} on page — {len(matches['tracked'])} tracked, "
-             f"{len(new_in)} new in-category ({off_category} off-category skipped), "
-             f"{len(matches['possible'])} possible + {len(matches['ambiguous'])} ambiguous held back; "
+    new_total = len(matches["new"])
+    dropped = n["no_hint"] + n["below_min"] + n["cooldown"] + n["backlog"] + n["not_on_sale"] + n["dup"]
+    src = f"{len(dom_items)} page + {len(search_items)} search"
+    if search_pages > 0:
+        src += f" [search {smeta.get('pages', 0)} pages" + (f", {smeta['stopped']}" if smeta.get("stopped") else "") + "]"
+    notes = (f"{tag}savings: found {len(items)} ({src}) — tracked {len(matches['tracked'])}, "
+             f"new {new_total} (in-category {new_total - off_category}, off-category {off_category}), "
+             f"dropped {dropped} (no_hint {n['no_hint']}, below_min {n['below_min']}, cooldown {n['cooldown']}, "
+             f"backlog {n['backlog']}, not_on_sale {n['not_on_sale']}, dup {n['dup']}); "
+             f"held back {len(matches['possible'])} possible + {len(matches['ambiguous'])} ambiguous; "
              f"updated {n['updated']}, unchanged {n['unchanged']}, added {n['added']}, "
-             f"alerted {len(entries)}, not on sale per API {n['not_on_sale']}, dup {n['dup']}, "
-             f"failed {n['failed']}, over budget {n['over_budget']}")
+             f"alerted {len(entries)}, failed {n['failed']}, over budget {n['over_budget']}")
     logger.info(notes)
     result["notes"] = notes
     return result
-
 
 def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
     """
