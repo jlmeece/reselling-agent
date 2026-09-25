@@ -75,4 +75,4 @@ columns:
   mpt_mu:           "AY"  # Annualized return μ (e.g. 0.42 = 42%) — written by mpt_engine
   mpt_sigma:        "AZ"  # Price volatility σ (Bayesian-shrunk) — written by mpt_engine
   mpt_rank:         "BA"  # Rank within this research run (1 = best Sharpe) — written by mpt_engine
-  buy_cost:         "BB"  # what Jay actually paid (MANUAL); margin alerts prefer this over G
+  buy_cost:         "BB"  # what Jay actually paid — auto-snapshotted from G on a new sale; manual override wins

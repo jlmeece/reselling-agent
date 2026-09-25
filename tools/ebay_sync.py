@@ -4,8 +4,9 @@ eBay sync — Stage 1 (read-only on eBay, flag-only on the sheet)
 Pulls Jay's active eBay listings via the Trading API (GetMyeBaySelling), matches
 them to Product Tracker rows by the item ID in col Q (ebay_listing_url), and:
 
-  * writes QuantitySold into units_sold (col U) — the ONLY write, and only when it
-    changed (through tools.sheet_writer.safe_write_row);
+  * writes QuantitySold into units_sold (col U) when it changed, and — when a NEW
+    sale lands — snapshots costco_cost (col G) into buy_cost (col BB) if buy_cost is
+    blank (so margin alerts use what Jay actually pays; manual override always wins);
   * REPORTS (never fixes) margin breaches (live eBay price vs cost — NOT raw price
     movement; Jay undercuts by a cent himself), eBay listings missing from the sheet,
     and ACTIVE sheet rows that eBay no longer lists.
@@ -495,8 +496,9 @@ def _check_margin(row, listing, report):
 def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
          col_map=None, title_reader=None) -> dict:
     """
-    Match listings to sheet rows by the item ID in col Q. Flag-only: units_sold
-    (col U) is the only thing ever written, and only when QuantitySold differs.
+    Match listings to sheet rows by the item ID in col Q. Flag-only except two writes:
+    units_sold (col U) when QuantitySold differs, and buy_cost (col BB) snapshotted
+    from costco_cost when a NEW sale lands on a row whose buy_cost is still blank.
 
     sheet_rows:    dicts from load_sheet_rows (row_num, title, status, platform,
                    ebay_price, ebay_listing_url, units_sold, plus the margin inputs
@@ -521,7 +523,7 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
     report = {"matched": [], "updated": [], "margin_breach": [], "margin_unchecked": [],
               "on_ebay_not_in_sheet": [], "active_not_on_ebay": [],
               "duplicate_url": [], "stale_rows": [], "write_errors": [],
-              "dry_run": dry_run}
+              "buy_cost_snapshots": [], "dry_run": dry_run}
 
     by_id = {l["item_id"]: l for l in listings}
     claimed = set()
@@ -554,6 +556,18 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                 if new_sold < old_sold:
                     logger.warning(f"ebay_sync: row {row['row_num']} units_sold "
                                    f"{old_sold} -> {new_sold} (eBay count went down)")
+                # Auto-snapshot buy_cost (col BB) on a NEW sale: quantity_sold rose and
+                # buy_cost is still blank → record the current costco_cost as what Jay is
+                # about to pay. Manual override always wins (a filled buy_cost is never
+                # touched).
+                if new_sold > old_sold:
+                    _bc = _to_float(row.get("buy_cost"))
+                    _gc = _to_float(row.get("costco_cost"))
+                    if (_bc is None or _bc <= 0) and _gc is not None and _gc > 0:
+                        entry["buy_cost_snapshot"] = row.get("costco_cost")
+                        report["buy_cost_snapshots"].append(
+                            {"row_num": row["row_num"], "title": title,
+                             "buy_cost": row.get("costco_cost")})
 
             _check_margin(row, listing, report)
         elif (str(row.get("status", "")).strip().upper() == "ACTIVE"
@@ -590,11 +604,13 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
         pool[listing["item_id"]]["suggested_row"] = entry["row_num"]
 
     if to_write and not dry_run:
-        _write_units_sold(service, sheet_name, units_col, to_write, report, title_reader)
+        _write_units_sold(service, sheet_name, units_col, to_write, report, title_reader,
+                          buy_cost_col=col_map.get("buy_cost"))
     return report
 
 
-def _write_units_sold(service, sheet_name, units_col, entries, report, title_reader):
+def _write_units_sold(service, sheet_name, units_col, entries, report, title_reader,
+                      buy_cost_col=None):
     live_titles = None
     if title_reader is not None:
         try:
@@ -613,9 +629,11 @@ def _write_units_sold(service, sheet_name, units_col, entries, report, title_rea
         if not first:
             _sleep(WRITE_DELAY)
         first = False
+        cols = [(units_col, entry["quantity_sold"])]
+        if buy_cost_col and entry.get("buy_cost_snapshot"):
+            cols.append((buy_cost_col, entry["buy_cost_snapshot"]))
         try:
-            safe_write_row(service, sheet_name, entry["row_num"],
-                           [(units_col, entry["quantity_sold"])])
+            safe_write_row(service, sheet_name, entry["row_num"], cols)
         except Exception as e:
             logger.error(f"ebay_sync: write failed for row {entry['row_num']}: {e}")
             report["write_errors"].append(
@@ -630,6 +648,8 @@ def summarize(report: dict) -> str:
          f"margin_breach hard {hard} soft {soft}, "
          f"active_not_on_ebay {len(report['active_not_on_ebay'])}, "
          f"not_in_sheet {len(report['on_ebay_not_in_sheet'])}")
+    if report.get("buy_cost_snapshots"):
+        s += f", buy_cost_snapped {len(report['buy_cost_snapshots'])}"
     if report["margin_unchecked"]:
         s += f", margin_unchecked {len(report['margin_unchecked'])}"
     n_links = sum(1 for g in report["active_not_on_ebay"] if g.get("suggested_item_id"))
