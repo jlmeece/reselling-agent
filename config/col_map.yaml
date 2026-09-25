@@ -21,7 +21,7 @@
 columns:
   # ── Visible (A–Z) ─────────────────────────────────────────────────
   status:           "A"   # PENDING/APPROVED/READY/ACTIVE/WATCH/PAUSED_*/
-  demand_score:     "B"   # Tier score 0–10 (Tier 1≥7, Tier 2≥4, Tier 3<4)
+  demand_score:     "B"   # Tier score 0–10 (Tier 1≥6, Tier 2≥3, Tier 3<3 + monthly-profit override)
   title:            "C"   # Product name
   category:         "D"   # Precious Metals / Jewelry / Watches / Outdoor Furniture
   platform:         "E"   # eBay / Site / Both (set when listed)

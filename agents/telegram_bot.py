@@ -332,7 +332,7 @@ def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
     def is_scored(row):
         return safe_get(row, status_i) == "SCORED"
 
-    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category")
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category", "sold_90d")
     items = _extract_rows_by_field(
         rows, col_map, fields, data_start_row=data_start_row, filter_fn=is_scored
     )
@@ -344,8 +344,13 @@ def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
     items = [p for p in items if meets_profit_floor(p)]
 
     def sort_key(p):
-        score = _parse_currency(p["demand_score"])
-        return -score if score is not None else float("inf")
+        # Primary: expected monthly profit (net × velocity) desc — biggest money-makers
+        # first. Tiebreak: net/unit desc — a $50×1 flip sorts above a $1×50 grind
+        # (equal money, far less listing/shipping work).
+        net = _parse_currency(p.get("net_profit")) or 0.0
+        sold = _parse_currency(p.get("sold_90d")) or 0.0
+        monthly = net * (sold / 3.0)
+        return (-monthly, -net)
 
     items.sort(key=sort_key)
     return items
@@ -398,18 +403,16 @@ def _format_net_fragment(net_profit_raw, net_margin_raw, label="net"):
 def _tier_label(demand_score_raw):
     """
     Classify a demand_score cell into 'Tier 1 🥇' / 'Tier 2' / 'Tier 3' using
-    col_map.yaml's documented thresholds (Tier1>=7, Tier2>=4, Tier3<4).
-    Deliberately NOT ~/.claude/skills/base_scoring.py's assign_tier() — that
-    shared skill uses different thresholds (6.0/3.0) tuned for a different
-    project; this sheet's formulas and the business's own convention are
-    authored against 7/4. Returns None if demand_score is blank/unparseable.
+    base_scoring.py's TIER_RULES (Tier1>=6.0, Tier2>=3.0) — the SAME thresholds
+    the research pipeline's assign_tier() uses, so the badge matches the sheet
+    status (SCORED/WATCH/PAUSED). Returns None if demand_score is blank/unparseable.
     """
     score = _parse_currency(demand_score_raw)
     if score is None:
         return None
-    if score >= 7:
+    if score >= 6:
         return "Tier 1 🥇"
-    if score >= 4:
+    if score >= 3:
         return "Tier 2"
     return "Tier 3"
 
@@ -697,7 +700,7 @@ def format_dashboard_reply(counts, total):
         lines.append(f"{emoji[label]} {label}: {n}")
 
     lines.append("")
-    lines.append("Scores: 0–10 · Tier 1 ≥7 🥇 · Tier 2 ≥4 · Tier 3 <4 · Sharpe = risk-adjusted return (higher = better)")
+    lines.append("Scores: 0–10 · Tier 1 ≥6 🥇 · Tier 2 ≥3 · Tier 3 <3 · Sharpe = risk-adjusted return (higher = better)")
     lines.append("")
     lines.append(f"Total tracked: {total}")
     lines.append("Last updated: just now")
@@ -1657,8 +1660,8 @@ async def _render_review_position(update, context):
     text = format_review_card(item, q["pos"] + 1, len(q["items"]))
     if q["pos"] == 0:
         text += (
-            "\n\nScore = demand/opportunity (0–10). Tier 1 ≥7 · Tier 2 4–6.9 · "
-            "Tier 3 <4. Margin is separate (Net / Net%)."
+            "\n\nScore = demand/opportunity (0–10). Tier 1 ≥6 · Tier 2 3–5.9 · "
+            "Tier 3 <3. Margin is separate (Net / Net%)."
         )
     await _send_screen(update, text, reply_markup=_review_card_kb(item["row_num"]))
 

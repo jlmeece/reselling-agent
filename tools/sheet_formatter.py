@@ -784,7 +784,7 @@ def _build_legend_rows():
 
     visible_cols = [
         ("A", "STATUS",        "Current pipeline stage. Use the dropdown.",                              ""),
-        ("B", "TIER",          "0–10 composite score. Green ≥7, Yellow 4–7, Red <4.",                   ""),
+        ("B", "TIER",          "0–10 composite score. Green ≥6, Yellow 3–6, Red <3.",                   ""),
         ("C", "PRODUCT TITLE", "Product name from Costco.",                                              ""),
         ("D", "CATEGORY",      "Category (Precious Metals, Jewelry, Watches, etc.).",                   ""),
         ("E", "PLATFORM",      "eBay / Site / Both — set when listed.",                                  ""),

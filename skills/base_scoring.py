@@ -14,7 +14,7 @@ Scoring model:
   - 4 business lenses, each applying different dimension weights
   - Lenses combined into a final weighted score
   - Seasonal modifier applied last (+0.5 to +1.0 during peak months)
-  - Tier 1 >= 7.0 | Tier 2 >= 4.0 | Tier 3 < 4.0
+  - Tier 1 >= 6.0 | Tier 2 >= 3.0 | Tier 3 < 3.0 (plus a monthly-profit override)
 """
 
 from datetime import datetime
@@ -83,6 +83,35 @@ TIER_RULES = {
 }
 
 MAX_TIER1_PER_RUN = 3
+
+
+# ── Net-profit (absolute $/unit) scoring + monthly-profit tier overrides ─────────
+# Replaces margin-% for the tier decision: a $168 bracelet or $421 furniture piece
+# carries big absolute profit at low margin %, so %-based scoring shelves it.
+# Roughly one point per doubling of net profit.
+
+def score_net_profit(net_dollars):
+    """0-10 score from absolute net profit per unit (NOT margin %)."""
+    if net_dollars is None:
+        return 0
+    n = float(net_dollars)
+    if n >= 300:   return 10
+    if n >= 150:   return 9
+    if n >= 75:    return 8
+    if n >= 40:    return 7
+    if n >= 20:    return 6
+    if n >= 10:    return 5
+    if n >= 5:     return 4
+    if n >= 2:     return 3
+    if n >= 1:     return 2
+    return 1
+
+
+# Monthly-profit override thresholds ($/mo = net × velocity). Real money can't be
+# shelved by a low margin-%. High-ticket items clear these even at low margin %.
+MONTHLY_PROFIT_TIER1 = 40.0   # ≥ this → force SCORED (review it)
+MONTHLY_PROFIT_TIER2 = 10.0   # ≥ this → at least WATCH (never PAUSED)
+
 
 
 # ── Scoring functions ──────────────────────────────────────────────────────────

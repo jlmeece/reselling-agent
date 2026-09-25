@@ -69,7 +69,7 @@ from skills.research_watches import run_pass3 as watches_pass3
 from skills.research_appliances import run_pass3 as appliances_pass3
 from skills.research_pharmacy import run_pass3 as pharmacy_pass3
 from skills.scoring import score_dimension
-from skills.base_scoring import score_sell_through
+from skills.base_scoring import score_sell_through, score_net_profit, MONTHLY_PROFIT_TIER1, MONTHLY_PROFIT_TIER2
 
 
 def col_to_idx(col_letter: str) -> int:
@@ -918,6 +918,24 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 # Active listing count = market liquidity for a commodity, not crowding
                 dimension_scores["competition_density"] = 5  # neutral
 
+            # Net profit ($/unit) — computed once here; drives the margin score AND the
+            # monthly-profit tier override below. Absolute dollars, not margin %.
+            net_profit_val = None
+            if suggested_price and costco_cost:
+                try:
+                    _sp = float(suggested_price)
+                    _c  = float(str(costco_cost).replace("$", "").replace(",", ""))
+                    net_profit_val = round(_sp * (1 - fee_rate) - _c, 2)
+                except (ValueError, TypeError):
+                    pass
+
+            # Override margin_potential with an absolute-dollar score. Claude scores
+            # margin as a %, which shelves high-ticket items (a $168 bracelet, $421
+            # furniture) that carry big absolute profit at low margin %. Precious Metals
+            # keep their spot-premium override above.
+            if net_profit_val is not None and category != "Precious Metals":
+                dimension_scores["margin_potential"] = score_net_profit(net_profit_val)
+
             # 3e. Pass 3: deterministic scoring
             pass3_fn = _pass3_for_category(category)
             result   = pass3_fn(dimension_scores, cat_config, reasoning=reasoning)
@@ -957,7 +975,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
 
             verify_flag = " ⚠️VERIFY" if ebay_data.get("wrong_product_flag") else ""
 
-            # Velocity + monthly profit estimate — the real opportunity signal
+            # Velocity + monthly profit — net_profit_val computed above, reuse it
             sold_90d_val   = max(ebay_data.get("sold_90d") or 0, int(float(safe_get(row, col_to_idx(COL["sold_90d"])) or 0)))
             monthly_units  = round(sold_90d_val / 3, 1)
             # Cap velocity by purchase limit — you can only buy what Costco allows
@@ -968,34 +986,39 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     monthly_units = min(monthly_units, max_monthly)
                 except (ValueError, TypeError):
                     pass
-            if suggested_price and costco_cost:
-                try:
-                    _sp = float(suggested_price)
-                    _c  = float(str(costco_cost).replace("$", "").replace(",", ""))
-                    _net = round(_sp * (1 - fee_rate) - _c, 2)
-                    _monthly_profit = round(_net * monthly_units, 0)
-                    velocity_str = f" | {monthly_units}/mo → ${_monthly_profit:,.0f}/mo"
-                except Exception:
-                    velocity_str = f" | {monthly_units}/mo"
+
+            monthly_profit_val = round(net_profit_val * monthly_units, 0) if net_profit_val is not None else None
+            if monthly_profit_val is not None:
+                velocity_str = f" | {monthly_units}/mo → ${monthly_profit_val:,.0f}/mo"
             else:
                 velocity_str = f" | {monthly_units}/mo" if monthly_units else ""
 
             # Hard gate: never reach Tier 1 with negative net profit
             _gate_note = ""
-            if tier == 1 and suggested_price and costco_cost:
+            if tier == 1 and net_profit_val is not None and net_profit_val <= 0:
                 try:
-                    _sp  = float(suggested_price)
-                    _c   = float(str(costco_cost).replace("$", "").replace(",", ""))
-                    _net = round(_sp * (1 - fee_rate) - _c, 2)
-                    if _net <= 0:
-                        _breakeven = round(_c / (1 - fee_rate) + 0.01, 2)
-                        _gate_note = (
-                            f"\nDowngraded T1→T2: net profit is ${_net:.2f} at suggested price "
-                            f"${_sp:.2f}. Raise eBay price above ${_breakeven:.2f} to be viable."
-                        )
-                        tier = 2
+                    _c = float(str(costco_cost).replace("$", "").replace(",", ""))
+                    _breakeven = round(_c / (1 - fee_rate) + 0.01, 2)
+                    _gate_note = (
+                        f"\nDowngraded T1→T2: net profit is ${net_profit_val:.2f} at suggested price "
+                        f"${float(suggested_price):.2f}. Raise eBay price above ${_breakeven:.2f} to be viable."
+                    )
                 except (ValueError, TypeError):
                     pass
+                tier = 2
+
+            # Monthly-profit override: real money can't be shelved by a low margin-%.
+            # High-ticket items (a $168 bracelet, $421 furniture) carry big absolute
+            # profit at low margin %, so the %-weighted score parks them — force them up.
+            if net_profit_val is not None and net_profit_val > 0 and monthly_profit_val is not None:
+                if monthly_profit_val >= MONTHLY_PROFIT_TIER1 and tier != 1:
+                    _gate_note += (f"\nMonthly-profit override: ${monthly_profit_val:,.0f}/mo "
+                                   f"(net ${net_profit_val:.2f}/unit) → promoted to SCORED.")
+                    tier = 1
+                elif monthly_profit_val >= MONTHLY_PROFIT_TIER2 and tier == 3:
+                    _gate_note += (f"\nMonthly-profit override: ${monthly_profit_val:,.0f}/mo "
+                                   f"(net ${net_profit_val:.2f}/unit) → promoted to WATCH.")
+                    tier = 2
 
             tier_summary_line = (
                 f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}"

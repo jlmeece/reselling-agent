@@ -207,18 +207,18 @@ def test_is_duplicate_instance_false_when_no_pid_file():
 
 # ── new pure helpers (tier label, fee %, sale-savings, net-with-ads) ───────────
 
-def test_tier_label_tier1_at_and_above_seven():
+def test_tier_label_tier1_at_and_above_six():
     assert _tier_label("8.2") == "Tier 1 🥇"
-    assert _tier_label("7") == "Tier 1 🥇"
+    assert _tier_label("6") == "Tier 1 🥇"
 
 
-def test_tier_label_tier2_between_four_and_seven():
-    assert _tier_label("5.0") == "Tier 2"
-    assert _tier_label("4") == "Tier 2"
+def test_tier_label_tier2_between_three_and_six():
+    assert _tier_label("5.9") == "Tier 2"
+    assert _tier_label("3") == "Tier 2"
 
 
-def test_tier_label_tier3_below_four():
-    assert _tier_label("2.0") == "Tier 3"
+def test_tier_label_tier3_below_three():
+    assert _tier_label("2.9") == "Tier 3"
     assert _tier_label("0") == "Tier 3"
 
 
@@ -288,6 +288,7 @@ def test_format_net_with_ads_line_none_when_net_profit_unparseable():
 _COL = {
     "status": "A", "title": "C", "category": "D", "stock_status": "F",
     "costco_cost": "G", "ebay_price": "H", "net_profit": "I", "net_margin": "J",
+    "sold_90d": "K",
     "last_checked": "O", "costco_url": "R", "sale_info": "X",
     "fee_rate": "AB", "ebay_fees": "AC", "ship_cost": "AD", "ad_cost": "AE",
     "ad_budget": "AH", "regular_price": "AW", "demand_score": "B",
@@ -363,22 +364,32 @@ def test_extract_review_queue_filters_scored_status():
     assert items[0]["title"] == "Scored Item"
 
 
-def test_extract_review_queue_sorts_by_demand_score_descending():
+def test_extract_review_queue_sorts_by_monthly_profit_descending():
     rows = [
-        _make_row(A="SCORED", C="Low", B="4.0"),
-        _make_row(A="SCORED", C="High", B="9.0"),
+        _make_row(A="SCORED", C="Low Monthly", I="$4.00", K="3"),     # 4 × 1 = $4/mo
+        _make_row(A="SCORED", C="High Monthly", I="$10.00", K="30"),  # 10 × 10 = $100/mo
     ]
     items = extract_review_queue(rows, _COL, data_start_row=4)
-    assert [i["title"] for i in items] == ["High", "Low"]
+    assert [i["title"] for i in items] == ["High Monthly", "Low Monthly"]
 
 
-def test_extract_review_queue_unparseable_score_sorts_last():
+def test_extract_review_queue_tiebreaks_by_net_per_unit():
     rows = [
-        _make_row(A="SCORED", C="No Score", B=""),
-        _make_row(A="SCORED", C="Has Score", B="5.0"),
+        _make_row(A="SCORED", C="Fast Cheap", I="$10.00", K="15"),  # 10 × 5 = $50/mo
+        _make_row(A="SCORED", C="Slow Rich", I="$50.00", K="3"),    # 50 × 1 = $50/mo
     ]
     items = extract_review_queue(rows, _COL, data_start_row=4)
-    assert [i["title"] for i in items] == ["Has Score", "No Score"]
+    # Equal monthly profit ($50/mo); higher net/unit ($50) sorts first
+    assert [i["title"] for i in items] == ["Slow Rich", "Fast Cheap"]
+
+
+def test_extract_review_queue_zero_velocity_sorts_last():
+    rows = [
+        _make_row(A="SCORED", C="No Velocity", I="$10.00", K=""),
+        _make_row(A="SCORED", C="Has Velocity", I="$10.00", K="30"),
+    ]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    assert [i["title"] for i in items] == ["Has Velocity", "No Velocity"]
 
 
 def test_extract_review_queue_includes_row_num():
@@ -807,7 +818,7 @@ def test_format_category_breakdown_appends_unknown_category():
 def test_format_dashboard_reply_includes_score_legend():
     counts, total = {"Ready": 1}, 1
     text = format_dashboard_reply(counts, total)
-    assert "Scores: 0–10 · Tier 1 ≥7 🥇 · Tier 2 ≥4 · Tier 3 <4 · Sharpe = risk-adjusted return (higher = better)" in text
+    assert "Scores: 0–10 · Tier 1 ≥6 🥇 · Tier 2 ≥3 · Tier 3 <3 · Sharpe = risk-adjusted return (higher = better)" in text
 
 
 # ── _parse_pct ────────────────────────────────────────────────────────────────

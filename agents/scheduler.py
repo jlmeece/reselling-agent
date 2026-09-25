@@ -774,7 +774,7 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
         tier = "?"
         try:
             sc   = float(score_str)
-            tier = "1" if sc >= 7.0 else ("2" if sc >= 4.0 else "3")
+            tier = "1" if sc >= 6.0 else ("2" if sc >= 3.0 else "3")
         except (ValueError, TypeError):
             pass
 
