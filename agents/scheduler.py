@@ -799,6 +799,48 @@ def run_refresh_notes(config, COL, service, sheet_name, start_row, end_row):
     logger.info(f"refresh-notes: updated {updated_count} rows.")
 
 
+# ── Mode: RESCORE (one-shot) ──────────────────────────────────────────────────
+
+def run_rescore(config, COL, service, sheet_name, start_row, end_row):
+    """
+    Bulk re-score: flip WATCH + PAUSED_DEMAND rows back to PENDING so the next
+    research run re-scores them with the current scoring logic (net $/unit +
+    monthly-profit override). Clears re_eval_date. One-shot helper — run after a
+    scoring change so items parked by the old logic re-surface for review.
+    """
+    status_i = col_to_idx(COL["status"])
+    title_i = col_to_idx(COL["title"])
+    reeval_i = col_to_idx(COL["re_eval_date"]) if "re_eval_date" in COL else None
+
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
+    flipped = []
+    for idx, row in enumerate(all_data):
+        if not row:
+            continue
+        status = safe_get(row, status_i)
+        if status not in ("WATCH", "PAUSED_DEMAND"):
+            continue
+        sheet_row = idx + start_row
+        title = safe_get(row, title_i)
+        updates = [(COL["status"], "PENDING")]
+        if reeval_i is not None:
+            updates.append((COL["re_eval_date"], ""))
+        write_row_partial(service, sheet_name, sheet_row, updates)
+        flipped.append((sheet_row, title))
+        logger.info(f"  {status} -> PENDING (re-score): {title[:50]}")
+
+    logger.info(f"rescore: {len(flipped)} row(s) -> PENDING")
+    token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        _send_telegram(
+            token, chat_id,
+            f"🔁 Re-score: {len(flipped)} item(s) moved WATCH/PAUSED_DEMAND → PENDING. "
+            f"Run research to re-score them with the new logic."
+        )
+    return {"status": "ok", "notes": f"rescore: {len(flipped)} row(s) -> PENDING"}
+
+
 # ── Mode: RECHECK (one-shot) ──────────────────────────────────────────────────
 
 def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=False):
@@ -1557,7 +1599,7 @@ def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
-        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "audit", "ebay_sync",
+        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "rescore", "audit", "ebay_sync",
                  "sale-digest", "sale-refresh", "savings"],
         default="active",
         help=(
@@ -1568,6 +1610,7 @@ def main():
             "rotation:       Score all active products, flag underperformers, send weekly digest (1x/week)\n"
             "refresh-notes:  Retroactively reformat Col T summary line (one-shot)\n"
             "recheck:        Retry Costco scrape for CHECK FAILED and empty-price rows (one-shot)\n"
+            "rescore:        Flip WATCH/PAUSED_DEMAND -> PENDING for re-scoring (one-shot)\n"
             "audit:          Graveyard pass — remove junk, flag borderline rows (every 2 days)\n"
             "ebay_sync:      Sync eBay active listings -> units_sold; flag price mismatch / removed listings\n"
             "sale-digest:    ONE Telegram message of tracked items really on sale (read-only)\n"
@@ -1642,6 +1685,8 @@ def main():
             _run_results.update(run_savings(config, COL, service, sheet_name, start_row, end_row,
                                             dry_run=args.dry_run, limit=args.limit,
                                             add_limit=args.add_limit))
+        elif args.mode == "rescore":
+            _run_results.update(run_rescore(config, COL, service, sheet_name, start_row, end_row))
         # One alert per run if the Costco price API stopped returning prices (col G would
         # otherwise freeze silently, as it did after the Sep 2026 redesign).
         _miss = price_miss_message()

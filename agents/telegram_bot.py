@@ -64,6 +64,7 @@ LOG_FILES = {
     "discovery":     os.path.join(_BASE_DIR, "data", "logs", "discovery.log"),
     "refresh-notes": os.path.join(_BASE_DIR, "data", "logs", "refresh-notes.log"),
     "recheck":       os.path.join(_BASE_DIR, "data", "logs", "recheck.log"),
+    "rescore":       os.path.join(_BASE_DIR, "data", "logs", "rescore.log"),
     "ebay_sync":     os.path.join(_BASE_DIR, "data", "logs", "ebay_sync.log"),
     "sale-digest":   os.path.join(_BASE_DIR, "data", "logs", "sale_digest.log"),
     "savings":       os.path.join(_BASE_DIR, "data", "logs", "savings.log"),
@@ -1998,11 +1999,11 @@ async def cb_menu_alerts(update, context, arg):
 # tied to the Application) lets the bot post its own completion message
 # instead of relying on that.
 
-_JOB_MODES = ("active", "daily", "research", "discovery", "rotation", "recheck", "audit")
+_JOB_MODES = ("active", "daily", "research", "discovery", "rotation", "recheck", "rescore", "audit")
 _JOB_LABELS = {
     "active": "▶️ Active Monitor", "daily": "▶️ Daily Sweep", "research": "▶️ Research",
     "discovery": "▶️ Discovery", "rotation": "▶️ Rotation", "recheck": "▶️ Recheck",
-    "audit": "▶️ Audit",
+    "rescore": "🔁 Re-score", "audit": "▶️ Audit",
 }
 # refresh-notes intentionally excluded — a one-shot retroactive migration
 # per its own docstring, not a routine action; a tap target here risks an
