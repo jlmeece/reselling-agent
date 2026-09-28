@@ -271,12 +271,12 @@ def test_format_net_with_ads_line_subtracts_ad_budget():
 
 def test_format_net_with_ads_line_treats_blank_ad_budget_as_zero():
     line = _format_net_with_ads_line("$45.20", "", "$459.99")
-    assert line == "Net after ad reserve: $45.20 (10%)"
+    assert line == "Net after reserve: $45.20 (10%)"
 
 
 def test_format_net_with_ads_line_guards_zero_ebay_price():
     line = _format_net_with_ads_line("$45.20", "$6.75", "")
-    assert line == "Net after ad reserve: $38.45 (—)"
+    assert line == "Net after reserve: $38.45 (—)"
 
 
 def test_format_net_with_ads_line_none_when_net_profit_unparseable():
@@ -546,9 +546,9 @@ def test_format_lookup_reply_single_match_full_card():
     assert "List $2199.00" in text
     assert "Ship $0.00" in text
     assert "Fees $329.85 (15.0%)" in text
-    assert "Ad reserve $27.08 (15% of net profit)" in text
-    assert "Net without ads: $180.50 (8%)" in text
-    assert "Net after ad reserve: $153.42 (7%)" in text
+    assert "Profit reserve $27.08 (15% of net profit)" in text
+    assert "Net before reserve: $180.50 (8%)" in text
+    assert "Net after reserve: $153.42 (7%)" in text
     assert "Stock: In Stock" in text
     assert "Last checked 12h ago" in text
     assert text.endswith("https://www.costco.com/gold-bar")
@@ -608,12 +608,12 @@ def test_format_lookup_reply_over_five_matches():
 
 def test_format_product_detail_missing_net_shows_dash():
     p = search_products([_make_row(I="", J="")], _COL, "pamp")[0]
-    assert "Net without ads: — (—)" in format_product_detail(p)
+    assert "Net before reserve: — (—)" in format_product_detail(p)
 
 
 def test_format_net_fragment_handles_negative_profit():
     p = search_products([_make_row(I="-$12.50", J="-3%")], _COL, "pamp")[0]
-    assert "Net without ads: -$12.50 (-3%)" in format_product_detail(p)
+    assert "Net before reserve: -$12.50 (-3%)" in format_product_detail(p)
 
 
 def test_format_product_detail_stale_after_12h():
@@ -717,14 +717,14 @@ def test_format_top_opportunities_flags_saturated_comps():
     assert "⚠️ saturated" in format_top_opportunities(products)
 
 
-def test_format_top_opportunities_shows_buy_list_net_and_ads():
+def test_format_top_opportunities_shows_buy_list_net_and_reserve():
     rows = [_make_dash_row(G="$389.99", H="$459.99", I="$45.20", J="9.8%", AH="$6.75")]
     products = extract_dashboard_products(rows, _DASH_COL)
     text = format_top_opportunities(products)
     assert "Buy $389.99" in text
     assert "List $459.99" in text
     assert "Net $45.20 (9.8%)" in text
-    assert "Ads $6.75" in text
+    assert "Reserve $6.75" in text
 
 
 def test_format_top_opportunities_tier1_badge_shown():
