@@ -65,3 +65,24 @@ def test_og_image_final_fallback():
 
 def test_nothing_found_returns_empty_list():
     assert _extract_image_urls(FakePage()) == []
+
+
+def test_strips_semicolon_matrix_param():
+    """eBay rejects PicURL values containing ';' (error 10122) — strip at the source."""
+    els = [FakeEl(src=GDX.format(1, 1) + ";width=1600")]
+    urls = _extract_image_urls(FakePage({"Enlarge Product Preview": els}))
+    assert urls == [GDX.format(1, 1)]
+
+
+def test_data_uri_placeholder_falls_back_to_data_src():
+    """A lazy-load `data:image/gif;base64,` placeholder in src must not shadow the real
+    image sitting in data-src — this is what let junk into col AT in the first place."""
+    els = [FakeEl(src="data:image/gif;base64,", data_src=GDX.format(5, 5))]
+    urls = _extract_image_urls(FakePage({"Enlarge Product Preview": els}))
+    assert urls == [GDX.format(5, 5)]
+
+
+def test_data_uri_placeholder_with_no_data_src_is_dropped():
+    els = [FakeEl(src="data:image/gif;base64,")]
+    urls = _extract_image_urls(FakePage({"Enlarge Product Preview": els}))
+    assert urls == []

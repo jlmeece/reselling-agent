@@ -41,6 +41,12 @@ def _energy_row(cost, badge="", regular="", flag="", ebay_price="59.99"):
                 stock_status="In Stock")
 
 
+def _approved_row():
+    return _row(status="APPROVED", title="Kirkland Signature Energy Shot", category="Pharmacy",
+                costco_url="https://www.costco.com/x.product.1711796.html",
+                image_urls="")
+
+
 def _scrape(price, on_sale, original=None, savings=None, expires=None,
             coupon_type=None, coupon_label=None):
     return {"price": price, "stock_status": "In Stock", "image_urls": ["http://img/1.jpg"],
@@ -209,3 +215,21 @@ def test_oos_active_row_still_pauses_and_alerts(harness):
     _r, w = _written(calls)
     assert w[COL["status"]] == "PAUSED_OOS"
     assert len(calls["urgent"]) == 1 and "OUT OF STOCK" in calls["urgent"][0][1][0]["reason"]
+
+
+def test_approved_row_backfills_image_urls(harness):
+    """APPROVED rows self-heal a blank/stale col AT from fresh scrape image URLs."""
+    calls = harness([_approved_row()], _scrape(31.99, False))
+    _r, w = _written(calls)
+    assert w[COL["stock_status"]] == "In Stock"
+    assert COL["last_checked"] in w
+    assert w[COL["image_urls"]] == "http://img/1.jpg"
+    assert w[COL["costco_cost"]] == 31.99
+
+
+def test_approved_row_skips_image_write_when_scrape_has_none(harness):
+    scrape = _scrape(31.99, False)
+    scrape["image_urls"] = []
+    calls = harness([_approved_row()], scrape)
+    _r, w = _written(calls)
+    assert COL["image_urls"] not in w

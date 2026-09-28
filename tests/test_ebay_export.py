@@ -118,6 +118,37 @@ def test_generate_ebay_csv_converts_comma_separated_images_to_pipe():
     assert rows[0]["PicURL"] == "https://example.com/a.jpg|https://example.com/b.jpg"
 
 
+def test_generate_ebay_csv_strips_semicolon_from_image_url():
+    """A semicolon in an image URL must be stripped — eBay error 10122 rejects it."""
+    from tools.ebay_export import generate_ebay_csv
+    urls = "https://gdx-assets.costco.com/img/1.jpg;matrix=foo"
+    row = _make_row(image_urls=urls)
+    csv_text = generate_ebay_csv([(4, row)], _config_with_id())
+    rows = list(csv.DictReader(io.StringIO(csv_text)))
+    assert rows[0]["PicURL"] == "https://gdx-assets.costco.com/img/1.jpg"
+
+
+def test_generate_ebay_csv_drops_data_uri_placeholder():
+    """A `data:image/gif;base64,` lazy-load placeholder that leaked into col AT must be
+    dropped entirely, not truncated into a bogus 'data:image/gif' PicURL entry."""
+    from tools.ebay_export import generate_ebay_csv
+    urls = "data:image/gif;base64,|https://cdn.example.com/a.jpg|https://cdn.example.com/b.jpg"
+    row = _make_row(image_urls=urls)
+    csv_text = generate_ebay_csv([(4, row)], _config_with_id())
+    rows = list(csv.DictReader(io.StringIO(csv_text)))
+    assert rows[0]["PicURL"] == "https://cdn.example.com/a.jpg|https://cdn.example.com/b.jpg"
+
+
+def test_generate_ebay_csv_normalizes_pipe_with_spaces():
+    """col AT written by the active monitor as ' | '-joined must collapse to clean pipes."""
+    from tools.ebay_export import generate_ebay_csv
+    urls = "https://example.com/a.jpg | https://example.com/b.jpg"
+    row = _make_row(image_urls=urls)
+    csv_text = generate_ebay_csv([(4, row)], _config_with_id())
+    rows = list(csv.DictReader(io.StringIO(csv_text)))
+    assert rows[0]["PicURL"] == "https://example.com/a.jpg|https://example.com/b.jpg"
+
+
 # ── Quantity: purchase limit (col W) or DEFAULT_QUANTITY ──────────────────────
 
 @pytest.mark.parametrize("cell,expected", [

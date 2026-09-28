@@ -621,9 +621,13 @@ def get_cart_estimate(costco_url: str, page) -> dict:
 def _collect_img_urls(els, limit=5):
     seen, urls = set(), []
     for img in els:
-        src = img.get_attribute("src") or img.get_attribute("data-src") or ""
-        src = src.strip()
-        if not src or src in seen:
+        src = img.get_attribute("src") or ""
+        if not src or src.startswith("data:"):
+            # Missing, or a lazy-load placeholder (e.g. `data:image/gif;base64,`) —
+            # the real image lives in data-src until JS swaps it in.
+            src = img.get_attribute("data-src") or src
+        src = src.strip().split(";", 1)[0]
+        if not src.startswith(("http://", "https://")) or src in seen:
             continue
         skip = any(x in src.lower() for x in ["logo", "icon", "banner", "sprite", "svg"])
         if skip:

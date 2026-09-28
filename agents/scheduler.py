@@ -180,6 +180,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                     (COL["stock_status"], stock_status),
                     (COL["last_checked"], run_time),
                 ]
+                if image_urls:   # backfill images missed during the Sep-2026 redesign outage
+                    updates.append((COL["image_urls"], image_urls))
                 if new_price:
                     updates.append((COL["costco_cost"], new_price))
                 write_row_partial(service, sheet_name, sheet_row, updates)

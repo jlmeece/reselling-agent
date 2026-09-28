@@ -95,6 +95,15 @@ _COL = {
 _EXPORT_STATUSES = {"READY"}
 PLACEHOLDER_IMAGE = "https://placehold.co/1600x1600/ffffff/cccccc/png"
 
+
+def _sanitize_pic_url(url: str) -> str:
+    """Strip anything from a stray ';' onward — eBay rejects PicURL values containing
+    a semicolon (error 10122), and Costco's CDN sometimes appends a matrix param after one.
+    Also drops anything that isn't a fetchable http(s) URL — e.g. a `data:image/gif;base64,`
+    lazy-load placeholder that got scraped into col AT before eBay can't use it by reference."""
+    url = url.strip().split(";", 1)[0]
+    return url if url.startswith(("http://", "https://")) else ""
+
 # eBay Seller Hub CSV column order
 _EBAY_COLUMNS = [
     "Action",
@@ -619,8 +628,15 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             skipped += 1
             continue
 
-        # PicURL: eBay accepts pipe-separated multiple image URLs
-        pic_url = image_urls.replace(",", "|") if image_urls else PLACEHOLDER_IMAGE
+        # PicURL: eBay accepts pipe-separated multiple image URLs. col AT may be comma- or
+        # pipe-separated depending on which write path last touched it (researcher.py uses
+        # ",", the active monitor uses " | ") — split on either and sanitize each URL.
+        if image_urls:
+            parts = [_sanitize_pic_url(p) for p in re.split(r"[,|]", image_urls)]
+            parts = [p for p in parts if p]
+            pic_url = "|".join(parts) if parts else PLACEHOLDER_IMAGE
+        else:
+            pic_url = PLACEHOLDER_IMAGE
         if pic_url == PLACEHOLDER_IMAGE:
             logger.info(f"  {title[:40]} — no images scraped, using placeholder. Replace in Seller Hub before publishing.")
 
@@ -719,7 +735,7 @@ if __name__ == "__main__":
     if path:
         print(f"\neBay upload file ready:\n  {path}")
         print("\nNext steps:")
-        print("  1. Open eBay Seller Hub → Reports → Uploads")
+        print("  1. Open eBay Seller Hub -> Reports -> Uploads")
         print("  2. Upload this CSV file")
         print("  3. Add photos to each listing via eBay's image uploader")
         print("  4. Review & activate listings in Seller Hub")
