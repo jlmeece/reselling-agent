@@ -32,7 +32,7 @@ from tools.graveyard_writer import (
 )
 
 # ── Protected statuses — NEVER touch these ────────────────────────────────────
-PROTECTED = {"ACTIVE", "READY", "APPROVED", "LISTED", "AUDIT_REVIEW"}
+PROTECTED = {"ACTIVE", "READY", "APPROVED", "LISTED", "AUDIT_REVIEW", "ENDED"}
 
 # ── SCORED dead-zone sweep ────────────────────────────────────────────────────
 # The Telegram review queue only surfaces SCORED rows with net >= 4.00

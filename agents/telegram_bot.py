@@ -1367,6 +1367,7 @@ async def cb_menu_dashboard(update, context, arg):
         text = text[:_MAX_MSG - 40] + "\n[truncated]"
 
     kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🟢 Active Listings", callback_data="activelist:show")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="menu:dashboard"),
          InlineKeyboardButton("✅ Review Items", callback_data="menu:review")],
         [InlineKeyboardButton("📤 Export CSV", callback_data="job:export"),
@@ -1603,6 +1604,169 @@ async def cb_listed_confirm(update, context, arg):
     safe_write_row(service, sheet_name, row_num, pairs)
     await _send_screen(
         update, f"✅ Marked ACTIVE — monitoring\n{pending['title']}", reply_markup=_home_inline_kb()
+    )
+
+
+# ── Active Listings + End Listing ────────────────────────────────────────────
+#
+# A dedicated "Active Listings" screen (sorted by net profit, descending) so Jay
+# can see every live listing's price + net + margin + units at a glance, then
+# End (ACTIVE -> ENDED) from the detail card. ENDED is terminal: the active
+# monitor stops tracking it (ACTIVE_MONITOR_STATUSES), the audit leaves it alone
+# (PROTECTED), and the row stays in the sheet for history.
+
+_ACTIVE_LISTING_FIELDS = (
+    "status", "title", "category", "ebay_price", "net_profit", "net_margin",
+    "units_sold",
+)
+
+
+def _active_net_key(p):
+    """Sort ACTIVE items by net profit desc; unparseable net sorts last."""
+    v = _parse_currency(p.get("net_profit"))
+    return (v is None, -(v or 0.0))
+
+
+def _format_active_line(p):
+    price = _format_price(p.get("ebay_price"))
+    net = _format_net_fragment(p.get("net_profit"), p.get("net_margin"))
+    units = (p.get("units_sold") or "").strip() or "0"
+    title = (p.get("title") or "(untitled)").strip()
+    return f"{title} — List ${price} · {net} · sold {units}"
+
+
+def _active_action_kb(row_num):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔴 End Listing", callback_data=f"ended:start:{row_num}")],
+        [InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"),
+         InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+    ])
+
+
+def _ended_confirm_kb(row_num):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ End Listing", callback_data=f"ended:confirm:{row_num}"),
+         InlineKeyboardButton("❌ Cancel", callback_data=f"ended:cancel:{row_num}")],
+    ])
+
+
+async def cb_activelist_show(update, context, arg):
+    context.user_data["awaiting_search"] = False
+    _clear_listing_state(context)
+    context.user_data["queue"] = None
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"activelist sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+
+    status_i = col_to_idx(col_map["status"])
+
+    def is_active(row):
+        return safe_get(row, status_i) == "ACTIVE"
+
+    items = _extract_rows_by_field(
+        rows, col_map, _ACTIVE_LISTING_FIELDS, data_start_row=start, filter_fn=is_active
+    )
+    items.sort(key=_active_net_key)
+
+    if not items:
+        await _send_screen(update, "No active listings right now.", reply_markup=_home_inline_kb())
+        return
+
+    total_net = sum(_parse_currency(p.get("net_profit")) or 0.0 for p in items)
+    lines = [f"🟢 Active Listings ({len(items)}) · total net ${total_net:,.2f}"]
+    for i, p in enumerate(items, 1):
+        lines.append(f"{i}. {_format_active_line(p)}")
+    text = "\n".join(lines)
+    if len(text) > _MAX_MSG - 20:
+        text = text[:_MAX_MSG - 40] + "\n[truncated]"
+
+    kb_rows = [
+        [InlineKeyboardButton(f"{i}. {(p.get('title') or '(untitled)')[:34]}",
+                              callback_data=f"activelist:pick:{p['row_num']}")]
+        for i, p in enumerate(items, 1)
+    ]
+    kb_rows.append([
+        InlineKeyboardButton("🔄 Refresh", callback_data="activelist:show"),
+        InlineKeyboardButton("🏠 Home", callback_data="menu:root"),
+    ])
+    await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(kb_rows))
+
+
+async def cb_activelist_pick(update, context, arg):
+    row_num = int(arg)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"activelist:pick sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category", "units_sold", "ebay_listing_url")
+    items = _extract_rows_by_field(rows, col_map, fields, data_start_row=start)
+    p = _find_by_row_num(items, row_num)
+    if p is None:
+        await _send_screen(
+            update, "This item is no longer available — it may have been removed.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+    lines = [format_product_detail(p)]
+    if (p.get("units_sold") or "").strip():
+        lines.append(f"Units sold: {(p.get('units_sold') or '').strip()}")
+    if (p.get("ebay_listing_url") or "").strip():
+        lines.append((p.get("ebay_listing_url") or "").strip())
+    await _send_screen(update, "\n".join(lines), reply_markup=_active_action_kb(row_num))
+
+
+async def cb_ended_start(update, context, arg):
+    row_num = int(arg)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"ended:start sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    items = _extract_rows_by_field(rows, col_map, ("status", "title"), data_start_row=start)
+    p = _find_by_row_num(items, row_num)
+    if p is None or (p.get("status") or "").strip() != "ACTIVE":
+        await _send_screen(
+            update, "This item is no longer ACTIVE — nothing to end.", reply_markup=_home_inline_kb()
+        )
+        return
+    await _send_screen(
+        update,
+        f"🔴 End '{(p.get('title') or '(untitled)')}'?\n\n"
+        "Status ACTIVE → ENDED. The active monitor stops tracking it, and the row stays in the sheet for history.",
+        reply_markup=_ended_confirm_kb(row_num),
+    )
+
+
+async def cb_ended_cancel(update, context, arg):
+    await _send_screen(update, "Cancelled.", reply_markup=_home_inline_kb())
+
+
+async def cb_ended_confirm(update, context, arg):
+    row_num = int(arg)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"ended:confirm sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    items = _extract_rows_by_field(rows, col_map, ("status", "title"), data_start_row=start)
+    p = _find_by_row_num(items, row_num)
+    if p is None or (p.get("status") or "").strip() != "ACTIVE":
+        await _send_screen(
+            update, "This item changed since you opened it — nothing was written.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+    safe_write_row(service, sheet_name, row_num, [(col_map["status"], "ENDED")])
+    await _send_screen(
+        update, f"✅ Ended — monitoring stopped\n{(p.get('title') or '(untitled)')}",
+        reply_markup=_home_inline_kb(),
     )
 
 
@@ -2218,6 +2382,11 @@ _CALLBACK_ROUTES.update({
     ("listed", "skip"): cb_listed_skip,
     ("listed", "confirm"): cb_listed_confirm,
     ("listed", "cancel"): cb_listed_cancel,
+    ("activelist", "show"): cb_activelist_show,
+    ("activelist", "pick"): cb_activelist_pick,
+    ("ended", "start"): cb_ended_start,
+    ("ended", "confirm"): cb_ended_confirm,
+    ("ended", "cancel"): cb_ended_cancel,
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
     ("logs", "show"): cb_logs_show,

@@ -8,7 +8,9 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.telegram_bot import (
     PROTECTED_COLS,
+    _active_net_key,
     _extract_rows_by_field,
+    _format_active_line,
     _parse_pct,
     compute_category_roi,
     compute_spot_price_impact,
@@ -968,3 +970,32 @@ def test_find_back_in_stock_ignores_still_out_of_stock():
 def test_find_back_in_stock_ignores_non_paused_oos_status():
     products = [{"status": "ACTIVE", "stock_status": "In Stock"}]
     assert find_back_in_stock(products) == []
+
+
+# ── Active Listings helpers ───────────────────────────────────────────────────
+
+def test_format_active_line_renders_price_net_units():
+    p = {
+        "title": "Kirkland Energy Shot",
+        "ebay_price": "$53.99",
+        "net_profit": "$6.85",
+        "net_margin": "13%",
+        "units_sold": "2",
+    }
+    assert _format_active_line(p) == "Kirkland Energy Shot — List $53.99 · net $6.85 (13%) · sold 2"
+
+
+def test_format_active_line_blank_units_default_to_zero():
+    p = {"title": "CoQ10", "ebay_price": "$43.99", "net_profit": "$11.17",
+         "net_margin": "25%", "units_sold": ""}
+    assert _format_active_line(p).endswith("· sold 0")
+
+
+def test_active_net_key_sorts_desc_with_unknown_last():
+    items = [
+        {"net_profit": ""},
+        {"net_profit": "$6.85"},
+        {"net_profit": "$11.17"},
+    ]
+    items.sort(key=_active_net_key)
+    assert [i["net_profit"] for i in items] == ["$11.17", "$6.85", ""]

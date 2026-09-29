@@ -110,7 +110,7 @@ def test_build_message_review_hint_only_when_flagged():
 # ── _remove_reason: SCORED $1–$4 dead-zone sweep ─────────────────────────────
 
 from agents.auditor import (
-    _remove_reason, _days_since,
+    _remove_reason, _days_since, PROTECTED,
     SCORED_STALE_NET_CEILING, SCORED_STALE_NET_FLOOR, SCORED_STALE_DAYS,
 )
 
@@ -189,3 +189,7 @@ def test_unpriced_row_still_removed_by_age_and_wrong_product_rules():
 
 def test_real_zero_net_still_removed():
     assert _remove_reason("SCORED", 0.0, 5, 1).startswith("Below floor")
+
+
+def test_ended_status_is_protected_from_audit():
+    assert "ENDED" in PROTECTED

@@ -8,7 +8,7 @@ sys.path.insert(0, ".")
 
 from datetime import datetime, timedelta
 
-from tools.status_logic import days_since, check_scored_staleness, SCORED_STALE_DAYS
+from tools.status_logic import days_since, check_scored_staleness, SCORED_STALE_DAYS, SKIP_STATUSES
 
 
 def _days_ago(n):
@@ -110,3 +110,7 @@ def test_manual_paused_margin_holds_while_margin_is_still_low_or_unknown():
 def test_paused_oos_recovery_unchanged():
     assert determine_status("PAUSED_OOS", "In Stock", None, False, None)[:2] == ("WATCH", "restock")
     assert determine_status("PAUSED_OOS", "OUT OF STOCK", None, False, None)[0] == "PAUSED_OOS"
+
+
+def test_ended_is_skipped_in_all_automated_runs():
+    assert "ENDED" in SKIP_STATUSES

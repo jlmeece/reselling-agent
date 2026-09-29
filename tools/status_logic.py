@@ -16,6 +16,7 @@ PAUSED_OOS      Costco out of stock — daily stock-check until restocked
 PAUSED_MARGIN   Set MANUALLY (below margin threshold) — the daily sweep un-pauses it to WATCH when margin recovers; never set automatically
 PAUSED_DEMAND   Low demand / high competition — deep research only, no scraping
 PAUSED_SEASONAL Off-season — monthly re-eval
+ENDED           Listing ended manually — terminal, not monitored, kept for history
 """
 
 from datetime import datetime
@@ -33,7 +34,7 @@ WATCH_STATUSES = {"WATCH"}
 RESEARCH_STATUSES = {"PENDING"}
 
 # Statuses that are completely skipped in all automated runs
-SKIP_STATUSES = {"PAUSED_DEMAND", "PAUSED_SEASONAL", "LISTED"}
+SKIP_STATUSES = {"PAUSED_DEMAND", "PAUSED_SEASONAL", "LISTED", "ENDED"}
 
 
 def determine_status(
