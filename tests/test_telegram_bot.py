@@ -239,6 +239,14 @@ def test_format_net_fragment_default_label_unchanged():
     assert _format_net_fragment("$45.20", "18%") == "net $45.20 (18%)"
 
 
+def test_format_net_fragment_normalizes_raw_decimal_margin_and_net():
+    assert _format_net_fragment("94.33615", "0.5517056553") == "net $94.34 (55%)"
+
+
+def test_format_net_fragment_margin_already_percent_untouched():
+    assert _format_net_fragment("$73.75", "12%") == "net $73.75 (12%)"
+
+
 def test_format_fee_rate_pct_from_raw_float_string():
     assert _format_fee_rate_pct("0.133") == "13.3%"
 
@@ -978,12 +986,13 @@ def test_format_active_line_renders_price_net_units():
     p = {
         "title": "Kirkland Energy Shot",
         "category": "Pharmacy",
+        "costco_cost": "$39.99",
         "ebay_price": "$53.99",
         "net_profit": "$6.85",
         "net_margin": "13%",
         "units_sold": "2",
     }
-    assert _format_active_line(p) == "💊 Kirkland Energy Shot\n   🏷️ $53.99 · 💰 net $6.85 (13%) · 📦 sold 2"
+    assert _format_active_line(p) == "💊 Kirkland Energy Shot\n   🛒 $39.99 → 🏷️ $53.99 · 💰 net $6.85 (13%) · 📦 sold 2"
 
 
 def test_format_active_line_blank_units_default_to_zero():

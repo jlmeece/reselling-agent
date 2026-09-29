@@ -386,19 +386,36 @@ def _format_price(raw):
 
 def _format_net_fragment(net_profit_raw, net_margin_raw, label="net"):
     """
-    Render 'net $45.20 (18%)' from the sheet's own pre-formatted net_profit/
-    net_margin strings. Falls back to em-dashes when blank; never raises.
-    Leaves a negative value's own leading '-' alone (e.g. "-$12.50" stays put
-    rather than becoming "$-$12.50").
+    Render 'net $45.20 (18%)' from the sheet's net_profit/net_margin cells.
+    The sheet usually returns pre-formatted strings, but a misformatted cell can
+    read back as a raw float (net '94.33615', margin '0.5517056553') — so
+    normalize: round net to cents, and treat a |margin| < 1 as a fraction to
+    convert into a whole percent (mirrors _format_fee_rate_pct). Falls back to
+    em-dashes when blank; never raises. Keeps a negative's '-' in front of '$'.
     """
     net = (net_profit_raw or "").strip()
     margin = (net_margin_raw or "").strip()
-    net_str = net if net else "—"
-    margin_str = margin if margin else "—"
-    if net_str != "—" and not net_str.startswith("$") and not net_str.startswith("-$"):
-        net_str = f"${net_str}"
-    if margin_str != "—" and not margin_str.endswith("%"):
-        margin_str = f"{margin_str}%"
+
+    net_str = "—"
+    if net:
+        val = _parse_currency(net)
+        if val is not None:
+            net_str = f"-${abs(val):,.2f}" if val < 0 else f"${val:,.2f}"
+        else:
+            net_str = net if (net.startswith("$") or net.startswith("-$")) else f"${net}"
+
+    margin_str = "—"
+    if margin:
+        if margin.endswith("%"):
+            margin_str = margin
+        else:
+            val = _parse_currency(margin)
+            if val is None:
+                margin_str = f"{margin}%"
+            else:
+                pct = val * 100 if abs(val) < 1 else val
+                margin_str = f"{pct:.0f}%"
+
     return f"{label} {net_str} ({margin_str})"
 
 
@@ -1616,8 +1633,8 @@ async def cb_listed_confirm(update, context, arg):
 # (PROTECTED), and the row stays in the sheet for history.
 
 _ACTIVE_LISTING_FIELDS = (
-    "status", "title", "category", "ebay_price", "net_profit", "net_margin",
-    "units_sold",
+    "status", "title", "category", "costco_cost", "ebay_price",
+    "net_profit", "net_margin", "units_sold",
 )
 
 
@@ -1641,10 +1658,11 @@ def _format_active_line(p):
     cat = (p.get("category") or "").strip()
     emoji = _CATEGORY_EMOJI.get(cat, "📦")
     title = (p.get("title") or "(untitled)").strip()
+    cost = _format_price(p.get("costco_cost"))
     price = _format_price(p.get("ebay_price"))
     net = _format_net_fragment(p.get("net_profit"), p.get("net_margin"))
     units = (p.get("units_sold") or "").strip() or "0"
-    return f"{emoji} {title}\n   🏷️ ${price} · 💰 {net} · 📦 sold {units}"
+    return f"{emoji} {title}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
 def _active_action_kb(row_num):
