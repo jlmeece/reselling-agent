@@ -50,7 +50,7 @@ def test_fmt_line_truncates_before_escaping_so_entities_are_not_split():
 
 def test_build_message_lists_removed_and_flagged_products_with_reasons():
     to_remove = [(10, _product("Gold Bar 1oz"), "Negative net profit ($-2.50)")]
-    to_flag   = [(20, _product("Silver Coin 5pk"), "Borderline net ($0.75) — below $1 floor")]
+    to_flag   = [(20, _product("Silver Coin 5pk"), "Stale 45 days — might be salvageable")]
 
     text = _build_audit_message("2026-09-18", to_remove, to_flag, n_subs=1,
                                  category_health={"Precious Metals": 80})
@@ -58,7 +58,7 @@ def test_build_message_lists_removed_and_flagged_products_with_reasons():
     assert "Auto-removed: 1 rows" in text
     assert "• Gold Bar 1oz — Negative net profit ($-2.50)" in text
     assert "Flagged for review: 1 rows" in text
-    assert "• Silver Coin 5pk — Borderline net ($0.75) — below $1 floor" in text
+    assert "• Silver Coin 5pk — Stale 45 days — might be salvageable" in text
     assert "Categories needing discovery: 1" in text
 
 
@@ -124,8 +124,8 @@ def test_dead_zone_net_boundaries():
     assert _remove_reason("SCORED", 1.00, 12, 30) is not None   # floor inclusive
     assert _remove_reason("SCORED", 3.99, 12, 30) is not None
     assert _remove_reason("SCORED", 4.00, 12, 30) is None       # ceiling exclusive
-    # $0.99 is not this rule's job (borderline-flag path), and is >= $0.50
-    assert _remove_reason("SCORED", 0.99, 12, 30) is None
+    # $0.99 is now below the $1.00 auto-remove floor, not the dead-zone rule's job
+    assert _remove_reason("SCORED", 0.99, 12, 30) == "Below floor ($1.00 min) — net $0.99"
 
 
 def test_dead_zone_day_boundary():

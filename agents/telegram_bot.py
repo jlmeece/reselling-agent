@@ -326,8 +326,8 @@ def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
     format_product_detail() body as a /lookup card.
 
     Items with net_profit below _REVIEW_MIN_NET_PROFIT (or unparseable/negative)
-    are excluded and stay SCORED in the sheet. The auditor only removes net <
-    $0.50 and flags $0.50-$1.00, so rows between $1 and the floor linger unseen.
+    are excluded and stay SCORED in the sheet. The auditor removes net < $1.00,
+    so rows between $1 and the review floor linger unseen.
     """
     status_i = col_to_idx(col_map["status"])
 

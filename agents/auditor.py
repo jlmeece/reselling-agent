@@ -40,7 +40,7 @@ PROTECTED = {"ACTIVE", "READY", "APPROVED", "LISTED", "AUDIT_REVIEW"}
 # [SCORED_STALE_NET_FLOOR, SCORED_STALE_NET_CEILING) can never be reviewed, and
 # the rules below $1 don't reach them — so once they go stale they are removed.
 # Keep SCORED_STALE_NET_CEILING in lockstep with the review floor (a test pins it).
-SCORED_STALE_NET_FLOOR   = 1.00   # matches the "borderline net" flag boundary below
+SCORED_STALE_NET_FLOOR   = 1.00   # == the auto-remove "below floor" boundary (net < $1.00)
 SCORED_STALE_NET_CEILING = 4.00   # == telegram_bot._REVIEW_MIN_NET_PROFIT (exclusive)
 SCORED_STALE_DAYS        = 30
 
@@ -113,8 +113,8 @@ def _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes=
     if net_profit is not None:
         if net_profit < 0:
             return f"Negative net profit (${net_profit:.2f})"
-        if net_profit < 0.50:
-            return f"Below floor ($0.50 min) — net ${net_profit:.2f}"
+        if net_profit < 1.00:
+            return f"Below floor ($1.00 min) — net ${net_profit:.2f}"
         if sold_90d == 0 and net_profit < 5.0:
             return f"Zero velocity + net < $5 (net ${net_profit:.2f})"
         if (status == "SCORED"
@@ -268,10 +268,10 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         # ── AUDIT_REVIEW rules ────────────────────────────────────────────────
         flag_reason = None
 
-        # net_profit None = un-priced row: no economics-based flags
-        if net_profit is not None and 0.50 <= net_profit < 1.00:
-            flag_reason = f"Borderline net (${net_profit:.2f}) — below $1 floor"
-        elif status in ("PENDING", "WATCH") and 45 <= days_since_checked < 60:
+        # net_profit None = un-priced row: no economics-based flags.
+        # (Net $0.50–$1.00 is no longer flagged — _remove_reason auto-removes
+        #  anything below $1.00 as "below floor", since it can never be reviewed.)
+        if status in ("PENDING", "WATCH") and 45 <= days_since_checked < 60:
             flag_reason = f"Stale {days_since_checked} days — might be salvageable"
         elif net_profit is not None and sold_90d == 0 and net_profit >= 5.0:
             flag_reason = f"Zero velocity but net ${net_profit:.2f} — no proven demand, high upside"
