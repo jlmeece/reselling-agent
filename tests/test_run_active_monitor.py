@@ -204,7 +204,7 @@ def test_low_margin_active_row_is_not_paused_and_raises_no_monitor_alert(harness
     calls = harness([_energy_row(31.99, ebay_price="33.99")], _scrape(31.99, False))
     _r, w = _written(calls)
     assert COL["status"] not in w                                   # stays ACTIVE — no PAUSED_MARGIN write
-    assert "below 10% threshold" in w[COL["tier_summary"]]          # the col T note is kept
+    assert "losing money" in w[COL["tier_summary"]]                 # negative margin -> col T note
     assert calls["urgent"] == []                                    # ebay_sync owns margin alerts
 
 

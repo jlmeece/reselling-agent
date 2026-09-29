@@ -83,11 +83,14 @@ def determine_status(
             reason_code = reason_code if reason_code != "ok" else "price_changed"
             notes.append("Costco price changed — recalculate margin, update eBay listing price")
 
-        if margin_pct is not None and margin_pct < min_margin:
-            # Alert-only: Jay reprices by hand, so a thin margin never pauses the listing and does
-            # not raise a monitor alert either (ebay_sync's hard/soft margin alerts, computed from
-            # the LIVE eBay price, own that). The note lands in col T only.
-            notes.append(f"Margin {margin_pct:.1%} below {min_margin:.0%} threshold — not profitable at current prices")
+        if margin_pct is not None and margin_pct < 0:
+            # Only a NEGATIVE margin means the item actually loses money at current prices.
+            # A positive-but-thin margin (e.g. 8% on a $2,400 gold bracelet) is still profitable
+            # in absolute dollars — scoring tiers on absolute profit + monthly profit (commit
+            # df9a38c), not margin %, so a flat %-threshold note would flag good listings as
+            # "not profitable". Col T note only (no alert); ebay_sync owns the live-price margin
+            # alerts.
+            notes.append(f"Margin {margin_pct:.1%} — losing money at current prices")
 
         if demand_score is not None:
             try:

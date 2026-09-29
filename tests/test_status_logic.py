@@ -61,16 +61,17 @@ def test_check_scored_staleness_demotes_when_blank():
 from tools.status_logic import determine_status   # noqa: E402
 
 
-def test_active_low_margin_stays_active_and_only_adds_a_note():
+def test_active_thin_positive_margin_adds_no_note():
     status, code, notes = determine_status("ACTIVE", "In Stock", 0.04, False, 8, min_margin=0.10)
     assert status == "ACTIVE"                       # no auto-downgrade any more
     assert code == "ok"                             # nothing for the monitor to alert on
-    assert "Margin 4.0% below 10% threshold" in notes
+    assert notes == "All clear"                     # positive margin is profitable — no note
 
 
 def test_active_negative_margin_still_only_a_note():
     status, code, notes = determine_status("ACTIVE", "In Stock", -0.20, False, 8, min_margin=0.10)
-    assert (status, code) == ("ACTIVE", "ok") and "-20.0%" in notes
+    assert (status, code) == ("ACTIVE", "ok")
+    assert "losing money" in notes and "-20.0%" in notes
 
 
 def test_active_healthy_margin_is_all_clear():
@@ -82,10 +83,11 @@ def test_active_unknown_margin_is_not_judged():
     assert (status, code) == ("ACTIVE", "ok") and "Margin" not in notes
 
 
-def test_oos_still_auto_pauses_and_low_margin_note_rides_along():
+def test_oos_still_auto_pauses_positive_margin_adds_no_note():
     status, code, notes = determine_status("ACTIVE", "OUT OF STOCK", 0.04, False, 8, min_margin=0.10)
     assert (status, code) == ("PAUSED_OOS", "oos")
-    assert "OUT OF STOCK" in notes and "below 10% threshold" in notes
+    assert "OUT OF STOCK" in notes
+    assert "below 10% threshold" not in notes
 
 
 def test_active_never_becomes_paused_margin_for_any_margin():
