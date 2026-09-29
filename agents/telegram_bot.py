@@ -14,6 +14,7 @@ import re
 import sys
 import threading
 import time
+import traceback
 import urllib.request
 from datetime import datetime, timedelta
 
@@ -2323,7 +2324,17 @@ def _main_body():
             )
             context.application.stop_running()
         else:
-            logger.error("Unhandled error while processing update", exc_info=error)
+            # exc_info=<exception> does NOT reliably capture the traceback inside
+            # python-telegram-bot's async error handler (sys.exc_info() is empty there),
+            # so the real error was invisible in the log. Log the exception's own
+            # traceback so it surfaces in the console.
+            tb = getattr(error, "__traceback__", None)
+            if tb is not None:
+                logger.error("Unhandled error while processing update:\n" +
+                             "".join(traceback.format_tb(tb)) +
+                             f"{type(error).__name__}: {error}")
+            else:
+                logger.error(f"Unhandled error while processing update: {type(error).__name__}: {error}")
 
     app.add_error_handler(_on_error)
 
