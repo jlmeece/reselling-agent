@@ -881,6 +881,80 @@ def _parse_price_payload(data, whs_order=()):
     return None
 
 
+def _detect_shippable(page, prod_text):
+    """True if the product page still offers online shipping.
+
+    Costco renders a Delivery / Ship option alongside Warehouse Pickup. When the pickup
+    warehouse is out of stock, the Add-to-Cart button reports out-of-stock but the Delivery
+    option is still live — the product IS sellable. Treating that as "OUT OF STOCK" is the
+    false positive that demoted real listings (e.g. the Calcium 600mg row) to PAUSED_OOS.
+
+    Primary signal: a Delivery/Ship option element whose class isn't out-of-stock/disabled.
+    Fallback: body text that clearly advertises shipping without a warehouse-only blocker.
+    NOTE: the exact Costco selectors below are the best known at the time of writing; verify
+    against a live page (pickup-OOS-but-shippable product) on Windows if this under-fires.
+    """
+    for sel in (
+        "[data-automation*='delivery']",
+        "[data-automation*='shipping']",
+        "button:has-text('Delivery')",
+        "button:has-text('Ship It')",
+        "label:has-text('Delivery')",
+        "label:has-text('Ship')",
+    ):
+        try:
+            els = page.query_selector_all(sel)
+        except Exception:
+            continue
+        for el in els:
+            cls = (el.get_attribute("class") or "").lower()
+            if any(t in cls for t in ("out-of-stock", "out_of_stock", "disabled", "unavailable")):
+                continue
+            return True
+    if re.search(r"\b(?:ship it|ships to|ship to|free shipping|standard delivery|delivery available)\b",
+                 prod_text) and not re.search(
+                 r"(?:not available (?:for|online)|warehouse only|in[- ]store only|club only)", prod_text):
+        return True
+    return False
+
+
+def _classify_stock(has_atc, atc_class, prod_text, purchase_limit, shippable=False):
+    """Pure stock-status decision -> (stock_status, in_stock).
+
+    `has_atc`        — True when an Add-to-Cart button element exists on the page.
+    `atc_class`      — the button's lowercased class attr ('' when absent).
+    `prod_text`      — lowercased rendered product text.
+    `purchase_limit` — numeric limit parsed from the page, or None.
+    `shippable`      — from _detect_shippable: the page still offers online shipping.
+
+    The one non-obvious rule: an out-of-stock ATC button is only a true sellout when the
+    product is ALSO not shippable — Costco can show pickup-OOS while shipping is available.
+    """
+    def _limit_label(n):
+        return f"Available ({n}/day limit)" if n else "Available (purchase limit)"
+
+    if has_atc:
+        if "out-of-stock" in atc_class or "out_of_stock" in atc_class:
+            return ("In Stock", True) if shippable else ("OUT OF STOCK", False)
+        if purchase_limit:
+            return (_limit_label(purchase_limit), True)
+        if any(p in prod_text for p in ("while supplies last", "limited quantity", "low stock")):
+            return ("Available (limited)", True)
+        return ("In Stock", True)
+
+    # No Add to Cart button — fall back to visible body text scan.
+    if any(p in prod_text for p in ("available in club only", "warehouse only",
+                                    "not available online", "in-store only", "club only")):
+        return ("WAREHOUSE ONLY", False)
+    if any(p in prod_text for p in ("out of stock", "currently unavailable", "sold out")):
+        return ("In Stock", True) if shippable else ("OUT OF STOCK", False)
+    if purchase_limit:
+        return (_limit_label(purchase_limit), True)
+    if any(p in prod_text for p in ("while supplies last", "limited quantity", "low stock")):
+        return ("Available (limited)", True)
+    return ("Unknown", False)
+
+
 def scrape_costco(url, page):
     """
     Scrapes a Costco product URL using the CDP-connected Chrome page.
@@ -1118,44 +1192,10 @@ def scrape_costco(url, page):
 
         body_text = prod_text  # reuse for stock checks below
 
-        def _limit_label(n):
-            return f"Available ({n}/day limit)" if n else "Available (purchase limit)"
-
-        if add_to_cart:
-            atc_class = (add_to_cart.get_attribute("class") or "").lower()
-            if "out-of-stock" in atc_class or "out_of_stock" in atc_class:
-                # Button present but disabled — item is currently sold out
-                result["stock_status"] = "OUT OF STOCK"
-            elif result["purchase_limit"]:
-                # Numeric limit extracted from page — show the actual number
-                result["stock_status"] = _limit_label(result["purchase_limit"])
-                result["in_stock"] = True
-            elif any(p in body_text for p in ["while supplies last", "limited quantity", "low stock"]):
-                # "Limited Quantity" label with no explicit number (common on precious metals).
-                # Researcher will enrich this with the config limit for Precious Metals.
-                result["stock_status"] = "Available (limited)"
-                result["in_stock"] = True
-            else:
-                result["stock_status"] = "In Stock"
-                result["in_stock"] = True
-        else:
-            # No Add to Cart button — fall back to visible body text scan.
-            # We use inner_text (rendered text only) rather than raw HTML to
-            # avoid false positives from <script> JSON-LD or carousel widgets.
-            if any(p in body_text for p in ["available in club only", "warehouse only",
-                                             "not available online", "in-store only", "club only"]):
-                result["stock_status"] = "WAREHOUSE ONLY"
-            elif any(p in body_text for p in ["out of stock", "currently unavailable", "sold out"]):
-                result["stock_status"] = "OUT OF STOCK"
-            elif result["purchase_limit"]:
-                result["stock_status"] = _limit_label(result["purchase_limit"])
-                result["in_stock"] = True
-            elif any(p in body_text for p in ["while supplies last", "limited quantity", "low stock"]):
-                result["stock_status"] = "Available (limited)"
-                result["in_stock"] = True
-            else:
-                # No Add to Cart button and no explicit OOS text — flag for review
-                result["stock_status"] = "Unknown"
+        shippable = _detect_shippable(page, body_text)
+        atc_class = (add_to_cart.get_attribute("class") or "").lower() if add_to_cart else ""
+        result["stock_status"], result["in_stock"] = _classify_stock(
+            add_to_cart is not None, atc_class, body_text, result["purchase_limit"], shippable)
 
         result["image_urls"] = _extract_image_urls(page)
         if not result["image_urls"]:
