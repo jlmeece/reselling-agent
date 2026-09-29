@@ -843,6 +843,64 @@ def run_rescore(config, COL, service, sheet_name, start_row, end_row):
     return {"status": "ok", "notes": f"rescore: {len(flipped)} row(s) -> PENDING"}
 
 
+# ── Mode: RECHECK-AUDIT (one-shot) ────────────────────────────────────────────
+#
+# Refresh Costco cost + stock for every AUDIT_REVIEW row so Jay can make
+# keep/archive decisions on fresh numbers instead of stale last_checked data.
+# Writes G (cost), F (stock), O (last_checked); net (I) recalculates in-sheet.
+
+def run_recheck_audit(config, COL, service, sheet_name, start_row, end_row):
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
+    run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    status_i = col_to_idx(COL["status"])
+    url_i = col_to_idx(COL["costco_url"])
+    title_i = col_to_idx(COL["title"])
+
+    targets = []
+    for idx, row in enumerate(all_data):
+        if not row:
+            continue
+        if safe_get(row, status_i) != "AUDIT_REVIEW":
+            continue
+        if not safe_get(row, url_i).startswith("http"):
+            continue
+        targets.append((idx + start_row, row))
+
+    if not targets:
+        logger.info("recheck-audit: no AUDIT_REVIEW rows with a Costco URL — nothing to refresh.")
+        return
+
+    logger.info(f"recheck-audit: refreshing cost/stock for {len(targets)} AUDIT_REVIEW rows.")
+    checked = 0
+    with make_browser() as page:
+        for sheet_row, row in targets:
+            title = safe_get(row, title_i)
+            costco_url = safe_get(row, url_i)
+            logger.info(f"  recheck-audit: {title[:50]}...")
+            checked += 1
+
+            costco_data = scrape_costco(costco_url, page=page)
+            new_price = costco_data["price"]
+            stock_status = costco_data["stock_status"]
+            image_urls = " | ".join(costco_data["image_urls"])
+            if costco_data.get("error"):
+                logger.warning(f"    Scrape error: {costco_data.get('error')}")
+
+            updates = [
+                (COL["stock_status"], stock_status),
+                (COL["last_checked"], run_time),
+            ]
+            if new_price:
+                updates.append((COL["costco_cost"], new_price))
+            if image_urls:
+                updates.append((COL["image_urls"], image_urls))
+            write_row_partial(service, sheet_name, sheet_row, updates)
+            time.sleep(2)
+
+    logger.info(f"recheck-audit: done — refreshed {checked} rows.")
+
+
 # ── Mode: RECHECK (one-shot) ──────────────────────────────────────────────────
 
 def run_recheck(config, COL, service, sheet_name, start_row, end_row, force=False):
@@ -1601,7 +1659,7 @@ def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
-        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "rescore", "audit", "ebay_sync",
+        choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
                  "sale-digest", "sale-refresh", "savings"],
         default="active",
         help=(
@@ -1674,6 +1732,8 @@ def main():
         elif args.mode == "recheck":
             run_recheck(config, COL, service, sheet_name, start_row, end_row,
                         force=args.force)
+        elif args.mode == "recheck-audit":
+            run_recheck_audit(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "ebay_sync":
             _run_results.update(run_ebay_sync_mode(config, COL, service, sheet_name,
                                                    start_row, end_row, dry_run=args.dry_run))

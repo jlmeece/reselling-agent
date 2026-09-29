@@ -977,18 +977,25 @@ def test_find_back_in_stock_ignores_non_paused_oos_status():
 def test_format_active_line_renders_price_net_units():
     p = {
         "title": "Kirkland Energy Shot",
+        "category": "Pharmacy",
         "ebay_price": "$53.99",
         "net_profit": "$6.85",
         "net_margin": "13%",
         "units_sold": "2",
     }
-    assert _format_active_line(p) == "Kirkland Energy Shot — List $53.99 · net $6.85 (13%) · sold 2"
+    assert _format_active_line(p) == "💊 Kirkland Energy Shot\n   🏷️ $53.99 · 💰 net $6.85 (13%) · 📦 sold 2"
 
 
 def test_format_active_line_blank_units_default_to_zero():
     p = {"title": "CoQ10", "ebay_price": "$43.99", "net_profit": "$11.17",
          "net_margin": "25%", "units_sold": ""}
-    assert _format_active_line(p).endswith("· sold 0")
+    assert _format_active_line(p).endswith("📦 sold 0")
+
+
+def test_format_active_line_unknown_category_falls_back_to_box():
+    p = {"title": "Mystery", "category": "Toys", "ebay_price": "$10.00",
+         "net_profit": "$2.00", "net_margin": "20%", "units_sold": "1"}
+    assert _format_active_line(p).startswith("📦 Mystery")
 
 
 def test_active_net_key_sorts_desc_with_unknown_last():

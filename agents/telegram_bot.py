@@ -1627,12 +1627,24 @@ def _active_net_key(p):
     return (v is None, -(v or 0.0))
 
 
+_CATEGORY_EMOJI = {
+    "Precious Metals": "🥇",
+    "Jewelry": "💍",
+    "Watches": "⌚",
+    "Pharmacy": "💊",
+    "Outdoor Furniture": "🪑",
+    "Small Appliances": "🔌",
+}
+
+
 def _format_active_line(p):
+    cat = (p.get("category") or "").strip()
+    emoji = _CATEGORY_EMOJI.get(cat, "📦")
+    title = (p.get("title") or "(untitled)").strip()
     price = _format_price(p.get("ebay_price"))
     net = _format_net_fragment(p.get("net_profit"), p.get("net_margin"))
     units = (p.get("units_sold") or "").strip() or "0"
-    title = (p.get("title") or "(untitled)").strip()
-    return f"{title} — List ${price} · {net} · sold {units}"
+    return f"{emoji} {title}\n   🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
 def _active_action_kb(row_num):
@@ -1645,7 +1657,7 @@ def _active_action_kb(row_num):
 
 def _ended_confirm_kb(row_num):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ End Listing", callback_data=f"ended:confirm:{row_num}"),
+        [InlineKeyboardButton("⚠️ Yes, End It", callback_data=f"ended:confirm:{row_num}"),
          InlineKeyboardButton("❌ Cancel", callback_data=f"ended:cancel:{row_num}")],
     ])
 
@@ -1676,7 +1688,7 @@ async def cb_activelist_show(update, context, arg):
         return
 
     total_net = sum(_parse_currency(p.get("net_profit")) or 0.0 for p in items)
-    lines = [f"🟢 Active Listings ({len(items)}) · total net ${total_net:,.2f}"]
+    lines = [f"🟢 Active Listings ({len(items)}) · 💰 total net ${total_net:,.2f}"]
     for i, p in enumerate(items, 1):
         lines.append(f"{i}. {_format_active_line(p)}")
     text = "\n".join(lines)
@@ -1963,7 +1975,7 @@ async def cb_pause_back(update, context, arg):
 def _audit_card_kb(row_num):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Keep", callback_data=f"audit:keep:{row_num}"),
-         InlineKeyboardButton("🗑️ Delete", callback_data=f"audit:delete:{row_num}")],
+         InlineKeyboardButton("🗑️ Archive", callback_data=f"audit:delete:{row_num}")],
         [InlineKeyboardButton("⏭️ Skip", callback_data=f"audit:skip:{row_num}")],
         [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
     ])
@@ -2047,10 +2059,10 @@ async def cb_audit_delete(update, context, arg):
     item = _active_queue_item(context, row_num)
     title = item["title"] if item else f"row {row_num}"
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🗑️ Confirm Delete", callback_data=f"audit_confirm:delete:{row_num}"),
+        InlineKeyboardButton("🗑️ Archive to Graveyard", callback_data=f"audit_confirm:delete:{row_num}"),
         InlineKeyboardButton("❌ Cancel", callback_data=f"audit_confirm:cancel:{row_num}"),
     ]])
-    await _send_screen(update, f"Delete '{title}' permanently?", reply_markup=kb)
+    await _send_screen(update, f"Archive '{title}' to the Graveyard? The record is kept and recoverable.", reply_markup=kb)
 
 
 async def cb_audit_confirm_cancel(update, context, arg):

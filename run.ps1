@@ -20,6 +20,12 @@ switch ($cmd) {
         & $py $agent --mode recheck --force
     }
 
+    # -- Refresh prices on AUDIT_REVIEW rows so you decide on fresh data -------
+    "audit-refresh" {
+        Write-Host "Refreshing Costco cost/stock for all AUDIT_REVIEW rows..." -ForegroundColor Cyan
+        & $py $agent --mode recheck-audit
+    }
+
     # -- Research: score PENDING rows and fill in tier/price data -------------
     "research" {
         if ($category) {
