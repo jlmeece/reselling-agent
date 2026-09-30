@@ -820,12 +820,17 @@ def format_top_opportunities(products, n=3):
     return "\n".join(lines)
 
 
+_SALE_SOON_DAYS = 7  # "expiring soon" = within a week; anything further out is noise, not urgency
+
+
 def format_sale_urgency_section(products, now=None):
     """
-    READY/ACTIVE rows with a parseable sale expiry, soonest first. Sales that
-    expired more than 7 days ago are dropped entirely — a stale expired sale
-    is noise, not urgency. Returns None if none qualify — the section is
-    skipped entirely per spec.
+    READY/ACTIVE rows whose Costco sale expires within _SALE_SOON_DAYS days,
+    soonest first. A sale ending weeks out isn't "soon" — it's excluded so the
+    section stays a real heads-up rather than a list of everything on sale.
+    Sales that expired more than 7 days ago are dropped entirely — a stale
+    expired sale is noise, not urgency. Returns None if none qualify — the
+    section is skipped entirely per spec.
     """
     candidates = []
     for p in products:
@@ -836,6 +841,8 @@ def format_sale_urgency_section(products, now=None):
             continue
         exp_str, days_left, raw_days_left = parsed
         if raw_days_left < -7:
+            continue
+        if days_left > _SALE_SOON_DAYS:
             continue
         candidates.append((days_left, p["title"] or "(untitled)", exp_str))
     if not candidates:

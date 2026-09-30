@@ -1015,3 +1015,18 @@ def test_active_net_key_sorts_desc_with_unknown_last():
     ]
     items.sort(key=_active_net_key)
     assert [i["net_profit"] for i in items] == ["$11.17", "$6.85", ""]
+
+
+# ── Sale Expiring Soon ────────────────────────────────────────────────────────
+
+def test_sale_urgency_excludes_sales_ending_more_than_a_week_out():
+    now = datetime(2026, 9, 29, 12, 0)
+    products = [{"status": "ACTIVE", "sale_info": "🔥 -$5 ends 10/20/26", "title": "Far Out"}]
+    assert format_sale_urgency_section(products, now=now) is None
+
+
+def test_sale_urgency_includes_sales_ending_soon():
+    now = datetime(2026, 9, 29, 12, 0)
+    products = [{"status": "ACTIVE", "sale_info": "🔥 -$5 ends 10/01/26", "title": "Ends Soon"}]
+    out = format_sale_urgency_section(products, now=now)
+    assert out is not None and "Ends Soon" in out
