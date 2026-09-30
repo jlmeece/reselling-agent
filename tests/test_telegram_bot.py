@@ -35,6 +35,7 @@ from agents.telegram_bot import (
     format_dashboard_reply,
     format_lookup_reply,
     format_product_detail,
+    format_queue_dump,
     format_sale_urgency_section,
     format_top_opportunities,
     has_errors,
@@ -469,6 +470,35 @@ def test_format_audit_card_no_flag_line_when_tier_summary_blank():
     p = extract_audit_queue(rows, _COL, data_start_row=4)[0]
     text = format_audit_card(p, 1, 1)
     assert "Flagged" not in text
+
+
+# ── format_queue_dump ────────────────────────────────────────────────────────
+
+def test_format_queue_dump_shows_scraped_sale_end_date():
+    rows = [_make_row(A="SCORED", C="Energy Shot", D="Pharmacy", I="$18.20", X="🔥 -$8 ends 10/18/26")]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    chunks = format_queue_dump(items, kind="review", now=datetime(2026, 9, 30, 12, 0))
+    assert len(chunks) == 1
+    assert "Energy Shot" in chunks[0]
+    assert "net $18.20" in chunks[0]
+    assert "ends 10/18/26" in chunks[0]
+
+
+def test_format_queue_dump_never_guesses_missing_date():
+    rows = [_make_row(A="AUDIT_REVIEW", C="No Sale Item", D="Jewelry", I="$3.50", X="", T="zero velocity")]
+    items = extract_audit_queue(rows, _COL, data_start_row=4)
+    chunks = format_queue_dump(items, kind="audit", now=datetime(2026, 9, 30, 12, 0))
+    assert "No Sale Item" in chunks[0]
+    assert "no sale" in chunks[0]
+    assert "zero velocity" in chunks[0]
+
+
+def test_format_queue_dump_chunks_long_queues():
+    rows = [_make_row(A="SCORED", C=f"Item number {n}", I="$10.00", X="🔥 -$8 ends 10/18/26") for n in range(80)]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    chunks = format_queue_dump(items, kind="review", now=datetime(2026, 9, 30, 12, 0))
+    assert len(chunks) > 1
+    assert all(len(c) <= 4096 for c in chunks)
 
 
 # ── safe_write_row / PROTECTED_COLS ──────────────────────────────────────────

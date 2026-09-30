@@ -1214,14 +1214,16 @@ SALE_REFRESH_STATUSES = {"SCORED", "WATCH", "READY", "APPROVED", "PAUSED_MARGIN"
 
 
 def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
-                     limit=12, statuses=None) -> dict:
+                     limit=12, statuses=None, blank_too=False) -> dict:
     """
     sale-refresh mode: heal unverified col X sale badges on non-ACTIVE rows (the active monitor
     only covers ACTIVE; pre-fix rows hold DOM false-positives like "-$100" on a $15 item).
-    Candidates: badge present, status in `statuses`, Costco URL, badge not verified
-    (tools.sale_monitor.badge_verified). Re-scrapes up to `limit` and writes ONLY cols G / X / AW
-    (no status change, no last_checked — that would defer SCORED->PENDING staleness, no alerts).
-    Verified badges stop being candidates, so repeated runs converge. Needs Chrome (local only).
+    Candidates: status in `statuses`, Costco URL, and EITHER a badge that isn't verified
+    (tools.sale_monitor.badge_verified) OR — when blank_too=True — a blank badge, so rows never
+    scraped get their real sale end date backfilled too. Re-scrapes up to `limit` (0 = no cap)
+    and writes ONLY cols G / X / AW (no status change, no last_checked — that would defer
+    SCORED->PENDING staleness, no alerts). Verified badges stop being candidates, so repeated
+    runs converge. Needs Chrome (local only).
     """
     statuses = SALE_REFRESH_STATUSES if statuses is None else statuses
     all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
@@ -1231,16 +1233,21 @@ def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
     for idx, row in enumerate(all_data):
         if not row:
             continue
+        if safe_get(row, col_to_idx(COL["status"])) not in statuses:
+            continue
+        if not str(safe_get(row, col_to_idx(COL["costco_url"]))).startswith("http"):
+            continue
         badge = safe_get(row, col_to_idx(COL["sale_info"]))
-        if (not badge
-                or safe_get(row, col_to_idx(COL["status"])) not in statuses
-                or not safe_get(row, col_to_idx(COL["costco_url"])).startswith("http")
-                or badge_verified(badge, safe_get(row, col_to_idx(COL["costco_cost"])),
-                                  safe_get(row, col_to_idx(COL["regular_price"])), now)):
+        if not badge:
+            if not blank_too:
+                continue
+        elif badge_verified(badge, safe_get(row, col_to_idx(COL["costco_cost"])),
+                            safe_get(row, col_to_idx(COL["regular_price"])), now):
             continue
         targets.append((idx + start_row, row))
     total = len(targets)
-    targets = targets[:limit]
+    if limit:
+        targets = targets[:limit]
     if not targets:
         return {"status": "ok", "notes": "sale-refresh: no unverified badges"}
     if sys.platform != "win32":
@@ -1690,6 +1697,8 @@ def main():
                         help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
                         help="(ebay_sync / sale-digest / savings) Report without writing / print instead of sending")
+    parser.add_argument("--queue", action="store_true",
+                        help="(sale-refresh only) Scrape SCORED + AUDIT_REVIEW rows, including blank sale badges")
     args = parser.parse_args()
 
     if not _acquire_lock(args.mode):
@@ -1741,8 +1750,14 @@ def main():
             _run_results.update(run_sale_digest(config, COL, service, sheet_name,
                                                 start_row, end_row, dry_run=args.dry_run))
         elif args.mode == "sale-refresh":
-            _run_results.update(run_sale_refresh(config, COL, service, sheet_name,
-                                                 start_row, end_row, limit=args.limit or 12))
+            if args.queue:
+                _run_results.update(run_sale_refresh(
+                    config, COL, service, sheet_name, start_row, end_row,
+                    limit=args.limit or 0, statuses={"SCORED", "AUDIT_REVIEW"},
+                    blank_too=True))
+            else:
+                _run_results.update(run_sale_refresh(config, COL, service, sheet_name,
+                                                     start_row, end_row, limit=args.limit or 12))
         elif args.mode == "savings":
             _run_results.update(run_savings(config, COL, service, sheet_name, start_row, end_row,
                                             dry_run=args.dry_run, limit=args.limit,

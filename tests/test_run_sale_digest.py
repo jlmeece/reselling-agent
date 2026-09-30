@@ -160,3 +160,25 @@ def test_refresh_respects_limit_and_statuses_and_skips_failed_scrapes(refresh):
     calls["scraped"].clear()
     run(rows, {"price": 5.0, "on_sale": False}, limit=12, statuses={"SCORED"})
     assert calls["scraped"] == []                                            # WATCH not in the statuses
+
+
+def test_refresh_blank_too_backfills_never_scraped_rows(refresh):
+    run, calls = refresh
+    row = _sale_row(status="SCORED", costco_cost="31.99", regular_price="", sale_info="")
+    res = run([row], {"price": 31.99, "stock_status": "In Stock", "on_sale": True,
+                      "original_price": 39.99, "sale_savings": 8.0,
+                      "sale_expires": "10/18/26"}, blank_too=True)
+    (r, w), = calls["writes"]
+    assert r == 4 and set(w) == {COL["costco_cost"], COL["sale_info"], COL["regular_price"]}
+    assert w[COL["sale_info"]] == "🔥 -$8 ends 10/18/26"
+    assert w[COL["regular_price"]] == 39.99
+    assert "1 on sale" in res["notes"]
+
+
+def test_refresh_blank_too_off_still_skips_blank_badges(refresh):
+    run, calls = refresh
+    row = _sale_row(status="SCORED", costco_cost="31.99", regular_price="", sale_info="")
+    res = run([row], {"price": 31.99, "stock_status": "In Stock", "on_sale": True},
+              blank_too=False)
+    assert calls["scraped"] == [] and calls["writes"] == []
+    assert res["notes"] == "sale-refresh: no unverified badges"

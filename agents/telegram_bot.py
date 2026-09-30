@@ -639,6 +639,53 @@ def format_audit_card(item, position, total):
     return f"{reason_line}Item {position} of {total}\n{format_product_detail(item)}"
 
 
+def _chunk_lines(lines, max_chars=_MAX_MSG - 100):
+    """Split pre-rendered lines into message chunks <= max_chars, on line boundaries."""
+    chunks, cur, size = [], [], 0
+    for line in lines:
+        if cur and size + len(line) + 1 > max_chars:
+            chunks.append("\n".join(cur))
+            cur, size = [], 0
+        cur.append(line)
+        size += len(line) + 1
+    if cur:
+        chunks.append("\n".join(cur))
+    return chunks or [""]
+
+
+def format_queue_dump(items, kind="review", now=None):
+    """
+    Compact one-line-per-item dump of a Review or Audit queue — the "see
+    everything at once" view. Each line carries the scraped Costco sale end
+    date from col X via _format_sale_line — never guessed: a missing or
+    unparseable date renders as 'no sale'. Returns a list of message chunks
+    (each <= _MAX_MSG) so the caller can send a long queue without truncation.
+    """
+    lines = []
+    for i, it in enumerate(items, 1):
+        title = (it.get("title") or "(untitled)").strip()
+        if len(title) > 48:
+            title = title[:47] + "…"
+        cat = (it.get("category") or "—").strip()
+        net = _parse_currency(it.get("net_profit"))
+        net_s = f"net ${net:,.2f}" if net is not None else "net —"
+        sale = _format_sale_line(it.get("sale_info"), now=now) or "no sale"
+        if kind == "review":
+            tier = _tier_label(it.get("demand_score"))
+            score = _parse_currency(it.get("demand_score"))
+            tag = tier or "—"
+            if score is not None:
+                tag += f" (Score {score:.1f})"
+            line = f"{i}. {title} — {cat} · {tag} · {net_s} · {sale}"
+        else:
+            line = f"{i}. {title} — {cat} · {net_s} · {sale}"
+            reason = (it.get("tier_summary") or "").strip()
+            if reason:
+                line += f" · ⚠️ {reason}"
+        lines.append(line)
+    return _chunk_lines(lines)
+
+
 def _lookup_summary_line(p):
     return f"• {p.get('title') or '(untitled)'} — {p.get('category') or '—'} · {p.get('status') or '—'}"
 
@@ -1836,6 +1883,56 @@ def _review_card_kb(row_num):
     ])
 
 
+def _queue_dump_kb(kind):
+    one = "▶️ Review one-by-one" if kind == "review" else "▶️ Audit one-by-one"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(one, callback_data=f"queue:onepass:{kind}"),
+         InlineKeyboardButton("🔁 Scrape sale dates", callback_data="queue:scrape")],
+        [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
+    ])
+
+
+async def _send_queue_dump(update, context, chunks, kb):
+    """Send a (possibly multi-chunk) queue dump: first chunk in place, rest as new messages."""
+    for idx, chunk in enumerate(chunks):
+        if idx == 0:
+            await _send_screen(update, chunk, reply_markup=kb)
+        else:
+            await update.effective_message.reply_text(chunk)
+
+
+async def cb_queue_onepass(update, context, arg):
+    q = context.user_data.get("queue")
+    if not q:
+        await _send_screen(update, "Queue is empty.", reply_markup=_home_inline_kb())
+        return
+    if q["kind"] == "review":
+        await _render_review_position(update, context)
+    else:
+        await _render_audit_position(update, context)
+
+
+async def cb_queue_scrape(update, context, arg):
+    running = _running_job(context)
+    if running:
+        await _send_screen(update, f"⚠️ {running} is currently running — wait for it to finish.")
+        return
+    cmd = [sys.executable, os.path.join(_BASE_DIR, "agents", "scheduler.py"),
+           "--mode", "sale-refresh", "--queue"]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, cwd=_BASE_DIR,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+    )
+    context.bot_data.setdefault("jobs", {})["sale-refresh"] = proc
+    await _send_screen(
+        update,
+        "🔁 Scraping Costco sale end dates for the review + audit queue… "
+        "you'll get a message here when it finishes.",
+        reply_markup=_home_inline_kb(),
+    )
+    context.application.create_task(_await_job(context, "sale-refresh", proc))
+
+
 async def cb_menu_review(update, context, arg):
     try:
         col_map, service, sheet_name, start, rows = _read_product_rows()
@@ -1854,7 +1951,8 @@ async def cb_menu_review(update, context, arg):
         "kind": "review", "items": items, "pos": 0,
         "tally": {"approved": 0, "paused": 0, "audited": 0, "skipped": 0},
     }
-    await _render_review_position(update, context)
+    chunks = format_queue_dump(items, kind="review")
+    await _send_queue_dump(update, context, chunks, _queue_dump_kb("review"))
 
 
 async def _render_review_position(update, context):
@@ -2024,7 +2122,8 @@ async def cb_menu_audit(update, context, arg):
         "kind": "audit", "items": items, "pos": 0,
         "tally": {"kept": 0, "deleted": 0, "skipped": 0},
     }
-    await _render_audit_position(update, context)
+    chunks = format_queue_dump(items, kind="audit")
+    await _send_queue_dump(update, context, chunks, _queue_dump_kb("audit"))
 
 
 async def _render_audit_position(update, context):
@@ -2427,6 +2526,8 @@ _CALLBACK_ROUTES.update({
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
     ("logs", "show"): cb_logs_show,
+    ("queue", "onepass"): cb_queue_onepass,
+    ("queue", "scrape"): cb_queue_scrape,
 })
 
 
