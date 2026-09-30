@@ -34,9 +34,11 @@ from agents.telegram_bot import (
     format_category_breakdown,
     format_dashboard_reply,
     format_lookup_reply,
+    format_on_sale_count,
     format_product_detail,
     format_queue_dump,
     format_sale_urgency_section,
+    format_sales_screen,
     format_top_opportunities,
     has_errors,
     parse_logs_arg,
@@ -824,6 +826,47 @@ def test_format_sale_urgency_section_includes_sale_expired_within_7_days():
     text = format_sale_urgency_section(products, now=now)
     assert text is not None
     assert "Recently Expired" in text
+
+
+def test_format_sales_screen_lists_all_statuses_soonest_first():
+    rows = [
+        _make_dash_row(C="Later Sale", X="🔥 -$50 ends 12/31/26"),
+        _make_dash_row(C="Sooner Sale", X="🔥 -$8 ends 10/18/26"),
+        _make_dash_row(C="Pending Sale", A="PENDING", X="🔥 -$5 ends 11/05/26"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    now = datetime(2026, 9, 30, 12, 0)
+    text = format_sales_screen(products, now=now)
+    assert text is not None
+    assert "On sale: 3 items" in text
+    assert text.index("Sooner Sale") < text.index("Pending Sale") < text.index("Later Sale")
+    assert "Pending Sale" in text  # unlike urgency section, Sales screen spans all statuses
+
+
+def test_format_sales_screen_none_when_no_sales():
+    rows = [_make_dash_row(X="")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert format_sales_screen(products) is None
+
+
+def test_format_sales_screen_drops_sale_ended_over_a_day_ago():
+    rows = [_make_dash_row(C="Dead Sale", X="🔥 -$5 ends 9/01/26")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    now = datetime(2026, 9, 30, 12, 0)
+    assert format_sales_screen(products, now=now) is None
+
+
+def test_format_on_sale_count_counts_live_sales_only():
+    rows = [
+        _make_dash_row(C="On Sale", X="🔥 -$8 ends 10/18/26"),
+        _make_dash_row(C="No Sale", X=""),
+        _make_dash_row(C="Expired", X="🔥 -$5 ends 9/01/26"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    now = datetime(2026, 9, 30, 12, 0)
+    assert format_on_sale_count(products, now=now) == "🔥 On sale: 1"
+    assert format_on_sale_count(products[:1], now=now) == "🔥 On sale: 1"
+    assert format_on_sale_count(products[1:2], now=now) is None
 
 
 def test_format_category_breakdown_counts_ready_and_active():

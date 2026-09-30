@@ -902,6 +902,54 @@ def format_sale_urgency_section(products, now=None):
     return "\n".join(lines)
 
 
+def format_sales_screen(products, now=None):
+    """
+    Read-only "on sale right now" view across ALL statuses: every product whose
+    col X carries a live Costco sale end date (ended >1 day ago is dropped as
+    stale), soonest-ending first, with net and days-left. Returns None when
+    nothing is on sale. No Chrome — reads the already-scraped col X.
+    """
+    now = now or datetime.now()
+    sales = []
+    for p in products:
+        parsed = _parse_sale_expiry_info(p.get("sale_info"), now=now)
+        if not parsed:
+            continue
+        exp_str, days_left, raw_days_left = parsed
+        if raw_days_left < -1:
+            continue
+        sales.append({
+            "title": (p.get("title") or "(untitled)").strip(),
+            "category": (p.get("category") or "—").strip(),
+            "net": _parse_currency(p.get("net_profit")),
+            "raw_days_left": raw_days_left,
+            "sale_line": _format_sale_line(p.get("sale_info"), now=now),
+        })
+    if not sales:
+        return None
+    sales.sort(key=lambda s: (max(0, s["raw_days_left"]), s["title"].lower()))
+    soon = sum(1 for s in sales if 0 <= s["raw_days_left"] <= _SALE_SOON_DAYS)
+    head = f"🔥 On sale: {len(sales)} item{'s' if len(sales) != 1 else ''}"
+    if soon:
+        head += f" · {soon} ending within {_SALE_SOON_DAYS}d"
+    lines = [head]
+    for i, s in enumerate(sales, 1):
+        net = f"net ${s['net']:,.2f}" if s["net"] is not None else "net —"
+        lines.append(f"{i}. {s['title']} — {s['category']} · {net} · {s['sale_line']}")
+    return "\n".join(lines)
+
+
+def format_on_sale_count(products, now=None):
+    """'🔥 On sale: N' one-liner for the dashboard, or None when nothing is on sale."""
+    now = now or datetime.now()
+    n = 0
+    for p in products:
+        parsed = _parse_sale_expiry_info(p.get("sale_info"), now=now)
+        if parsed and parsed[2] >= -1:
+            n += 1
+    return f"🔥 On sale: {n}" if n else None
+
+
 def format_category_breakdown(products, category_names=None):
     """
     Per-category READY/ACTIVE counts, in categories.yaml's declared order
@@ -1426,6 +1474,9 @@ async def cb_menu_dashboard(update, context, arg):
     counts, total = count_statuses(rows)
     products = extract_dashboard_products(rows, col_map, data_start_row=start)
     blocks = [format_dashboard_reply(counts, total)]
+    on_sale = format_on_sale_count(products)
+    if on_sale:
+        blocks.append(on_sale)
     for section in (
         format_top_opportunities(products),
         format_sale_urgency_section(products),
@@ -1438,13 +1489,35 @@ async def cb_menu_dashboard(update, context, arg):
         text = text[:_MAX_MSG - 40] + "\n[truncated]"
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🟢 Active Listings", callback_data="activelist:show")],
+        [InlineKeyboardButton("🟢 Active Listings", callback_data="activelist:show"),
+         InlineKeyboardButton("🔥 Sales", callback_data="menu:sales")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="menu:dashboard"),
          InlineKeyboardButton("✅ Review Items", callback_data="menu:review")],
         [InlineKeyboardButton("📤 Export CSV", callback_data="job:export"),
          InlineKeyboardButton("💰 Spot Prices", callback_data="menu:spot")],
         [InlineKeyboardButton("📈 Category ROI", callback_data="menu:roi"),
          InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+    ])
+    await _send_screen(update, text, reply_markup=kb)
+
+
+async def cb_menu_sales(update, context, arg):
+    context.user_data["awaiting_search"] = False
+    _clear_listing_state(context)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"sales screen sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    products = extract_dashboard_products(rows, col_map, data_start_row=start)
+    text = format_sales_screen(products)
+    if not text:
+        text = "No items are on sale right now."
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔁 Scrape sale dates", callback_data="queue:scrape"),
+         InlineKeyboardButton("🔄 Refresh", callback_data="menu:sales")],
+        [InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
     ])
     await _send_screen(update, text, reply_markup=kb)
 
@@ -2494,6 +2567,7 @@ _CALLBACK_ROUTES.update({
     ("menu", "search"): cb_menu_search,
     ("menu", "review"): cb_menu_review,
     ("menu", "audit"): cb_menu_audit,
+    ("menu", "sales"): cb_menu_sales,
     ("menu", "alerts"): cb_menu_alerts,
     ("menu", "ops"): cb_menu_ops,
     ("menu", "logs"): cb_menu_logs,
