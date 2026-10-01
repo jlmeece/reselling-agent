@@ -1436,10 +1436,14 @@ async def on_callback(update, context):
         return
     try:
         await handler(update, context, arg)
-    except Exception:
+    except Exception as e:
         logger.exception(f"Callback handler failed for {query.data!r}")
         try:
-            await query.edit_message_text("Something went wrong — back to menu.", reply_markup=_home_inline_kb())
+            detail = f" ({type(e).__name__}: {str(e)[:180]})"
+            await query.edit_message_text(
+                f"Something went wrong — back to menu.\n{detail}",
+                reply_markup=_home_inline_kb(),
+            )
         except Exception:
             pass
 
@@ -1514,6 +1518,8 @@ async def cb_menu_sales(update, context, arg):
     text = format_sales_screen(products)
     if not text:
         text = "No items are on sale right now."
+    if len(text) > _MAX_MSG - 20:
+        text = text[:_MAX_MSG - 40] + "\n[truncated — more on sale]"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔁 Scrape sale dates", callback_data="queue:scrape"),
          InlineKeyboardButton("🔄 Refresh", callback_data="menu:sales")],
