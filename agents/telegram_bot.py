@@ -904,10 +904,10 @@ def format_sale_urgency_section(products, now=None):
 
 def format_sales_screen(products, now=None):
     """
-    Read-only "on sale right now" view across ALL statuses: every product whose
-    col X carries a live Costco sale end date (ended >1 day ago is dropped as
-    stale), soonest-ending first, with net and days-left. Returns None when
-    nothing is on sale. No Chrome — reads the already-scraped col X.
+    Read-only "on sale right now" view across ALL statuses, grouped by urgency
+    for fast triage: sheet row number + condensed title + sale end status
+    (net shown only when it's a real positive number). Sales that ended more
+    than 3 days ago are dropped as stale. No Chrome — reads the scraped col X.
     """
     now = now or datetime.now()
     sales = []
@@ -916,26 +916,57 @@ def format_sales_screen(products, now=None):
         if not parsed:
             continue
         exp_str, days_left, raw_days_left = parsed
-        if raw_days_left < -1:
+        if raw_days_left < -3:
             continue
+        title = (p.get("title") or "(untitled)").strip()
+        if len(title) > 35:
+            title = title[:34] + "…"
         sales.append({
-            "title": (p.get("title") or "(untitled)").strip(),
-            "category": (p.get("category") or "—").strip(),
+            "row": p.get("row_num"),
+            "title": title,
             "net": _parse_currency(p.get("net_profit")),
             "raw_days_left": raw_days_left,
-            "sale_line": _format_sale_line(p.get("sale_info"), now=now),
+            "exp_str": exp_str,
         })
     if not sales:
         return None
-    sales.sort(key=lambda s: (max(0, s["raw_days_left"]), s["title"].lower()))
+
+    def _key(s):
+        raw = s["raw_days_left"]
+        if raw <= 0:                       # end/reprice bucket: today first, then most-recently-ended
+            return (0, 0 if raw == 0 else -raw, s["title"].lower())
+        if raw <= _SALE_SOON_DAYS:         # this week
+            return (1, raw, s["title"].lower())
+        return (2, raw, s["title"].lower())  # later
+
+    sales.sort(key=_key)
     soon = sum(1 for s in sales if 0 <= s["raw_days_left"] <= _SALE_SOON_DAYS)
-    head = f"🔥 On sale: {len(sales)} item{'s' if len(sales) != 1 else ''}"
-    if soon:
-        head += f" · {soon} ending within {_SALE_SOON_DAYS}d"
-    lines = [head]
-    for i, s in enumerate(sales, 1):
-        net = f"net ${s['net']:,.2f}" if s["net"] is not None else "net —"
-        lines.append(f"{i}. {s['title']} — {s['category']} · {net} · {s['sale_line']}")
+
+    def _fmt(s):
+        if s["raw_days_left"] < 0:
+            sale = f"ended {s['exp_str']}"
+        elif s["raw_days_left"] == 0:
+            sale = "ends TODAY"
+        else:
+            sale = f"ends {s['exp_str']} ({s['raw_days_left']}d)"
+        net = f" · net ${s['net']:,.2f}" if (s["net"] is not None and s["net"] > 0) else ""
+        row = f"r{s['row']}" if s["row"] is not None else "r?"
+        return f"{row} · {s['title']} · {sale}{net}"
+
+    groups = [
+        ("🔴 END OR REPRICE", [s for s in sales if s["raw_days_left"] <= 0]),
+        ("🟡 ENDS THIS WEEK", [s for s in sales if 1 <= s["raw_days_left"] <= _SALE_SOON_DAYS]),
+        ("🟢 LATER", [s for s in sales if s["raw_days_left"] > _SALE_SOON_DAYS]),
+    ]
+    lines = [f"🔥 On sale: {len(sales)} · {soon} end within {_SALE_SOON_DAYS}d"]
+    for label, items in groups:
+        if not items:
+            continue
+        lines.append("")
+        lines.append(label)
+        lines.extend(_fmt(s) for s in items)
+    lines.append("")
+    lines.append("r# = your Google Sheet row. 🔴 = sale over or ends today → end or reprice that eBay listing.")
     return "\n".join(lines)
 
 

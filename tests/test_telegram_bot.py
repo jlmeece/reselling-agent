@@ -828,19 +828,42 @@ def test_format_sale_urgency_section_includes_sale_expired_within_7_days():
     assert "Recently Expired" in text
 
 
-def test_format_sales_screen_lists_all_statuses_soonest_first():
+def test_format_sales_screen_groups_urgent_first():
     rows = [
-        _make_dash_row(C="Later Sale", X="🔥 -$50 ends 12/31/26"),
-        _make_dash_row(C="Sooner Sale", X="🔥 -$8 ends 10/18/26"),
-        _make_dash_row(C="Pending Sale", A="PENDING", X="🔥 -$5 ends 11/05/26"),
+        _make_dash_row(C="Later", X="🔥 -$50 ends 12/31/26"),
+        _make_dash_row(C="This Week", X="🔥 -$8 ends 10/4/26"),
+        _make_dash_row(C="Ends Today", X="🔥 -$5 ends 9/30/26"),
+        _make_dash_row(C="Just Ended", X="🔥 -$5 ends 9/29/26"),
     ]
     products = extract_dashboard_products(rows, _DASH_COL)
     now = datetime(2026, 9, 30, 12, 0)
     text = format_sales_screen(products, now=now)
     assert text is not None
-    assert "On sale: 3 items" in text
-    assert text.index("Sooner Sale") < text.index("Pending Sale") < text.index("Later Sale")
-    assert "Pending Sale" in text  # unlike urgency section, Sales screen spans all statuses
+    assert "On sale: 4" in text
+    assert "🔴 END OR REPRICE" in text
+    assert "🟡 ENDS THIS WEEK" in text
+    assert "🟢 LATER" in text
+    assert text.index("🔴") < text.index("🟡") < text.index("🟢")
+    assert "ends TODAY" in text
+    assert "ended 9/29" in text
+    # ends-today sorts before the already-ended item inside the 🔴 group
+    assert text.index("Ends Today") < text.index("Just Ended")
+
+
+def test_format_sales_screen_includes_sheet_row_number():
+    rows = [_make_dash_row(C="Energy Shot", X="🔥 -$8 ends 10/18/26")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_sales_screen(products, now=datetime(2026, 9, 30, 12, 0))
+    assert "r4 ·" in text  # first data row = absolute sheet row 4
+
+
+def test_format_sales_screen_condenses_long_titles():
+    long_title = "Bosch 800 Series Fully Automatic Espresso, Coffee and Cold Brew Machine"
+    rows = [_make_dash_row(C=long_title, X="🔥 -$8 ends 10/18/26")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_sales_screen(products, now=datetime(2026, 9, 30, 12, 0))
+    assert "…" in text
+    assert long_title not in text
 
 
 def test_format_sales_screen_none_when_no_sales():
@@ -849,10 +872,10 @@ def test_format_sales_screen_none_when_no_sales():
     assert format_sales_screen(products) is None
 
 
-def test_format_sales_screen_drops_sale_ended_over_a_day_ago():
+def test_format_sales_screen_drops_stale_expired():
     rows = [_make_dash_row(C="Dead Sale", X="🔥 -$5 ends 9/01/26")]
     products = extract_dashboard_products(rows, _DASH_COL)
-    now = datetime(2026, 9, 30, 12, 0)
+    now = datetime(2026, 9, 30, 12, 0)  # 29 days after 9/01
     assert format_sales_screen(products, now=now) is None
 
 
