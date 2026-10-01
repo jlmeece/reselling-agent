@@ -18,6 +18,7 @@ from agents.telegram_bot import (
     extract_review_queue,
     find_back_in_stock,
     find_stale_active_items,
+    partition_stock,
     format_audit_card,
     format_review_card,
     _format_fee_rate_pct,
@@ -1114,6 +1115,27 @@ def test_find_back_in_stock_ignores_still_out_of_stock():
 def test_find_back_in_stock_ignores_non_paused_oos_status():
     products = [{"status": "ACTIVE", "stock_status": "In Stock"}]
     assert find_back_in_stock(products) == []
+
+
+def test_partition_stock_splits_oos_and_back_in_stock():
+    products = [
+        {"status": "ACTIVE", "stock_status": "OUT OF STOCK", "title": "Live OOS"},
+        {"status": "PAUSED_OOS", "stock_status": "OUT OF STOCK", "title": "Still OOS"},
+        {"status": "PAUSED_OOS", "stock_status": "In Stock", "title": "Recovered"},
+        {"status": "READY", "stock_status": "OUT OF STOCK", "title": "Pipeline OOS"},
+    ]
+    oos, back = partition_stock(products)
+    assert {p["title"] for p in back} == {"Recovered"}
+    assert {p["title"] for p in oos} == {"Live OOS", "Still OOS", "Pipeline OOS"}
+
+
+def test_partition_stock_orders_live_listings_first():
+    products = [
+        {"status": "PAUSED_OOS", "stock_status": "OUT OF STOCK", "title": "Paused"},
+        {"status": "ACTIVE", "stock_status": "OUT OF STOCK", "title": "Live"},
+    ]
+    oos, _ = partition_stock(products)
+    assert oos[0]["title"] == "Live"
 
 
 # ── Active Listings helpers ───────────────────────────────────────────────────

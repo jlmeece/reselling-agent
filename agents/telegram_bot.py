@@ -1070,6 +1070,36 @@ def find_back_in_stock(products):
     return out
 
 
+def partition_stock(products):
+    """Split products into (out_of_stock, back_in_stock) for the 📦 Stock screen.
+
+    out_of_stock:  any row whose stock_status is an issue (OUT OF STOCK / CHECK
+                   FAILED / Limited), plus PAUSED_OOS rows still holding an issue
+                   (or blank) — i.e. things Jay can't buy right now.
+    back_in_stock: PAUSED_OOS rows whose stock has recovered — ready to re-list.
+    """
+    oos, back = [], []
+    for p in products:
+        status = (p.get("status") or "").strip()
+        stock = (p.get("stock_status") or "").strip()
+        if status == "PAUSED_OOS" and stock and stock not in _STOCK_ISSUE_VALUES:
+            back.append(p)
+        elif status == "PAUSED_OOS" or stock in _STOCK_ISSUE_VALUES:
+            oos.append(p)
+    # Live listings first (the urgent "end it" case), then everything else.
+    def _live_first(p):
+        live = (p.get("status") or "").strip() == "ACTIVE" or bool((p.get("ebay_listing_url") or "").strip())
+        return (0 if live else 1, (p.get("title") or "").lower())
+    oos.sort(key=_live_first)
+    back.sort(key=lambda p: (p.get("title") or "").lower())
+    return oos, back
+
+
+def _short_title(title, n=30):
+    title = (title or "(untitled)").strip()
+    return title if len(title) <= n else title[: n - 1] + "…"
+
+
 def _parse_pct(raw):
     """
     Parse a percentage-ish sheet cell (e.g. net_margin, col J) to a plain
@@ -1547,6 +1577,8 @@ async def cb_menu_dashboard(update, context, arg):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🟢 Active Listings", callback_data="activelist:show"),
          InlineKeyboardButton("🔥 Sales", callback_data="menu:sales")],
+        [InlineKeyboardButton("📦 Stock", callback_data="menu:stock"),
+         InlineKeyboardButton("🚨 Alerts", callback_data="menu:alerts")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="menu:dashboard"),
          InlineKeyboardButton("✅ Review Items", callback_data="menu:review")],
         [InlineKeyboardButton("📤 Export CSV", callback_data="job:export"),
@@ -1578,6 +1610,96 @@ async def cb_menu_sales(update, context, arg):
         [InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
     ])
     await _send_screen(update, text, reply_markup=kb)
+
+
+async def cb_menu_stock(update, context, arg):
+    context.user_data["awaiting_search"] = False
+    _clear_listing_state(context)
+    context.user_data["queue"] = None
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"stock screen sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+
+    products = extract_dashboard_products(rows, col_map, data_start_row=start)
+    oos, back = partition_stock(products)
+
+    if not oos and not back:
+        await _send_screen(
+            update, "📦 Stock — nothing out of stock and nothing newly back in stock.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+
+    lines = [f"📦 Stock — 🟥 {len(oos)} out of stock · 🟩 {len(back)} back in stock", ""]
+    if oos:
+        lines.append("🟥 OUT OF STOCK (can't buy right now)")
+        for p in oos:
+            stock = (p.get("stock_status") or "—").strip()
+            status = (p.get("status") or "").strip()
+            live = status == "ACTIVE" or bool((p.get("ebay_listing_url") or "").strip())
+            if live:
+                note = "⚠️ live listing — end it"
+            elif status == "PAUSED_OOS":
+                note = "paused — waiting for restock"
+            else:
+                note = status or "not listed"
+            lines.append(f"  r{p.get('row_num')} · {_short_title(p.get('title'))} · {stock} ({note})")
+    if back:
+        lines.append("")
+        lines.append("🟩 BACK IN STOCK — resume these")
+        for p in back:
+            stock = (p.get("stock_status") or "in stock").strip()
+            lines.append(f"  r{p.get('row_num')} · {_short_title(p.get('title'))} · now {stock}")
+
+    text = "\n".join(lines)
+    if len(text) > _MAX_MSG - 20:
+        text = text[:_MAX_MSG - 40] + "\n[truncated]"
+
+    kb_rows = []
+    for p in oos:
+        status = (p.get("status") or "").strip()
+        live = status == "ACTIVE" or bool((p.get("ebay_listing_url") or "").strip())
+        if live:
+            kb_rows.append([InlineKeyboardButton(
+                f"⏹ End r{p.get('row_num')} · {_short_title(p.get('title'), 22)}",
+                callback_data=f"ended:start:{p.get('row_num')}")])
+    for p in back:
+        kb_rows.append([InlineKeyboardButton(
+            f"▶️ Resume r{p.get('row_num')} · {_short_title(p.get('title'), 22)}",
+            callback_data=f"stock:relist:{p.get('row_num')}")])
+    kb_rows.append([
+        InlineKeyboardButton("🔄 Refresh", callback_data="menu:stock"),
+        InlineKeyboardButton("🏠 Home", callback_data="menu:root"),
+    ])
+    await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(kb_rows))
+
+
+async def cb_stock_relist(update, context, arg):
+    row_num = int(arg)
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"stock:relist sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    items = _extract_rows_by_field(rows, col_map, ("status", "title"), data_start_row=start)
+    p = _find_by_row_num(items, row_num)
+    if p is None or (p.get("status") or "").strip() != "PAUSED_OOS":
+        await _send_screen(
+            update, "This item is no longer paused for stock — nothing to resume.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+    safe_write_row(service, sheet_name, row_num, [(col_map["status"], "WATCH")])
+    await _send_screen(
+        update,
+        f"▶️ Resumed — moved to WATCH so it gets re-researched before re-listing.\n"
+        f"{(p.get('title') or '(untitled)')}",
+        reply_markup=_home_inline_kb(),
+    )
 
 
 # ── Search flow (spec Part 4) ────────────────────────────────────────────────
@@ -2760,6 +2882,7 @@ _CALLBACK_ROUTES.update({
     ("menu", "review"): cb_menu_review,
     ("menu", "audit"): cb_menu_audit,
     ("menu", "sales"): cb_menu_sales,
+    ("menu", "stock"): cb_menu_stock,
     ("menu", "alerts"): cb_menu_alerts,
     ("menu", "ops"): cb_menu_ops,
     ("menu", "logs"): cb_menu_logs,
@@ -2784,6 +2907,7 @@ _CALLBACK_ROUTES.update({
     ("listed", "skip"): cb_listed_skip,
     ("listed", "confirm"): cb_listed_confirm,
     ("listed", "cancel"): cb_listed_cancel,
+    ("stock", "relist"): cb_stock_relist,
     ("activelist", "show"): cb_activelist_show,
     ("activelist", "pick"): cb_activelist_pick,
     ("ended", "start"): cb_ended_start,
