@@ -1,11 +1,11 @@
-"""Tests for tools/import_ebay_results.py — the parse layer only (no sheet I/O)."""
+"""Tests for tools/import_ebay_results.py — the parse/resolve layer only (no sheet I/O)."""
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.import_ebay_results import parse_results_text  # noqa: E402
+from tools.import_ebay_results import parse_results_text, resolve_row  # noqa: E402
 
 
 HEADER = (
@@ -28,7 +28,7 @@ def _success(line, item_id, label):
             "0.0,0.0,0.0,,,,,,")
 
 
-def test_parse_results_splits_success_and_failure():
+def test_parse_results_returns_labels_and_item_ids():
     text = "\n".join([
         HEADER,
         _success(2, "318943101198", "ROW4"),
@@ -37,15 +37,22 @@ def test_parse_results_splits_success_and_failure():
          'for Size.|500|Size|Does Not Apply|",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,ROW34,,,,,,,,,,'),
     ])
     successes, failures = parse_results_text(text)
-    assert successes == [(4, "318943101198"), (36, "318943101181")]
+    assert successes == [("ROW4", "318943101198"), ("ROW36", "318943101181")]
     assert len(failures) == 1
-    assert failures[0][0] == 34
+    assert failures[0][0] == "ROW34"
     assert "Does Not Apply" in failures[0][1]
 
 
-def test_parse_results_skips_non_row_label_on_success():
-    # A SKU (not "ROWnn") as CustomLabel can't be mapped to a sheet row → skipped.
-    text = "\n".join([HEADER, _success(2, "318943101198", "MY-SKU")])
+def test_parse_results_keeps_sku_labels():
+    # A SKU (not "ROWnn") as CustomLabel is kept — resolution happens against the sheet.
+    text = "\n".join([HEADER, _success(2, "318943101198", "1234567")])
     successes, failures = parse_results_text(text)
-    assert successes == []
+    assert successes == [("1234567", "318943101198")]
     assert failures == []
+
+
+def test_resolve_row():
+    assert resolve_row("ROW42") == 42
+    assert resolve_row("1234567") is None
+    assert resolve_row("") is None
+    assert resolve_row(None) is None

@@ -2771,8 +2771,8 @@ async def _process_ebayimport(update, context, text):
     context.user_data["pending_ebayimport"] = {"successes": successes, "failures": failures}
 
     lines = [f"📥 eBay results: {len(successes)} listed OK, {len(failures)} failed"]
-    for sr, err in failures[:5]:
-        lines.append(f"  ✗ row {sr}: {err[:90]}")
+    for lbl, err in failures[:5]:
+        lines.append(f"  ✗ {lbl or '?'}: {err[:90]}")
     if len(failures) > 5:
         lines.append(f"  …and {len(failures) - 5} more")
     lines.append("")
@@ -2799,17 +2799,33 @@ async def cb_ebayimport_confirm(update, context, arg):
     platform_col = col_map["platform"]
     url_col = col_map["ebay_listing_url"]
     url_i = col_to_idx(url_col)
+    sku_i = col_to_idx(col_map["sku"])
 
-    written, skipped = 0, 0
-    for sheet_row, item_id in successes:
-        idx = sheet_row - start
+    # SKU -> current sheet row, so a row that shifted after an audit still resolves.
+    sku_to_row = {}
+    for offset, r in enumerate(rows):
+        sku = safe_get(r, sku_i).strip()
+        if sku:
+            sku_to_row[sku] = start + offset
+
+    from tools.import_ebay_results import resolve_row
+
+    written = skipped = unresolved = 0
+    for label, item_id in successes:
+        row_num = resolve_row(label)
+        if row_num is None:
+            row_num = sku_to_row.get(label)
+        if row_num is None:
+            unresolved += 1
+            continue
+        idx = row_num - start
         if idx < 0 or idx >= len(rows):
-            skipped += 1
+            unresolved += 1
             continue
         if safe_get(rows[idx], url_i).strip():
             skipped += 1
             continue
-        safe_write_row(service, sheet_name, sheet_row, [
+        safe_write_row(service, sheet_name, row_num, [
             (status_col, "ACTIVE"),
             (platform_col, "eBay"),
             (url_col, f"https://www.ebay.com/itm/{item_id}"),
@@ -2818,7 +2834,7 @@ async def cb_ebayimport_confirm(update, context, arg):
 
     await _send_screen(
         update,
-        f"✅ Done: {written} marked live, {skipped} skipped (already listed).\n\n"
+        f"✅ Done: {written} marked live, {skipped} skipped (already listed), {unresolved} unresolved.\n\n"
         "They'll now show as 🟩 LIVE on the Sales screen.",
         reply_markup=_home_inline_kb(),
     )

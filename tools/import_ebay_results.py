@@ -1,21 +1,21 @@
 """
 Import an eBay File Exchange "results" CSV back into the Google Sheet.
 
-After you upload the Seller Hub CSV to eBay, eBay emails/downloads a results file
-(the one with Line Number / Action / Status / ItemID / CustomLabel columns). This
-script reads that file and, for every row that listed successfully, writes the
-listing URL into col Q and flips the row ACTIVE — so the bot knows it's live
-instead of sitting at READY with no eBay link.
+After you upload the Seller Hub CSV to eBay, eBay returns a results file (the one
+with Line Number / Action / Status / ItemID / CustomLabel columns). This script
+reads it and, for every row that listed successfully, writes the listing URL into
+col Q and flips the row ACTIVE — so the bot knows it's live.
 
-Usage (run from the project root, on Windows where the Google creds live):
+Identity: the results CSV's CustomLabel is a stable SKU (or a legacy "ROW<sheet_row>"
+from older exports). SKUs are resolved to the CURRENT sheet row at import time, so a
+row that shifted after an audit delete still gets its URL written to the right product.
+
+Usage (from the project root, on Windows where the Google creds live):
 
     python tools/import_ebay_results.py path/to/results.csv            # dry run
     python tools/import_ebay_results.py path/to/results.csv --apply    # write
 
-The results CSV uses CustomLabel = "ROW<sheet_row>" (the exporter writes the sheet
-row number there), so row matching is exact and can't drift. Rows that already have
-a col Q URL are skipped. Failures are reported but never written.
-
+Rows that already have a col Q URL are skipped. Failures are reported, never written.
 Dry run is the default — nothing touches the sheet unless you pass --apply.
 """
 
@@ -35,6 +35,12 @@ sys.path.insert(0, str(_BASE))
 _ROW_RE = re.compile(r"^ROW(\d+)$")
 
 
+def resolve_row(label):
+    """'ROW42' -> 42 (a sheet row). Anything else -> None (resolve by SKU instead)."""
+    m = _ROW_RE.match(label or "")
+    return int(m.group(1)) if m else None
+
+
 def load_col_map():
     with open(_BASE / "config" / "col_map.yaml") as f:
         return yaml.safe_load(f)["columns"]
@@ -50,23 +56,22 @@ def _parse_stream(f):
     successes, failures = [], []
     for row in csv.DictReader(f):
         label = (row.get("CustomLabel") or "").strip()
-        m = _ROW_RE.match(label)
-        sheet_row = int(m.group(1)) if m else None
         status = (row.get("Status") or "").strip()
         item_id = (row.get("ItemID") or "").strip()
-        if status == "Success" and item_id and sheet_row:
-            successes.append((sheet_row, item_id))
+        if status == "Success" and item_id and label:
+            successes.append((label, item_id))
         elif status == "Failure":
             err = (row.get("ErrorMessage") or "").strip()
-            failures.append((sheet_row, err or f"row {label}"))
+            failures.append((label or None, err or f"row {label}"))
     return successes, failures
 
 
 def parse_results(path):
     """Return (successes, failures) from a results CSV file path.
 
-    successes: list of (sheet_row:int, item_id:str)
-    failures:  list of (sheet_row:int|None, error:str)
+    successes: list of (label:str, item_id:str) — label is the CustomLabel
+               (a SKU, or a legacy "ROW<sheet_row>").
+    failures:  list of (label:str|None, error:str)
     """
     with open(path, newline="", encoding="utf-8-sig") as f:
         return _parse_stream(f)
@@ -75,6 +80,13 @@ def parse_results(path):
 def parse_results_text(text):
     """Return (successes, failures) from raw results CSV content (e.g. pasted into Telegram)."""
     return _parse_stream(io.StringIO(text))
+
+
+def _col_idx(letter):
+    n = 0
+    for c in letter.upper():
+        n = n * 26 + (ord(c) - ord("A") + 1)
+    return n - 1
 
 
 def main():
@@ -89,61 +101,65 @@ def main():
     status_col = col_map["status"]          # A
     platform_col = col_map["platform"]      # E
     url_col = col_map["ebay_listing_url"]   # Q
+    sku_col = col_map["sku"]                # AA
 
     successes, failures = parse_results(args.results_csv)
-
     print(f"eBay results: {len(successes)} listed OK, {len(failures)} failed")
-    for sheet_row, err in failures:
-        print(f"  ✗ row {sheet_row}: {err[:120]}")
+    for label, err in failures:
+        print(f"  ✗ {label or '?'}: {err[:120]}")
 
     if not successes:
         print("Nothing to import.")
         return
 
     if not args.apply:
-        print("\nDRY RUN — would write (add --apply to commit):")
-        for sheet_row, item_id in successes:
-            print(f"  row {sheet_row}: {url_col} = https://www.ebay.com/itm/{item_id}  →  {status_col}=ACTIVE, {platform_col}=eBay")
+        print("\nDRY RUN — would resolve + write (add --apply to commit):")
+        for label, item_id in successes:
+            print(f"  {label}: {url_col} = https://www.ebay.com/itm/{item_id}  →  {status_col}=ACTIVE, {platform_col}=eBay")
         return
 
-    from tools.sheet_writer import get_sheets_service, safe_write_row  # local: needs google libs
+    from tools.sheet_writer import get_sheets_service, read_sheet, safe_write_row  # local: needs google libs
     service = get_sheets_service()
-    # Read current col Q (and A/E) for the target rows so we never clobber an
-    # already-listed row. Range A{min}:Q{max} covers status(A)..url(Q).
-    rows_needed = [r for r, _ in successes]
-    lo, hi = min(rows_needed), max(rows_needed)
-    read_range = f"'{sheet_name}'!A{lo}:Q{hi}"
-    existing = service.spreadsheets().values().get(
-        spreadsheetId=_env_sheet_id(), range=read_range
-    ).execute().get("values", [])
+    start = 4
+    rows = read_sheet(service, f"'{sheet_name}'!A{start}:BA500")
 
-    def cell(row_num, letter):
-        idx = ord(letter) - ord("A")
-        offset = row_num - lo
-        if offset < 0 or offset >= len(existing):
+    sku_i = _col_idx(sku_col)
+    url_i = _col_idx(url_col)
+
+    # SKU -> current sheet row, from the live sheet.
+    sku_to_row = {}
+    for offset, r in enumerate(rows):
+        sku = (r[sku_i] if sku_i < len(r) else "").strip()
+        if sku:
+            sku_to_row[sku] = start + offset
+
+    def existing_url(row_num):
+        idx = row_num - start
+        if idx < 0 or idx >= len(rows):
             return ""
-        r = existing[offset]
-        return r[idx] if idx < len(r) else ""
+        r = rows[idx]
+        return (r[url_i] if url_i < len(r) else "").strip()
 
-    written, skipped = 0, 0
-    for sheet_row, item_id in successes:
-        if cell(sheet_row, url_col).strip():
+    written = skipped = unresolved = 0
+    for label, item_id in successes:
+        row_num = resolve_row(label)
+        if row_num is None:
+            row_num = sku_to_row.get(label)
+        if row_num is None:
+            unresolved += 1
+            print(f"  ⚠️ {label}: no matching row (SKU not found) — skipped")
+            continue
+        if existing_url(row_num):
             skipped += 1
             continue
-        url = f"https://www.ebay.com/itm/{item_id}"
-        safe_write_row(service, sheet_name, sheet_row, [
+        safe_write_row(service, sheet_name, row_num, [
             (status_col, "ACTIVE"),
             (platform_col, "eBay"),
-            (url_col, url),
+            (url_col, f"https://www.ebay.com/itm/{item_id}"),
         ])
         written += 1
 
-    print(f"\nDone: wrote {written} rows ACTIVE, skipped {skipped} (already had a URL).")
-
-
-def _env_sheet_id():
-    import os
-    return os.getenv("GOOGLE_SHEET_ID")
+    print(f"\nDone: wrote {written} rows ACTIVE, skipped {skipped} (already listed), {unresolved} unresolved.")
 
 
 if __name__ == "__main__":
