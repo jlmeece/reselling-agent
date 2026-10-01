@@ -1639,9 +1639,11 @@ async def cb_menu_stock(update, context, arg):
         for p in oos:
             stock = (p.get("stock_status") or "—").strip()
             status = (p.get("status") or "").strip()
-            live = status == "ACTIVE" or bool((p.get("ebay_listing_url") or "").strip())
-            if live:
+            has_url = bool((p.get("ebay_listing_url") or "").strip())
+            if status == "ACTIVE":
                 note = "⚠️ live listing — end it"
+            elif status == "PAUSED_OOS" and has_url:
+                note = "paused — still on eBay, end it there"
             elif status == "PAUSED_OOS":
                 note = "paused — waiting for restock"
             else:
@@ -1660,9 +1662,7 @@ async def cb_menu_stock(update, context, arg):
 
     kb_rows = []
     for p in oos:
-        status = (p.get("status") or "").strip()
-        live = status == "ACTIVE" or bool((p.get("ebay_listing_url") or "").strip())
-        if live:
+        if (p.get("status") or "").strip() == "ACTIVE":
             kb_rows.append([InlineKeyboardButton(
                 f"⏹ End r{p.get('row_num')} · {_short_title(p.get('title'), 22)}",
                 callback_data=f"ended:start:{p.get('row_num')}")])
