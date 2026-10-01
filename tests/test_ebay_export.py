@@ -252,6 +252,23 @@ def test_required_specifics_are_all_csv_columns():
             assert key in _EBAY_COLUMNS, f"{category}: {key} has no CSV column"
 
 
+def test_size_required_specific_never_uses_does_not_apply():
+    """Size rejects 'Does Not Apply' (error 21920468) — it must fall back to One Size."""
+    from tools.ebay_export import _fill_common_specifics
+    specifics = {}
+    _fill_common_specifics(specifics, "Unisex Beanie", "Apparel", "", "", {}, required=["C:Size"])
+    assert specifics["C:Size"] == "One Size"
+    assert specifics["C:Size"] != "Does Not Apply"
+
+
+def test_size_required_specific_respects_existing_value():
+    """A real size already inferred must not be overwritten by the fallback."""
+    from tools.ebay_export import _fill_common_specifics
+    specifics = {"C:Size": "Large"}
+    _fill_common_specifics(specifics, "Fleece Jacket", "Apparel", "", "", {}, required=["C:Size"])
+    assert specifics["C:Size"] == "Large"
+
+
 def test_parse_dimensions_from_notes():
     from tools.ebay_export import _parse_dimensions_from_notes
     assert _parse_dimensions_from_notes("x\nCostco specs: Dimensions: 10 x 5.5 x 3 in") == \

@@ -69,6 +69,13 @@ YAML_FLOOR = True
 # Value for a required item specific when there is no real one — eBay rejects blanks.
 NOT_APPLICABLE = "Does Not Apply"
 
+# Aspects where "Does Not Apply" is NOT an accepted value on eBay. For Color/Model/
+# Department/etc. it's fine, but Size requires a real size and rejects it outright
+# (error 21920468). Costco's one-size apparel/accessories have no size to scrape,
+# so we fall back to eBay's valid "One Size" catch-all and flag it for manual check.
+_SIZE_ASPECTS = {"C:Size", "Size"}
+_SIZE_DEFAULT = "One Size"
+
 
 # ── Column indices (0-based, matching A=0) ───────────────────────────────────
 # Source of truth: config/col_map.yaml — update there first, then here.
@@ -342,8 +349,12 @@ def _fill_common_specifics(specifics: dict, title: str, category: str, brand: st
     # Last line of defence: any other required key still blank
     for key in required:
         if not specifics.get(key):
-            specifics[key] = aspect_defaults.get(key) or NOT_APPLICABLE
-            fallbacks.append(key)
+            if key in _SIZE_ASPECTS:
+                specifics[key] = _SIZE_DEFAULT
+                fallbacks.append(f"{key} (defaulted to One Size — verify)")
+            else:
+                specifics[key] = aspect_defaults.get(key) or NOT_APPLICABLE
+                fallbacks.append(key)
 
     if fallbacks:
         logger.info(f"  {title[:40]} — specifics via fallback: {', '.join(fallbacks)}")
