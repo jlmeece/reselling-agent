@@ -688,6 +688,7 @@ _DASH_COL = {
     "net_profit": "I", "net_margin": "J", "comp_saturation": "N",
     "suggested_price": "V", "sale_info": "X", "ad_budget": "AH",
     "last_checked": "O", "mpt_sharpe": "AX", "mpt_rank": "BA",
+    "regular_price": "AW", "ebay_listing_url": "Q",
 }
 
 
@@ -840,14 +841,53 @@ def test_format_sales_screen_groups_urgent_first():
     text = format_sales_screen(products, now=now)
     assert text is not None
     assert "On sale: 4" in text
-    assert "🔴 END OR REPRICE" in text
-    assert "🟡 ENDS THIS WEEK" in text
-    assert "🟢 LATER" in text
-    assert text.index("🔴") < text.index("🟡") < text.index("🟢")
+    assert "0 live" in text
+    assert "⬜ NOT LISTED (4)" in text
     assert "ends TODAY" in text
     assert "ended 9/29" in text
-    # ends-today sorts before the already-ended item inside the 🔴 group
+    # ends-today sorts before the already-ended item, both before this-week and later
     assert text.index("Ends Today") < text.index("Just Ended")
+    assert text.index("This Week") < text.index("Later")
+
+
+def test_format_sales_screen_splits_live_vs_not_listed():
+    rows = [
+        _make_dash_row(A="ACTIVE", C="Live Item", X="🔥 -$5 ends 10/4/26"),
+        _make_dash_row(A="READY", C="Pipeline Item", X="🔥 -$5 ends 10/4/26"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_sales_screen(products, now=datetime(2026, 9, 30, 12, 0))
+    assert "🟩 LIVE ON EBAY (1)" in text
+    assert "⬜ NOT LISTED (1)" in text
+    assert "Live Item" in text
+    assert "Pipeline Item" in text
+    assert text.index("🟩") < text.index("⬜")
+
+
+def test_format_sales_screen_reprice_guidance_for_ended_live_sale():
+    rows = [
+        _make_dash_row(A="ACTIVE", C="Gold Bar", G="$2000.00", H="$2200.00",
+                       AW="$2100.00", X="🔥 -$100 ends 9/29/26"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_sales_screen(products, now=datetime(2026, 9, 30, 12, 0))
+    assert text is not None
+    assert "🟩 LIVE ON EBAY (1)" in text
+    assert "ended 9/29" in text
+    # bump = 2100 - 2000 = 100, so eBay should move 2200 -> 2300
+    assert "cost → $2,100, eBay → $2,300" in text
+
+
+def test_format_sales_screen_no_reprice_for_not_listed_ended():
+    rows = [
+        _make_dash_row(A="READY", C="Missed Deal", G="$50.00", AW="$80.00",
+                       X="🔥 -$30 ends 9/29/26"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_sales_screen(products, now=datetime(2026, 9, 30, 12, 0))
+    # not listed -> no reprice guidance, just "deal over" in the legend
+    assert "⬜ NOT LISTED (1)" in text
+    assert "cost → $80" not in text
 
 
 def test_format_sales_screen_includes_sheet_row_number():

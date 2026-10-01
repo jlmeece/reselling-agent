@@ -777,7 +777,7 @@ _DASHBOARD_PRODUCT_FIELDS = (
     "status", "title", "category", "demand_score", "net_profit", "net_margin",
     "comp_saturation", "suggested_price", "sale_info", "ad_budget",
     "costco_cost", "ebay_price", "mpt_sharpe", "mpt_rank",
-    "stock_status", "last_checked",
+    "stock_status", "last_checked", "regular_price", "ebay_listing_url",
 )
 
 
@@ -904,10 +904,13 @@ def format_sale_urgency_section(products, now=None):
 
 def format_sales_screen(products, now=None):
     """
-    Read-only "on sale right now" view across ALL statuses, grouped by urgency
-    for fast triage: sheet row number + condensed title + sale end status
-    (net shown only when it's a real positive number). Sales that ended more
-    than 3 days ago are dropped as stale. No Chrome — reads the scraped col X.
+    Read-only "on sale right now" view split by whether the item is actually
+    LIVE on eBay (status ACTIVE or a listing URL in col Q) vs still in the
+    pipeline. LIVE items whose Costco sale just ended get reprice guidance:
+    Costco's price snaps back to regular (col AW), so the eBay price has to
+    move to protect the margin. NOT-LISTED items that ended just mean the buy
+    window closed. Sales that ended more than 3 days ago are dropped as stale.
+    No Chrome — reads the scraped col X.
     """
     now = now or datetime.now()
     sales = []
@@ -919,14 +922,21 @@ def format_sales_screen(products, now=None):
         if raw_days_left < -3:
             continue
         title = (p.get("title") or "(untitled)").strip()
-        if len(title) > 35:
-            title = title[:34] + "…"
+        if len(title) > 32:
+            title = title[:31] + "…"
+        status = (p.get("status") or "").strip()
+        listing = (p.get("ebay_listing_url") or "").strip()
+        is_live = status == "ACTIVE" or bool(listing)
         sales.append({
             "row": p.get("row_num"),
             "title": title,
             "net": _parse_currency(p.get("net_profit")),
             "raw_days_left": raw_days_left,
             "exp_str": exp_str,
+            "is_live": is_live,
+            "cost": _parse_currency(p.get("costco_cost")),
+            "regular": _parse_currency(p.get("regular_price")),
+            "ebay": _parse_currency(p.get("ebay_price")),
         })
     if not sales:
         return None
@@ -939,8 +949,19 @@ def format_sales_screen(products, now=None):
             return (1, raw, s["title"].lower())
         return (2, raw, s["title"].lower())  # later
 
-    sales.sort(key=_key)
+    live = sorted([s for s in sales if s["is_live"]], key=_key)
+    not_listed = sorted([s for s in sales if not s["is_live"]], key=_key)
     soon = sum(1 for s in sales if 0 <= s["raw_days_left"] <= _SALE_SOON_DAYS)
+
+    def _reprice(s):
+        """Reprice guidance for a LIVE item whose sale just ended."""
+        cost, regular, ebay = s["cost"], s["regular"], s["ebay"]
+        if regular is None or cost is None or regular <= cost:
+            return " · ⚠️ reprice: check Costco"
+        bump = regular - cost
+        if ebay and ebay > 0:
+            return f" · cost → ${regular:,.0f}, eBay → ${ebay + bump:,.0f}"
+        return f" · cost → ${regular:,.0f} (was ${cost:,.0f})"
 
     def _fmt(s):
         if s["raw_days_left"] < 0:
@@ -951,22 +972,22 @@ def format_sales_screen(products, now=None):
             sale = f"ends {s['exp_str']} ({s['raw_days_left']}d)"
         net = f" · net ${s['net']:,.2f}" if (s["net"] is not None and s["net"] > 0) else ""
         row = f"r{s['row']}" if s["row"] is not None else "r?"
-        return f"{row} · {s['title']} · {sale}{net}"
+        base = f"{row} · {s['title']} · {sale}{net}"
+        if s["is_live"] and s["raw_days_left"] <= 0:
+            base += _reprice(s)
+        return base
 
-    groups = [
-        ("🔴 END OR REPRICE", [s for s in sales if s["raw_days_left"] <= 0]),
-        ("🟡 ENDS THIS WEEK", [s for s in sales if 1 <= s["raw_days_left"] <= _SALE_SOON_DAYS]),
-        ("🟢 LATER", [s for s in sales if s["raw_days_left"] > _SALE_SOON_DAYS]),
-    ]
-    lines = [f"🔥 On sale: {len(sales)} · {soon} end within {_SALE_SOON_DAYS}d"]
-    for label, items in groups:
-        if not items:
-            continue
+    lines = [f"🔥 On sale: {len(sales)} · {len(live)} live · {soon} end within {_SALE_SOON_DAYS}d"]
+    if live:
         lines.append("")
-        lines.append(label)
-        lines.extend(_fmt(s) for s in items)
+        lines.append(f"🟩 LIVE ON EBAY ({len(live)})")
+        lines.extend(_fmt(s) for s in live)
+    if not_listed:
+        lines.append("")
+        lines.append(f"⬜ NOT LISTED ({len(not_listed)})")
+        lines.extend(_fmt(s) for s in not_listed)
     lines.append("")
-    lines.append("r# = your Google Sheet row. 🔴 = sale over or ends today → end or reprice that eBay listing.")
+    lines.append("r# = sheet row. 🟩 = on eBay now (ended → reprice). ⬜ = still in pipeline (ended → deal over).")
     return "\n".join(lines)
 
 
