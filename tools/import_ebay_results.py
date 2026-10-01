@@ -21,6 +21,7 @@ Dry run is the default — nothing touches the sheet unless you pass --apply.
 
 import argparse
 import csv
+import io
 import re
 import sys
 from pathlib import Path
@@ -45,26 +46,35 @@ def load_sheet_name():
     return cfg["business"]["sheet_name"]
 
 
+def _parse_stream(f):
+    successes, failures = [], []
+    for row in csv.DictReader(f):
+        label = (row.get("CustomLabel") or "").strip()
+        m = _ROW_RE.match(label)
+        sheet_row = int(m.group(1)) if m else None
+        status = (row.get("Status") or "").strip()
+        item_id = (row.get("ItemID") or "").strip()
+        if status == "Success" and item_id and sheet_row:
+            successes.append((sheet_row, item_id))
+        elif status == "Failure":
+            err = (row.get("ErrorMessage") or "").strip()
+            failures.append((sheet_row, err or f"row {label}"))
+    return successes, failures
+
+
 def parse_results(path):
-    """Return (successes, failures).
+    """Return (successes, failures) from a results CSV file path.
 
     successes: list of (sheet_row:int, item_id:str)
     failures:  list of (sheet_row:int|None, error:str)
     """
-    successes, failures = [], []
     with open(path, newline="", encoding="utf-8-sig") as f:
-        for row in csv.DictReader(f):
-            label = (row.get("CustomLabel") or "").strip()
-            m = _ROW_RE.match(label)
-            sheet_row = int(m.group(1)) if m else None
-            status = (row.get("Status") or "").strip()
-            item_id = (row.get("ItemID") or "").strip()
-            if status == "Success" and item_id and sheet_row:
-                successes.append((sheet_row, item_id))
-            elif status == "Failure":
-                err = (row.get("ErrorMessage") or "").strip()
-                failures.append((sheet_row, err or f"row {label}"))
-    return successes, failures
+        return _parse_stream(f)
+
+
+def parse_results_text(text):
+    """Return (successes, failures) from raw results CSV content (e.g. pasted into Telegram)."""
+    return _parse_stream(io.StringIO(text))
 
 
 def main():

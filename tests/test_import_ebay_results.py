@@ -1,12 +1,11 @@
 """Tests for tools/import_ebay_results.py — the parse layer only (no sheet I/O)."""
 
-import io
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.import_ebay_results import parse_results  # noqa: E402
+from tools.import_ebay_results import parse_results_text  # noqa: E402
 
 
 HEADER = (
@@ -37,7 +36,7 @@ def test_parse_results_splits_success_and_failure():
         ('12,Add,Failure,21920468,"Error - """"Does Not Apply"""" is not a valid value '
          'for Size.|500|Size|Does Not Apply|",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,ROW34,,,,,,,,,,'),
     ])
-    successes, failures = parse_results(io.StringIO(text))
+    successes, failures = parse_results_text(text)
     assert successes == [(4, "318943101198"), (36, "318943101181")]
     assert len(failures) == 1
     assert failures[0][0] == 34
@@ -47,6 +46,6 @@ def test_parse_results_splits_success_and_failure():
 def test_parse_results_skips_non_row_label_on_success():
     # A SKU (not "ROWnn") as CustomLabel can't be mapped to a sheet row → skipped.
     text = "\n".join([HEADER, _success(2, "318943101198", "MY-SKU")])
-    successes, failures = parse_results(io.StringIO(text))
+    successes, failures = parse_results_text(text)
     assert successes == []
     assert failures == []

@@ -2453,7 +2453,8 @@ async def cb_menu_ops(update, context, arg):
 
     mode_buttons = [InlineKeyboardButton(_JOB_LABELS[m], callback_data=f"job:start:{m}") for m in _JOB_MODES]
     rows_ = [mode_buttons[i:i + 2] for i in range(0, len(mode_buttons), 2)]
-    rows_.append([InlineKeyboardButton("📤 Export CSV", callback_data="job:export")])
+    rows_.append([InlineKeyboardButton("📤 Export CSV", callback_data="job:export"),
+                  InlineKeyboardButton("📥 Import Results", callback_data="ebayimport:start")])
     rows_.append([
         InlineKeyboardButton("🔗 Google Sheet",
                               url="https://docs.google.com/spreadsheets/d/1KXxULBBp4dmZb1OMGYPkf_YIE1HFd4byQCsAb-_tSic"),
@@ -2593,6 +2594,135 @@ _HOME_LABEL_HANDLERS = {
 }
 
 
+# ── Import eBay results (mark uploaded listings ACTIVE + col Q) ───────────────
+#
+# After a Seller Hub CSV upload, eBay returns a results file (CustomLabel = the
+# sheet row, ItemID = the new eBay item). Tap the button, send the .csv (or paste
+# it), confirm, and every listed row gets col Q + ACTIVE — no hand-copying links.
+
+
+def _ebayimport_prompt_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Cancel", callback_data="ebayimport:cancel")],
+    ])
+
+
+def _ebayimport_confirm_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Confirm", callback_data="ebayimport:confirm"),
+         InlineKeyboardButton("❌ Cancel", callback_data="ebayimport:cancel")],
+    ])
+
+
+async def cb_ebayimport_start(update, context, arg):
+    context.user_data["awaiting_ebayimport"] = True
+    context.user_data.pop("pending_ebayimport", None)
+    await _send_screen(
+        update,
+        "📥 Send the eBay results .csv file (easiest), or paste its contents.\n\n"
+        "I'll mark every successfully listed row ACTIVE and fill its eBay link in col Q.",
+        reply_markup=_ebayimport_prompt_kb(),
+    )
+
+
+async def cb_ebayimport_cancel(update, context, arg):
+    context.user_data["awaiting_ebayimport"] = False
+    context.user_data.pop("pending_ebayimport", None)
+    await _send_screen(update, "Import cancelled.", reply_markup=_home_inline_kb())
+
+
+async def _process_ebayimport(update, context, text):
+    from tools.import_ebay_results import parse_results_text
+    context.user_data["awaiting_ebayimport"] = False
+    try:
+        successes, failures = parse_results_text(text)
+    except Exception as e:
+        logger.warning(f"ebayimport parse failed: {e}")
+        await _send_screen(update, "Couldn't read that as eBay results — try the .csv file instead.",
+                           reply_markup=_home_inline_kb())
+        return
+    if not successes and not failures:
+        await _send_screen(update, "No rows found in that — send the eBay results .csv file.",
+                           reply_markup=_home_inline_kb())
+        return
+
+    context.user_data["pending_ebayimport"] = {"successes": successes, "failures": failures}
+
+    lines = [f"📥 eBay results: {len(successes)} listed OK, {len(failures)} failed"]
+    for sr, err in failures[:5]:
+        lines.append(f"  ✗ row {sr}: {err[:90]}")
+    if len(failures) > 5:
+        lines.append(f"  …and {len(failures) - 5} more")
+    lines.append("")
+    lines.append(f"Mark {len(successes)} rows ACTIVE + fill their eBay links in col Q?")
+    await _send_screen(update, "\n".join(lines), reply_markup=_ebayimport_confirm_kb())
+
+
+async def cb_ebayimport_confirm(update, context, arg):
+    pending = context.user_data.get("pending_ebayimport")
+    if not pending:
+        await _send_screen(update, "Nothing to confirm — tap Import again.", reply_markup=_home_inline_kb())
+        return
+    successes = pending["successes"]
+    context.user_data.pop("pending_ebayimport", None)
+
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"ebayimport sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+
+    status_col = col_map["status"]
+    platform_col = col_map["platform"]
+    url_col = col_map["ebay_listing_url"]
+    url_i = col_to_idx(url_col)
+
+    written, skipped = 0, 0
+    for sheet_row, item_id in successes:
+        idx = sheet_row - start
+        if idx < 0 or idx >= len(rows):
+            skipped += 1
+            continue
+        if safe_get(rows[idx], url_i).strip():
+            skipped += 1
+            continue
+        safe_write_row(service, sheet_name, sheet_row, [
+            (status_col, "ACTIVE"),
+            (platform_col, "eBay"),
+            (url_col, f"https://www.ebay.com/itm/{item_id}"),
+        ])
+        written += 1
+
+    await _send_screen(
+        update,
+        f"✅ Done: {written} marked live, {skipped} skipped (already listed).\n\n"
+        "They'll now show as 🟩 LIVE on the Sales screen.",
+        reply_markup=_home_inline_kb(),
+    )
+
+
+async def on_document(update, context):
+    if not _authorized(update, context.bot_data["chat_id"]):
+        return
+    if not context.user_data.get("awaiting_ebayimport"):
+        return
+    doc = update.message.document
+    if not (doc.file_name or "").lower().endswith(".csv"):
+        await update.message.reply_text("That's not a .csv — send the eBay results CSV file.")
+        return
+    try:
+        f = await doc.get_file()
+        data = await f.download_as_bytearray()
+        text = bytes(data).decode("utf-8-sig", errors="replace")
+    except Exception as e:
+        logger.warning(f"ebayimport download failed: {e}")
+        await update.message.reply_text("Couldn't download that file — try pasting the CSV instead.",
+                                        reply_markup=_home_inline_kb())
+        return
+    await _process_ebayimport(update, context, text)
+
+
 async def on_text(update, context):
     if not _authorized(update, context.bot_data["chat_id"]):
         return
@@ -2607,6 +2737,10 @@ async def on_text(update, context):
 
     if context.user_data.get("awaiting_listing"):
         await _handle_listing_input(update, context, text)
+        return
+
+    if context.user_data.get("awaiting_ebayimport"):
+        await _process_ebayimport(update, context, text)
         return
 
     if context.user_data.get("awaiting_search"):
@@ -2657,6 +2791,9 @@ _CALLBACK_ROUTES.update({
     ("ended", "cancel"): cb_ended_cancel,
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
+    ("ebayimport", "start"): cb_ebayimport_start,
+    ("ebayimport", "confirm"): cb_ebayimport_confirm,
+    ("ebayimport", "cancel"): cb_ebayimport_cancel,
     ("logs", "show"): cb_logs_show,
     ("queue", "onepass"): cb_queue_onepass,
     ("queue", "scrape"): cb_queue_scrape,
@@ -2787,6 +2924,7 @@ def _main_body():
     app.add_handler(CommandHandler("menu", cmd_menu))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_handler(MessageHandler(filters.Document.ALL, on_document))
 
     _start_heartbeat_thread()
 
