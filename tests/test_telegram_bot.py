@@ -689,7 +689,7 @@ _DASH_COL = {
     "net_profit": "I", "net_margin": "J", "comp_saturation": "N",
     "suggested_price": "V", "sale_info": "X", "ad_budget": "AH",
     "last_checked": "O", "mpt_sharpe": "AX", "mpt_rank": "BA",
-    "regular_price": "AW", "ebay_listing_url": "Q",
+    "regular_price": "AW", "ebay_listing_url": "Q", "sku": "AA",
 }
 
 
@@ -889,6 +889,20 @@ def test_format_sales_screen_no_reprice_for_not_listed_ended():
     # not listed -> no reprice guidance, just "deal over" in the legend
     assert "⬜ NOT LISTED (1)" in text
     assert "cost → $80" not in text
+
+
+def test_format_sales_screen_shows_sku_when_present():
+    rows = [_make_dash_row(C="Gold Bar", AA="1700000", X="🔥 -$5 ends 10/4/26")]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    text = format_sales_screen(products, now=datetime(2026, 9, 30, 12, 0))
+    assert "#1700000" in text
+
+
+def test_sku_tag():
+    from agents.telegram_bot import _sku_tag
+    assert _sku_tag("1700000") == " #1700000"
+    assert _sku_tag("") == ""
+    assert _sku_tag(None) == ""
 
 
 def test_format_sales_screen_includes_sheet_row_number():

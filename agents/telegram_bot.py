@@ -777,7 +777,7 @@ _DASHBOARD_PRODUCT_FIELDS = (
     "status", "title", "category", "demand_score", "net_profit", "net_margin",
     "comp_saturation", "suggested_price", "sale_info", "ad_budget",
     "costco_cost", "ebay_price", "mpt_sharpe", "mpt_rank",
-    "stock_status", "last_checked", "regular_price", "ebay_listing_url",
+    "stock_status", "last_checked", "regular_price", "ebay_listing_url", "sku",
 )
 
 
@@ -807,6 +807,13 @@ def _parse_currency(raw):
         return float(raw.replace("$", "").replace(",", ""))
     except ValueError:
         return None
+
+
+def _sku_tag(sku):
+    """' #1700000' when a SKU is present, else '' — the stable product handle shown
+    next to a row number so the two can't be confused after an audit shifts rows."""
+    sku = (sku or "").strip()
+    return f" #{sku}" if sku else ""
 
 
 def _parse_mpt_rank(raw):
@@ -937,6 +944,7 @@ def format_sales_screen(products, now=None):
             "cost": _parse_currency(p.get("costco_cost")),
             "regular": _parse_currency(p.get("regular_price")),
             "ebay": _parse_currency(p.get("ebay_price")),
+            "sku": (p.get("sku") or "").strip(),
         })
     if not sales:
         return None
@@ -972,7 +980,7 @@ def format_sales_screen(products, now=None):
             sale = f"ends {s['exp_str']} ({s['raw_days_left']}d)"
         net = f" · net ${s['net']:,.2f}" if (s["net"] is not None and s["net"] > 0) else ""
         row = f"r{s['row']}" if s["row"] is not None else "r?"
-        base = f"{row} · {s['title']} · {sale}{net}"
+        base = f"{row} · {s['title']}{_sku_tag(s.get('sku'))} · {sale}{net}"
         if s["is_live"] and s["raw_days_left"] <= 0:
             base += _reprice(s)
         return base
@@ -1648,13 +1656,13 @@ async def cb_menu_stock(update, context, arg):
                 note = "paused — waiting for restock"
             else:
                 note = status or "not listed"
-            lines.append(f"  r{p.get('row_num')} · {_short_title(p.get('title'))} · {stock} ({note})")
+            lines.append(f"  r{p.get('row_num')} · {_short_title(p.get('title'))}{_sku_tag(p.get('sku'))} · {stock} ({note})")
     if back:
         lines.append("")
         lines.append("🟩 BACK IN STOCK — resume these")
         for p in back:
             stock = (p.get("stock_status") or "in stock").strip()
-            lines.append(f"  r{p.get('row_num')} · {_short_title(p.get('title'))} · now {stock}")
+            lines.append(f"  r{p.get('row_num')} · {_short_title(p.get('title'))}{_sku_tag(p.get('sku'))} · now {stock}")
 
     text = "\n".join(lines)
     if len(text) > _MAX_MSG - 20:
@@ -1941,7 +1949,7 @@ async def cb_listed_confirm(update, context, arg):
 
 _ACTIVE_LISTING_FIELDS = (
     "status", "title", "category", "costco_cost", "ebay_price",
-    "net_profit", "net_margin", "units_sold",
+    "net_profit", "net_margin", "units_sold", "sku",
 )
 
 
@@ -1969,7 +1977,7 @@ def _format_active_line(p):
     price = _format_price(p.get("ebay_price"))
     net = _format_net_fragment(p.get("net_profit"), p.get("net_margin"))
     units = (p.get("units_sold") or "").strip() or "0"
-    return f"{emoji} {title}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
+    return f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
 def _active_action_kb(row_num):
