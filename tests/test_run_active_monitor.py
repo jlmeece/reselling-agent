@@ -33,8 +33,9 @@ def _row(**cells):
     return row
 
 
-def _energy_row(cost, badge="", regular="", flag="", ebay_price="59.99"):
-    return _row(status="ACTIVE", title="Kirkland Signature Energy Shot", category="Pharmacy",
+def _energy_row(cost, badge="", regular="", flag="", ebay_price="59.99", ebay_url="", status="ACTIVE"):
+    return _row(status=status, title="Kirkland Signature Energy Shot", category="Pharmacy",
+                ebay_listing_url=ebay_url,
                 costco_url="https://www.costco.com/x.product.1711796.html",
                 costco_cost=str(cost), ebay_price=ebay_price, fee_rate="13.25%", ship_cost="0",
                 demand_score="8", sale_info=badge, regular_price=regular, price_change=flag,
@@ -57,7 +58,8 @@ def _scrape(price, on_sale, original=None, savings=None, expires=None,
 
 @pytest.fixture
 def harness(monkeypatch):
-    calls = {"writes": [], "urgent": [], "expiry": [], "sales": [], "recorded": []}
+    calls = {"writes": [], "urgent": [], "expiry": [], "sales": [], "recorded": [],
+             "prompts": [], "pending": []}
     state = {"rows": [], "scrape": None}
 
     monkeypatch.setattr(sch, "read_sheet", lambda *a, **k: state["rows"])
@@ -77,10 +79,12 @@ def harness(monkeypatch):
     monkeypatch.setattr(sch, "load_alert_state", lambda: {})
     monkeypatch.setattr(sch, "record_alerts", lambda st, keys, **k: calls["recorded"].extend(keys))
     monkeypatch.setattr(sch.time, "sleep", lambda s: None)
+    monkeypatch.setattr(sch, "send_reprice_prompt", lambda item: calls["prompts"].append(item) or True)
+    monkeypatch.setattr(sch, "save_pending", lambda item: calls["pending"].append(item))
     monkeypatch.setattr(sch, "datetime", _FixedDT)
 
     def run(rows, scrape, only_rows=None):
-        for key in ("writes", "urgent", "expiry", "sales", "recorded"):
+        for key in ("writes", "urgent", "expiry", "sales", "recorded", "prompts", "pending"):
             calls[key].clear()
         state["rows"], state["scrape"] = rows, scrape
         sch.run_active_monitor(CONFIG, COL, object(), "Product Tracker", START_ROW, 500,
@@ -233,3 +237,50 @@ def test_approved_row_skips_image_write_when_scrape_has_none(harness):
     calls = harness([_approved_row()], scrape)
     _r, w = _written(calls)
     assert COL["image_urls"] not in w
+
+
+# ── one-tap reprice prompt ───────────────────────────────────────────────────
+
+EBAY_URL = "https://www.ebay.com/itm/123456789012"
+
+
+def test_sale_end_on_live_listing_sends_one_reprice_prompt(harness):
+    calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/14/26", regular="39.99",
+                                 ebay_price="41.48", ebay_url=EBAY_URL)],
+                    _scrape(39.99, False))
+    (prompt,) = calls["prompts"]
+    assert prompt["item_id"] == "123456789012" and prompt["row"] == START_ROW
+    assert (prompt["old_cost"], prompt["new_cost"], prompt["ebay_price"]) == (31.99, 39.99, 41.48)
+    assert prompt["target"] == sch.restore_margin_price(31.99, 39.99, 41.48, 0.1325, 0.0) == 50.99
+    assert calls["pending"] == [prompt]                       # saved for a re-send
+    _, w = _written(calls)
+    assert w[COL["price_change"]] == "YES — update listing"   # flag still set until the tap
+    assert COL["ebay_price"] not in w                         # monitor NEVER changes col H
+    (_, items), = calls["urgent"]
+    assert "$50.99" in items[0]["reason"]                     # alert quotes the same price
+
+
+def test_no_prompt_without_ebay_item_id(harness):
+    calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/14/26", ebay_price="41.48")],
+                    _scrape(39.99, False))
+    assert calls["prompts"] == [] and len(calls["urgent"]) == 1
+
+
+def test_no_prompt_on_sale_start(harness):
+    calls = harness([_energy_row(39.99, ebay_price="41.48", ebay_url=EBAY_URL)],
+                    _scrape(31.99, True, original=39.99, savings=8.0, expires="10/18/26"))
+    assert calls["prompts"] == [] and calls["pending"] == []
+
+
+def test_no_prompt_for_non_active_row(harness):
+    calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/14/26", ebay_price="41.48",
+                                 ebay_url=EBAY_URL, status="READY")],
+                    _scrape(39.99, False))
+    assert calls["prompts"] == []
+
+
+def test_no_prompt_when_listing_already_covers_margin(harness):
+    calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/18/26", ebay_price="79.99",
+                                 ebay_url=EBAY_URL)],
+                    _scrape(39.99, False))
+    assert calls["prompts"] == []

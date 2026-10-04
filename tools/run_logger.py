@@ -45,11 +45,13 @@ def log_run_start(mode: str) -> float:
     return time.time()
 
 
-def log_run_end(mode: str, start_time: float, results: dict, service=None):
+def log_run_end(mode: str, start_time: float, results: dict, service=None, dedup=True):
     """
     Call at the bottom of each run. Writes to run_history.json and the Run Log sheet tab.
 
     service: googleapiclient sheets service (optional — skips sheet write if None)
+    dedup:   skip the sheet row when the last one has the same date+time+mode. Pass False for
+             per-event logs (e.g. reprice taps) where two events in one minute are both real.
     """
     duration_s = int(time.time() - start_time)
     duration_str = f"{duration_s // 60}m {duration_s % 60}s" if duration_s >= 60 else f"{duration_s}s"
@@ -78,7 +80,7 @@ def log_run_end(mode: str, start_time: float, results: dict, service=None):
     _append_json(entry)
 
     if service:
-        _append_sheet(entry, service)
+        _append_sheet(entry, service, dedup=dedup)
     else:
         logger.debug("run_logger: no sheets service provided — skipping sheet write")
 
@@ -117,7 +119,7 @@ def _truncate_error(text: str, max_len: int = 120) -> str:
     return last[:max_len]
 
 
-def _append_sheet(entry: dict, service):
+def _append_sheet(entry: dict, service, dedup=True):
     """Appends one row to the 'Run Log' sheet tab. Creates the tab + header if missing."""
     try:
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
@@ -135,7 +137,7 @@ def _append_sheet(entry: dict, service):
             spreadsheetId=sheet_id,
             range=f"'{_RUN_LOG_TAB}'!A:C",
         ), "run log dedup read").get("values", [])
-        if len(existing) > 1:
+        if dedup and len(existing) > 1:
             last_row = existing[-1]
             if (len(last_row) >= 3 and
                     last_row[0] == entry["date"] and

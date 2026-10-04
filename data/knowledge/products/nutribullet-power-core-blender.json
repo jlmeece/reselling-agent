@@ -1,0 +1,29 @@
+{
+  "slug": "nutribullet-power-core-blender",
+  "title": "nutribullet Power Core Blender\u200b",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/nutribullet-power-core-blender/4201033296",
+  "brand": "nutribullet",
+  "model": "2008238",
+  "first_researched": "2026-09-25",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "nutribullet",
+      "model": "2008238",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

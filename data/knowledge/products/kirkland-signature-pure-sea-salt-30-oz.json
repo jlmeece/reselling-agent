@@ -1,0 +1,29 @@
+{
+  "slug": "kirkland-signature-pure-sea-salt-30-oz",
+  "title": "Kirkland Signature, Pure Sea Salt, 30 oz",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-pure-sea-salt-30-oz/100334839",
+  "brand": "Kirkland Signature",
+  "model": "384732",
+  "first_researched": "2026-09-25",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "384732",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "384732",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

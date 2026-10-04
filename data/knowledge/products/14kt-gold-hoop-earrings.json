@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/14kt-gold-hoop-earrings/4000421675",
   "brand": null,
-  "model": null,
+  "model": "1785455",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -83,6 +83,60 @@
         "https://reddit.com/r/Pmsforsale/comments/1spvoag/wtswtt_stackable_pac_man_2_oz_silver_magic_cube_1/",
         "https://reddit.com/r/Gold/comments/1so891a/found_this_at_a_resell_store/"
       ]
+    },
+    {
+      "brand": null,
+      "model": "1785455",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "2013355",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1714054",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1785455",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "2013355",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1714054",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

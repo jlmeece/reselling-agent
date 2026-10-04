@@ -1,0 +1,29 @@
+{
+  "slug": "kirkland-signature-fancy-whole-cashews-2-5-lbs",
+  "title": "Kirkland Signature Fancy Whole Cashews, 2.5 lbs",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-fancy-whole-cashews-25-lbs/100668922",
+  "brand": "Kirkland Signature",
+  "model": "1390413",
+  "first_researched": "2026-09-25",
+  "research_runs": [
+    {
+      "brand": "Kirkland Signature",
+      "model": "1390413",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1390413",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

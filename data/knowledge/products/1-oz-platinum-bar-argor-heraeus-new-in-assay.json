@@ -1,0 +1,36 @@
+{
+  "slug": "1-oz-platinum-bar-argor-heraeus-new-in-assay",
+  "title": "1 oz Platinum Bar Argor-Heraeus (New in Assay)",
+  "category": "Precious Metals",
+  "costco_url": "https://www.costco.com/p/-/1-oz-platinum-bar-argor-heraeus-new-in-assay/4201035326",
+  "brand": "Argor-Heraeus",
+  "model": "2053321",
+  "first_researched": "2026-09-25",
+  "research_runs": [
+    {
+      "brand": "Argor-Heraeus",
+      "model": "2053321",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Argor-Heraeus",
+      "model": "2053321",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

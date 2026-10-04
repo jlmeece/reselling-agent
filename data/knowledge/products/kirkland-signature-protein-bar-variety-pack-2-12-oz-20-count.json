@@ -3,8 +3,8 @@
   "title": "Kirkland Signature Protein Bar, Variety Pack, 2.12 oz, 20-count",
   "category": "Pharmacy",
   "costco_url": "https://www.costco.com/p/-/kirkland-signature-protein-bar-variety-pack-212-oz-20-count/100296198",
-  "brand": null,
-  "model": null,
+  "brand": "Kirkland Signature",
+  "model": "1014809",
   "first_researched": "2026-05-31",
   "research_runs": [
     {
@@ -15,6 +15,24 @@
       "by_source": {
         "reddit:r/Supplements": 0
       },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1014809",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1014809",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
       "intent_phrases_seen": [],
       "top_links": []
     }

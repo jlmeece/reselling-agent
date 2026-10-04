@@ -16,8 +16,12 @@ cost_basis = buy_cost (col BB, manual) if present else costco_cost (col G).
 HARD (Telegram per run): net < 0. SOFT (once-a-day digest): 0 <= net < $4 AND
 sold_90d == 0. Everything else is silent.
 
-Never touches eBay data and never changes any price. Run via
+The sync itself never touches eBay data and never changes any price. Run via
 `python agents/scheduler.py --mode ebay_sync [--dry-run]`.
+
+The ONLY eBay write in this module is revise_fixed_price() (ReviseFixedPriceItem), called
+solely by the Telegram bot's "✓ Reprice" button — Jay's tap is the approval; nothing
+calls it automatically. fetch_item_price() (GetItem) is its read-only guard.
 
 Known Stage-1 limit: GetMyeBaySelling's ActiveList only holds live listings, so a
 listing that sold out completely drops off it. Its last sale is therefore NOT
@@ -145,11 +149,11 @@ def _build_request_xml(token: str, page: int) -> str:
     )
 
 
-def _headers(app_id: str, dev_id: str, cert_id: str) -> dict:
+def _headers(app_id: str, dev_id: str, cert_id: str, call_name: str = "GetMyeBaySelling") -> dict:
     return {
         "Content-Type": "text/xml; charset=utf-8",
         "X-EBAY-API-COMPATIBILITY-LEVEL": COMPAT_LEVEL,
-        "X-EBAY-API-CALL-NAME": "GetMyeBaySelling",
+        "X-EBAY-API-CALL-NAME": call_name,
         "X-EBAY-API-SITEID": "0",
         "X-EBAY-API-APP-NAME": app_id,
         "X-EBAY-API-DEV-NAME": dev_id,
@@ -241,20 +245,11 @@ def fetch_active_listings() -> list[dict]:
     """
     _set_error(None)
     try:
-        token   = os.getenv("EBAY_AUTH_TOKEN", "").strip()
-        if not token:
-            logger.warning("ebay_sync skipped — no EBAY_AUTH_TOKEN")
-            _set_error("no_token", "ebay_sync skipped — no EBAY_AUTH_TOKEN")
-            return []
-        app_id  = os.getenv("EBAY_APP_ID", "").strip()
-        dev_id  = os.getenv("EBAY_DEV_ID", "").strip()
-        cert_id = os.getenv("EBAY_CERT_ID", "").strip()
-        missing = [n for n, v in (("EBAY_APP_ID", app_id), ("EBAY_DEV_ID", dev_id),
-                                  ("EBAY_CERT_ID", cert_id)) if not v]
-        if missing:
-            msg = f"ebay_sync skipped — missing {', '.join(missing)}"
+        token, app_id, dev_id, cert_id, err_kind, err_msg = _load_credentials()
+        if err_kind:
+            msg = f"ebay_sync skipped — {err_msg}"
             logger.warning(msg)
-            _set_error("no_credentials", msg)
+            _set_error(err_kind, msg)
             return []
 
         headers  = _headers(app_id, dev_id, cert_id)
@@ -303,6 +298,158 @@ def fetch_active_listings() -> list[dict]:
         logger.error(f"ebay_sync: unexpected error fetching listings: {e}")
         _set_error("api", f"unexpected error: {e}")
         return []
+
+
+def _load_credentials():
+    """(token, app_id, dev_id, cert_id, error_kind, error_msg) from .env.
+    error_kind is None when everything is present, else "no_token" / "no_credentials"."""
+    token   = os.getenv("EBAY_AUTH_TOKEN", "").strip()
+    app_id  = os.getenv("EBAY_APP_ID", "").strip()
+    dev_id  = os.getenv("EBAY_DEV_ID", "").strip()
+    cert_id = os.getenv("EBAY_CERT_ID", "").strip()
+    if not token:
+        return token, app_id, dev_id, cert_id, "no_token", "no EBAY_AUTH_TOKEN"
+    missing = [n for n, v in (("EBAY_APP_ID", app_id), ("EBAY_DEV_ID", dev_id),
+                              ("EBAY_CERT_ID", cert_id)) if not v]
+    if missing:
+        return token, app_id, dev_id, cert_id, "no_credentials", f"missing {', '.join(missing)}"
+    return token, app_id, dev_id, cert_id, None, ""
+
+
+# ── Trading API writes (one-tap reprice) ──────────────────────────────────────
+
+def _build_revise_xml(token: str, item_id: str, price: float) -> str:
+    """ReviseFixedPriceItem body that changes ONLY the Buy It Now price (StartPrice)."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f'<StartPrice currencyID="USD">{price:.2f}</StartPrice></Item>'
+        "</ReviseFixedPriceItemRequest>"
+    )
+
+
+def _build_get_item_xml(token: str, item_id: str) -> str:
+    selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
+        "Item.ItemID", "Item.ListingType", "Item.SellingStatus", "Item.Title",
+    ))
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<GetItemRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"{selectors}"
+        "</GetItemRequest>"
+    )
+
+
+def _call(call_name: str, body_fn) -> tuple:
+    """
+    Shared POST + Ack handling for single-item calls. Returns (root, error_dict):
+    root is the parsed XML on success (Ack Success/Warning), else None and error_dict
+    {error_kind, error_code, message}. Never raises.
+    """
+    token, app_id, dev_id, cert_id, err_kind, err_msg = _load_credentials()
+    if err_kind:
+        return None, {"error_kind": err_kind, "error_code": "", "message": err_msg}
+    try:
+        raw = _post(body_fn(token), _headers(app_id, dev_id, cert_id, call_name))
+    except OSError as e:
+        return None, {"error_kind": "network", "error_code": "", "message": f"eBay request failed: {e}"}
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError as e:
+        return None, {"error_kind": "api", "error_code": "", "message": f"unparseable eBay response: {e}"}
+    ack = _text(root, "Ack")
+    if ack in ("Success", "Warning"):
+        return root, None
+    errors = _parse_errors(root)
+    codes = [c for c, _ in errors]
+    auth = next((c for c in codes if c in AUTH_ERROR_CODES), None)
+    return None, {
+        "error_kind": "auth" if auth else "api",
+        "error_code": auth or (codes[0] if codes else ""),
+        "message": "; ".join(f"{c}: {m}" for c, m in errors) or f"Ack={ack or 'missing'}",
+    }
+
+
+def revise_fixed_price(item_id, new_price) -> dict:
+    """
+    Change a live listing's Buy It Now price via ReviseFixedPriceItem.
+
+    Returns {ok, item_id, price, error_kind, error_code, message}. error_kind:
+    None | "invalid" (bad item ID / price — nothing was sent) | "no_token" |
+    "no_credentials" | "auth" (931/932/16110 — token rejected) | "api" | "network".
+    Never raises. Retrying is safe: revising to the same price is idempotent.
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
+           "error_kind": None, "error_code": "", "message": ""}
+    try:
+        price = round(float(new_price), 2)
+    except (TypeError, ValueError):
+        price = None
+    if not iid or price is None or price <= 0:
+        out.update(error_kind="invalid",
+                   message=f"refused — item_id={item_id!r} price={new_price!r}")
+        logger.error(f"revise_fixed_price: {out['message']}")
+        return out
+    out["price"] = price
+    try:
+        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_revise_xml(tok, iid, price))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        level = logger.critical if err["error_kind"] == "auth" else logger.error
+        level(f"revise_fixed_price: item {iid} -> ${price:.2f} FAILED "
+              f"[{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    out["ok"] = True
+    warnings = [f"{_text(e, 'ErrorCode')}: {_text(e, 'ShortMessage')}"
+                for e in root.findall("{*}Errors") if _text(e, "SeverityCode") == "Warning"]
+    out["message"] = "; ".join(warnings)
+    logger.info(f"revise_fixed_price: item {iid} -> ${price:.2f} OK"
+                + (f" (warnings: {out['message']})" if warnings else ""))
+    return out
+
+
+def fetch_item_price(item_id) -> dict:
+    """
+    Live Buy It Now price of one listing via GetItem — the reprice guard reads this rather
+    than col H, which Jay edits by hand and can be stale.
+    Returns {ok, item_id, price, listing_status, listing_type, error_kind, error_code, message}.
+    Never raises.
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
+           "listing_status": "", "listing_type": "",
+           "error_kind": None, "error_code": "", "message": ""}
+    if not iid:
+        out.update(error_kind="invalid", message=f"bad item id {item_id!r}")
+        return out
+    try:
+        root, err = _call("GetItem", lambda tok: _build_get_item_xml(tok, iid))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        logger.error(f"fetch_item_price: item {iid} [{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    item = _child(root, "Item")
+    status = _child(item, "SellingStatus") if item is not None else None
+    if status is not None:
+        out["price"] = _num(_text(status, "CurrentPrice"), float, None)
+        out["listing_status"] = _text(status, "ListingStatus")
+    if item is not None:
+        out["listing_type"] = _text(item, "ListingType")
+    out["ok"] = out["price"] is not None
+    if not out["ok"]:
+        out.update(error_kind="api", message="GetItem returned no CurrentPrice")
+    return out
 
 
 # ── Sheet side ────────────────────────────────────────────────────────────────

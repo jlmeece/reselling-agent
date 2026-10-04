@@ -25,6 +25,24 @@
         "https://reddit.com/r/HomeImprovement/comments/1ti7t1e/l_shaped_outdoor_kitchens_look_great_but_they/",
         "https://reddit.com/r/HomeImprovement/comments/1swcim3/diy_patio_extension/"
       ]
+    },
+    {
+      "brand": "SunVilla",
+      "model": "1807110",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "SunVilla",
+      "model": "1807110",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

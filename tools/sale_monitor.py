@@ -114,17 +114,23 @@ def margin_note_sale_start(old, new):
     return f"on sale — margin +${old - new:.2f}"
 
 
-def sale_end_alert(title, old, new, fee_rate, ship_cost, ebay_price, row=None, category=""):
+def sale_end_alert(title, old, new, fee_rate, ship_cost, ebay_price, row=None, category="",
+                   target=None):
     """
     Urgent-alert item (send_urgent_alert shape) for a sale end / cost rise.
     fee_rate: fraction (0.1325) or None; ship_cost / ebay_price: floats or None.
+    target: override (the one-tap reprice price, so the alert and the Telegram prompt agree);
+    default = suggest_reprice's 20%-margin price.
     """
     fee = fee_rate if fee_rate is not None else 0.0
-    target = suggest_reprice(new, fee, ship_cost or 0) if fee_rate is not None else None
+    one_tap = target is not None
+    if target is None:
+        target = suggest_reprice(new, fee, ship_cost or 0) if fee_rate is not None else None
     head = f"sale ended — cost ${old:.2f}→${new:.2f}"
     if target:
-        reprice_note = f"Reprice eBay to ${target:.2f} to keep margin"
-        reason = f"{head}, reprice eBay to ${target:.2f} to keep margin"
+        how = "restore margin (tap ✓ Reprice in Telegram)" if one_tap else "keep margin"
+        reprice_note = f"Reprice eBay to ${target:.2f} to {how}"
+        reason = f"{head}, reprice eBay to ${target:.2f} to {how}"
     else:
         reprice_note = "No profitable eBay price at this cost — consider ending the listing"
         reason = f"{head}, no profitable price — consider ending listing"

@@ -1,0 +1,29 @@
+{
+  "slug": "kirkland-signature-organic-quinoa-4-5-lbs",
+  "title": "Kirkland Signature, Organic Quinoa, 4.5 lbs",
+  "category": "Pharmacy",
+  "costco_url": "https://www.costco.com/p/-/kirkland-signature-organic-quinoa-45-lbs/100336580",
+  "brand": "Kirkland Signature",
+  "model": "1001368",
+  "first_researched": "2026-09-23",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-09-23",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Kirkland Signature",
+      "model": "1001368",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

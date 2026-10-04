@@ -1,0 +1,37 @@
+{
+  "slug": "1-oz-pamp-lady-of-freedom-silver-bar-20-count",
+  "title": "1 oz PAMP Lady of Freedom Silver Bar, 20-count",
+  "category": "Precious Metals",
+  "costco_url": "https://www.costco.com/p/-/1-oz-pamp-lady-of-freedom-silver-bar-20-count/4201038688",
+  "brand": "PAMP",
+  "model": "2073575",
+  "first_researched": "2026-09-25",
+  "research_runs": [
+    {
+      "brand": "PAMP",
+      "model": "2073575",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "PAMP",
+      "model": "2073575",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

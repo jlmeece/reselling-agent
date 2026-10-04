@@ -50,6 +50,10 @@ from tools.sheet_writer import (
     write_row_partial,
 )
 from tools.spot_price import get_spot_price, parse_gold_weight
+from tools.ebay_sync import extract_item_id, fetch_item_price, revise_fixed_price
+from tools.reprice import (
+    format_reprice_prompt, get_pending, log_ignore, log_revise, pop_pending, reprice_keyboard,
+)
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -1980,8 +1984,11 @@ def _format_active_line(p):
     return f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
-def _active_action_kb(row_num):
-    return InlineKeyboardMarkup([
+def _active_action_kb(row_num, reprice_item_id=None):
+    rows = []
+    if reprice_item_id:   # a one-tap reprice prompt is pending for this listing
+        rows.append([InlineKeyboardButton("💲 Reprice", callback_data=f"reprice:offer:{reprice_item_id}")])
+    return InlineKeyboardMarkup(rows + [
         [InlineKeyboardButton("🔴 End Listing", callback_data=f"ended:start:{row_num}")],
         [InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"),
          InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
@@ -2062,7 +2069,9 @@ async def cb_activelist_pick(update, context, arg):
         lines.append(f"Units sold: {(p.get('units_sold') or '').strip()}")
     if (p.get("ebay_listing_url") or "").strip():
         lines.append((p.get("ebay_listing_url") or "").strip())
-    await _send_screen(update, "\n".join(lines), reply_markup=_active_action_kb(row_num))
+    item_id = extract_item_id(p.get("ebay_listing_url"))
+    pending = item_id if (item_id and get_pending(item_id)) else None
+    await _send_screen(update, "\n".join(lines), reply_markup=_active_action_kb(row_num, pending))
 
 
 async def cb_ended_start(update, context, arg):
@@ -2112,6 +2121,179 @@ async def cb_ended_confirm(update, context, arg):
     await _send_screen(
         update, f"✅ Ended — monitoring stopped\n{(p.get('title') or '(untitled)')}",
         reply_markup=_home_inline_kb(),
+    )
+
+
+# ── One-tap reprice ──────────────────────────────────────────────────────────
+# The active monitor (scheduler.run_active_monitor) sends the prompt via tools/reprice.py with
+# the SAME TELEGRAM_BOT_TOKEN this bot polls with, so taps land here. The tap IS the approval.
+# callback_data: reprice:go:<item_id>:<cents> · reprice:ignore:<item_id> · reprice:offer:<item_id>
+
+_REPRICE_FIELDS = ("status", "title", "ebay_price", "ebay_listing_url", "price_change")
+
+
+def _tg_kb(kb_dict):
+    """tools.reprice keyboard dict -> InlineKeyboardMarkup."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(b["text"], callback_data=b["callback_data"]) for b in row]
+        for row in kb_dict["inline_keyboard"]
+    ])
+
+
+def _parse_reprice_arg(arg):
+    """'<item_id>:<cents>' -> (item_id, target float) or (None, None)."""
+    try:
+        item_id, cents = (arg or "").split(":", 1)
+        target = int(cents) / 100
+    except ValueError:
+        return None, None
+    if extract_item_id(item_id) != item_id or target <= 0:
+        return None, None
+    return item_id, target
+
+
+def _rows_for_item_id(rows, col_map, item_id, start):
+    """Every sheet row whose col Q resolves to item_id (row-shift safe identity)."""
+    items = _extract_rows_by_field(rows, col_map, _REPRICE_FIELDS, data_start_row=start)
+    return [p for p in items if extract_item_id(p.get("ebay_listing_url")) == item_id]
+
+
+def _refusal(item_id, target, message):
+    return {"ok": False, "item_id": item_id, "price": target, "error_kind": "refused",
+            "error_code": "", "message": message}
+
+
+def _auth_text(code, t, tail):
+    return (f"🚨 <b>eBay token rejected</b> ({html.escape(code or 'auth')}) — renew "
+            f"EBAY_AUTH_TOKEN in .env.\n<b>{t}</b> {tail}")
+
+
+async def _reprice_apply(item_id, target):
+    """
+    Guards + revise + sheet write. Returns (html_text, reply_markup_or_None).
+    Order: sheet row (ACTIVE, unique col Q match) -> LIVE eBay price via GetItem (col H can be
+    stale; never lower) -> ReviseFixedPriceItem -> re-resolve the row (an audit delete may have
+    shifted it during the eBay calls) -> col H = target, col P cleared. Every outcome is logged.
+    """
+    retry_kb = _tg_kb(reprice_keyboard(item_id, target, retry=True))
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"reprice: sheet read failed: {e}")
+        return _SHEET_UNREACHABLE_MSG + " Nothing was changed on eBay.", retry_kb
+
+    matches = _rows_for_item_id(rows, col_map, item_id, start)
+    if len(matches) != 1:
+        why = ("is not in col Q of any sheet row any more" if not matches
+               else f"is in col Q of {len(matches)} rows — fix the duplicate first")
+        log_revise(service, _refusal(item_id, target, f"item {why}"), source="bot")
+        return f"eBay item {item_id} {why}. Nothing was changed.", None
+    p = matches[0]
+    row, title = p["row_num"], p.get("title") or "(untitled)"
+    t = html.escape(title[:80])
+    if (p.get("status") or "").strip() != "ACTIVE":
+        log_revise(service, _refusal(item_id, target, f"status {p.get('status')!r}"),
+                   title=title, row=row, source="bot")
+        return (f"<b>{t}</b> is no longer ACTIVE ({html.escape(p.get('status') or 'blank')}) "
+                "— nothing changed."), None
+
+    live = await asyncio.to_thread(fetch_item_price, item_id)
+    if not live["ok"]:
+        log_revise(service, {**live, "price": target}, title=title, row=row,
+                   old_price=_parse_currency(p.get("ebay_price")), source="bot")
+        if live["error_kind"] == "auth":
+            return _auth_text(live["error_code"], t, "was NOT repriced."), None
+        return (f"❌ Couldn't read the live eBay price ({html.escape(live['error_kind'] or '')} "
+                f"{html.escape(live['error_code'])}: {html.escape(live['message'][:200])}) — "
+                f"nothing changed.\n<b>{t}</b>"), retry_kb
+    if live["listing_status"] and live["listing_status"] != "Active":
+        log_revise(service, _refusal(item_id, target, f"eBay listing status {live['listing_status']}"),
+                   title=title, row=row, old_price=live["price"], source="bot")
+        return (f"<b>{t}</b> is {html.escape(live['listing_status'])} on eBay — nothing revised."), None
+    current = live["price"]
+
+    if current >= target - 0.005:
+        # Already at/above the target (repriced by hand) — never lower; sync H, clear P.
+        safe_write_row(service, sheet_name, row,
+                       [(col_map["ebay_price"], current), (col_map["price_change"], "")])
+        pop_pending(item_id)
+        log_revise(service, {"ok": True, "item_id": item_id, "price": current,
+                             "message": f"no revise — live price already >= ${target:.2f}"},
+                   title=title, row=row, old_price=current, source="bot")
+        return (f"✓ Already ${current:.2f} on eBay (≥ ${target:.2f}) — nothing revised; "
+                f"col H synced, flag cleared.\n<b>{t}</b>"), None
+
+    result = await asyncio.to_thread(revise_fixed_price, item_id, target)
+    if not result["ok"]:
+        log_revise(service, result, title=title, row=row, old_price=current, source="bot")
+        if result["error_kind"] == "auth":
+            return _auth_text(result["error_code"], t, f"is still ${current:.2f} on eBay."), None
+        code = result["error_code"] or result["error_kind"] or ""
+        return (f"❌ eBay refused the reprice ({html.escape(code)}: "
+                f"{html.escape(result['message'][:200])}).\n<b>{t}</b> is still ${current:.2f}."), retry_kb
+
+    # eBay is updated. Re-resolve the row before writing — rows shift when the auditor deletes.
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+        matches = _rows_for_item_id(rows, col_map, item_id, start)
+        if len(matches) != 1:
+            raise RuntimeError(f"item {item_id} now matches {len(matches)} sheet rows")
+        row = matches[0]["row_num"]
+        safe_write_row(service, sheet_name, row,
+                       [(col_map["ebay_price"], target), (col_map["price_change"], "")])
+    except Exception as e:
+        logger.error(f"reprice: eBay revised but sheet write failed: {e}")
+        log_revise(service, {**result, "message": f"eBay OK but SHEET WRITE FAILED: {e}"},
+                   title=title, row=row, old_price=current, source="bot")
+        return (f"⚠️ eBay is now ${target:.2f}, but the sheet write failed "
+                f"({html.escape(str(e)[:150])}). Set col H to {target:.2f} and clear col P by hand."
+                f"\n<b>{t}</b>"), None
+    pop_pending(item_id)
+    log_revise(service, result, title=title, row=row, old_price=current, source="bot")
+    return f"✓ Repriced to ${target:.2f} (was ${current:.2f})\n<b>{t}</b>", None
+
+
+async def cb_reprice_go(update, context, arg):
+    query = update.callback_query
+    item_id, target = _parse_reprice_arg(arg)
+    if item_id is None:
+        logger.warning(f"reprice: malformed arg {arg!r}")
+        await query.edit_message_text("Reprice button data was malformed — nothing changed.")
+        return
+    inflight = context.bot_data.setdefault("reprice_inflight", set())
+    if item_id in inflight:
+        return                                  # double tap while the first is still running
+    inflight.add(item_id)
+    try:
+        await query.edit_message_text(f"⏳ Repricing eBay item {item_id} to ${target:.2f}…")
+        text, kb = await _reprice_apply(item_id, target)
+        await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+    finally:
+        inflight.discard(item_id)
+
+
+async def cb_reprice_ignore(update, context, arg):
+    query = update.callback_query
+    item_id = (arg or "").strip()
+    pending = get_pending(item_id) or {}
+    log_ignore(item_id, pending.get("title", ""))
+    base = query.message.text if (query.message and query.message.text) else ""
+    await query.edit_message_text(
+        (base + "\n\n" if base else "")
+        + "— Ignored. Col P flag left set; re-open it from Active Listings → 💲 Reprice."
+    )
+
+
+async def cb_reprice_offer(update, context, arg):
+    """Re-post a pending prompt (lost, failed to send, or ignored earlier)."""
+    item_id = (arg or "").strip()
+    pending = get_pending(item_id)
+    if not pending:
+        await _send_screen(update, "No pending reprice for this listing.", reply_markup=_home_inline_kb())
+        return
+    await update.callback_query.message.reply_text(
+        format_reprice_prompt(pending), parse_mode="HTML",
+        reply_markup=_tg_kb(reprice_keyboard(item_id, pending["target"])),
     )
 
 
@@ -2937,6 +3119,9 @@ _CALLBACK_ROUTES.update({
     ("ended", "start"): cb_ended_start,
     ("ended", "confirm"): cb_ended_confirm,
     ("ended", "cancel"): cb_ended_cancel,
+    ("reprice", "go"): cb_reprice_go,
+    ("reprice", "ignore"): cb_reprice_ignore,
+    ("reprice", "offer"): cb_reprice_offer,
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
     ("ebayimport", "start"): cb_ebayimport_start,

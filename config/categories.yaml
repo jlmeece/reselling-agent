@@ -29,7 +29,7 @@ business:
     # Hard filters so the research queue is never flooded (research scores only a few rows a day):
     min_discount_pct: 5        # NEW rows need a confirmed markdown of at least this % (price API, not listing text)
     reject_cooldown_days: 3    # an item the API rejected (not on sale / below min) is not re-scraped for N days
-    max_pending: 0             # 0 = off; else NEW rows are added only while PENDING rows in the sheet < this
+    max_pending: 40             # 0 = off; else NEW rows are added only while PENDING rows in the sheet < this
     # Costco's own category path (search results) -> our category. Regex fragments matched against e.g.
     # "Appliances > Small Kitchen Appliances > Air Fryers"; "!" excludes; first category wins.
     # A search item matching none is off-category (its title is not consulted). Sale-set paths seen 2026-09-24:

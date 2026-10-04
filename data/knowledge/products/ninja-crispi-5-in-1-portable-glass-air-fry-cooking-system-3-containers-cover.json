@@ -27,6 +27,24 @@
         "https://reddit.com/r/KitchenConfidential/comments/1t6ankj/my_moms_secret_country_ribs_recipe/",
         "https://reddit.com/r/KitchenConfidential/comments/1szzzgu/burgers_and_handheld_being_separate/"
       ]
+    },
+    {
+      "brand": "Ninja",
+      "model": "1898558",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Ninja",
+      "model": "1898558",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

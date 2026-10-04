@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-cross-bolo-bracelet/4000326871",
   "brand": null,
-  "model": null,
+  "model": "1896944",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -36,6 +36,24 @@
         "https://www.youtube.com/watch?v=XwLu4qVLwas",
         "https://www.youtube.com/watch?v=XwLu4qVLwas"
       ]
+    },
+    {
+      "brand": null,
+      "model": "1896944",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1896944",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

@@ -1,0 +1,40 @@
+{
+  "slug": "thomasville-dillard-convertible-outdoor-patio-sofa-set",
+  "title": "Thomasville Dillard Convertible Outdoor Patio Sofa Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/thomasville-dillard-convertible-outdoor-patio-sofa-set/4000296313",
+  "brand": "Thomasville",
+  "model": "1934152",
+  "first_researched": "2026-09-23",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-09-23",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Thomasville",
+      "model": "1934152",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Thomasville",
+      "model": "1934152",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

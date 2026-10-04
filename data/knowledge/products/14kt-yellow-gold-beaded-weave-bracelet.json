@@ -35,6 +35,24 @@
         "https://www.youtube.com/watch?v=74N5NvKHZfk",
         "https://www.youtube.com/watch?v=74N5NvKHZfk"
       ]
+    },
+    {
+      "brand": null,
+      "model": "B15299K4Y-7.5CC",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "B15299K4Y-7.5CC",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

@@ -707,3 +707,130 @@ def test_scheduler_registers_ebay_sync_mode_and_dry_run_flag(monkeypatch):
     monkeypatch.setattr(scheduler, "_acquire_lock", lambda mode: False)  # stop main() right after parsing
     monkeypatch.setattr(sys, "argv", ["scheduler.py", "--mode", "ebay_sync", "--dry-run"])
     scheduler.main()  # would SystemExit(2) on an unknown mode / flag
+
+
+# ── revise_fixed_price / fetch_item_price (one-tap reprice) ──────────────────
+
+def _revise_resp(ack="Success", errors=""):
+    return (f'<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>{ack}</Ack>'
+            f"{errors}<ItemID>123456789012</ItemID></ReviseFixedPriceItemResponse>")
+
+
+def _err(code, msg="bad", severity="Error"):
+    return (f"<Errors><SeverityCode>{severity}</SeverityCode><ErrorCode>{code}</ErrorCode>"
+            f"<ShortMessage>{msg}</ShortMessage></Errors>")
+
+
+def test_build_revise_xml_changes_only_start_price():
+    xml = ebay_sync._build_revise_xml("a<b&c", "123456789012", 50.9)
+    assert xml.startswith('<?xml version="1.0" encoding="utf-8"?>')
+    assert '<ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">' in xml
+    assert "<eBayAuthToken>a&lt;b&amp;c</eBayAuthToken>" in xml          # token escaped
+    assert "<Item><ItemID>123456789012</ItemID>" in xml
+    assert '<StartPrice currencyID="USD">50.90</StartPrice></Item>' in xml  # 2dp
+    for other in ("<Quantity>", "<Title>", "<Description>", "<PictureDetails>"):
+        assert other not in xml                                             # nothing else touched
+
+
+def test_headers_default_call_name_unchanged_and_overridable():
+    assert ebay_sync._headers("a", "d", "c")["X-EBAY-API-CALL-NAME"] == "GetMyeBaySelling"
+    h = ebay_sync._headers("a", "d", "c", "ReviseFixedPriceItem")
+    assert h["X-EBAY-API-CALL-NAME"] == "ReviseFixedPriceItem"
+    assert h["X-EBAY-API-COMPATIBILITY-LEVEL"] == "1193"
+
+
+def test_revise_success_posts_correct_request(monkeypatch, creds):
+    sent = []
+
+    def fake(req, timeout=None):
+        sent.append(req)
+        return FakeResp(_revise_resp())
+
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", fake)
+    out = ebay_sync.revise_fixed_price("https://www.ebay.com/itm/123456789012", 50.99)
+    assert out["ok"] is True and out["price"] == 50.99 and out["item_id"] == "123456789012"
+    assert out["error_kind"] is None
+    (req,) = sent
+    h = {k.lower(): v for k, v in req.header_items()}
+    assert h["x-ebay-api-call-name"] == "ReviseFixedPriceItem"
+    assert req.full_url == "https://api.ebay.com/ws/api.dll"
+    assert b'<StartPrice currencyID="USD">50.99</StartPrice>' in req.data
+    assert b"<eBayAuthToken>tok+en=</eBayAuthToken>" in req.data
+
+
+def test_revise_warning_ack_is_success(monkeypatch, creds):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_revise_resp("Warning", _err("21917", "fyi", "Warning"))))
+    out = ebay_sync.revise_fixed_price("123456789012", 10)
+    assert out["ok"] is True and "21917" in out["message"]
+
+
+@pytest.mark.parametrize("code", ["931", "932", "16110"])
+def test_revise_auth_error_is_loud(monkeypatch, creds, logs, code):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_revise_resp("Failure", _err(code, "token bad"))))
+    out = ebay_sync.revise_fixed_price("123456789012", 10)
+    assert out["ok"] is False and out["error_kind"] == "auth" and out["error_code"] == code
+    assert any("CRITICAL" in m and "FAILED" in m for m in logs)
+
+
+def test_revise_api_error_returns_code(monkeypatch, creds):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_revise_resp("Failure", _err("21916750", "variation"))))
+    out = ebay_sync.revise_fixed_price("123456789012", 10)
+    assert out == {**out, "ok": False, "error_kind": "api", "error_code": "21916750"}
+    assert "variation" in out["message"]
+
+
+def test_revise_network_error_never_raises(monkeypatch, creds):
+    def boom(*a, **k):
+        raise urllib.error.URLError("down")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", boom)
+    out = ebay_sync.revise_fixed_price("123456789012", 10)
+    assert out["ok"] is False and out["error_kind"] == "network"
+
+
+@pytest.mark.parametrize("item_id,price", [
+    ("", 10), ("not-an-id", 10), ("https://evil.com/itm/123456789012", 10),
+    ("123456789012", 0), ("123456789012", -5), ("123456789012", None), ("123456789012", "abc"),
+])
+def test_revise_invalid_input_never_posts(monkeypatch, creds, item_id, price):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.revise_fixed_price(item_id, price)
+    assert out["ok"] is False and out["error_kind"] == "invalid"
+
+
+def test_revise_without_token_never_posts(monkeypatch, creds):
+    monkeypatch.setenv("EBAY_AUTH_TOKEN", "")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.revise_fixed_price("123456789012", 10)
+    assert out["ok"] is False and out["error_kind"] == "no_token"
+
+
+def test_fetch_item_price_reads_live_price_and_status(monkeypatch, creds):
+    sent = []
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            "<ItemID>123456789012</ItemID><ListingType>FixedPriceItem</ListingType>"
+            '<SellingStatus><CurrentPrice currencyID="USD">41.48</CurrentPrice>'
+            "<ListingStatus>Active</ListingStatus></SellingStatus></Item></GetItemResponse>")
+
+    def fake(req, timeout=None):
+        sent.append(req)
+        return FakeResp(body)
+
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", fake)
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["ok"] and out["price"] == 41.48 and out["listing_status"] == "Active"
+    assert out["listing_type"] == "FixedPriceItem"
+    assert {k.lower(): v for k, v in sent[0].header_items()}["x-ebay-api-call-name"] == "GetItem"
+    assert b"<ItemID>123456789012</ItemID>" in sent[0].data
+
+
+def test_fetch_item_price_auth_error(monkeypatch, creds):
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack>'
+            f'{_err("932", "expired")}</GetItemResponse>')
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", lambda *a, **k: FakeResp(body))
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["ok"] is False and out["error_kind"] == "auth" and out["error_code"] == "932"

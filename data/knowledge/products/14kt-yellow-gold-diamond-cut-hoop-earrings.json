@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-diamond-cut-hoop-earrings/4000417926",
   "brand": null,
-  "model": null,
+  "model": "2009008",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -28,6 +28,24 @@
         "https://reddit.com/r/Gold/comments/1t359mh/experience_with_png_jewellers_plaza_lakshmi_road/",
         "https://reddit.com/r/Gold/comments/1t35101/double_curb_link_9999/"
       ]
+    },
+    {
+      "brand": null,
+      "model": "2009008",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "2009008",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

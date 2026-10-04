@@ -73,6 +73,26 @@
         "https://www.youtube.com/watch?v=ie2Avywm6aI",
         "https://www.youtube.com/watch?v=GK1XCDeel5Y"
       ]
+    },
+    {
+      "brand": "Lifetime",
+      "model": "1947401",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Lifetime",
+      "model": "1947401",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

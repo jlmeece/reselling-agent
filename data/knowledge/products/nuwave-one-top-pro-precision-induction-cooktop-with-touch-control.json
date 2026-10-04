@@ -27,6 +27,24 @@
         "https://reddit.com/r/BuyItForLife/comments/1swv8wa/just_found_this_older_clockradiobuzzer_combo/",
         "https://reddit.com/r/KitchenConfidential/comments/1stgqaw/quit_a_highend_bakery_production_job/"
       ]
+    },
+    {
+      "brand": "NuWave",
+      "model": "1987017",
+      "date": "2026-09-23",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "NuWave",
+      "model": "1987017",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

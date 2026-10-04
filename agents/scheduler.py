@@ -56,6 +56,8 @@ from tools.sale_monitor import (
     record_alerts, sale_column_updates, sale_end_alert, to_float, badge_verified,
 )
 from tools.sale_digest import select_sale_items, format_digest
+from tools.ebay_sync import extract_item_id
+from tools.reprice import restore_margin_price, save_pending, send_reprice_prompt
 from tools.spot_price import check_spot_movement
 from agents.auditor import run_audit
 from tools import ebay_sync, costco_savings
@@ -97,13 +99,40 @@ def _set_cell(row, idx, value):
     row[idx] = value
 
 
+def _reprice_prompt(row, COL, categories, status, title, category, sheet_row,
+                    old, new_price, ebay_f, fee_f, ship_f):
+    """
+    One-tap reprice prompt dict for a cost rise, or None. Only for ACTIVE rows with a valid
+    eBay item ID in col Q and a computable restore-margin price above the current eBay price.
+    Fee: col AB, else the category's fee_rate; ad: the category's ad_rate (col AE = H*ad_rate).
+    """
+    if status != "ACTIVE":
+        return None
+    item_id = extract_item_id(safe_get(row, col_to_idx(COL["ebay_listing_url"])))
+    if not item_id:
+        return None
+    cat_cfg = categories.get(category) or {}
+    fee = fee_f if fee_f is not None else parse_rate(cat_cfg.get("fee_rate"))
+    ad_rate = parse_rate(cat_cfg.get("ad_rate", 0)) or 0.0
+    target = restore_margin_price(old, new_price, ebay_f, fee, ship_f, ad_rate)
+    if target is None:
+        return None
+    return {"item_id": item_id, "title": title, "row": sheet_row, "category": category,
+            "sku": safe_get(row, col_to_idx(COL["sku"])) if "sku" in COL else "",
+            "old_cost": float(old), "new_cost": float(new_price), "ebay_price": float(ebay_f),
+            "fee_rate": float(fee), "ship": float(ship_f or 0.0), "ad_rate": float(ad_rate),
+            "target": target}
+
+
 def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, only_rows=None):
     """
     Checks all ACTIVE listings every run.
     - Detects stock changes -> PAUSED_OOS
     - Detects Costco SALE START (cost dropped + on_sale) -> writes G / AW / X, keeps the eBay
       price (margin just improved), no reprice suggestion
-    - Detects SALE END / cost rise -> col P flag + URGENT reprice-up alert (suggest_reprice)
+    - Detects SALE END / cost rise -> col P flag + URGENT reprice-up alert; for an ACTIVE row with
+      an eBay item ID in col Q also a Telegram "✓ Reprice" prompt (restore_margin_price — the
+      price that restores the pre-rise net). The prompt only ASKS; the bot tap applies it.
     - Trivial cost drift -> col G silently
     - Margin erosion -> note in col T only (no auto-pause; ebay_sync alerts on the live price)
     - Auto-promotes READY->ACTIVE when eBay URL is filled
@@ -118,6 +147,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     urgent_items = []
+    reprice_prompts = []
     checked = 0
 
     # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL/APPROVED rows.
@@ -261,15 +291,19 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             if event == "sale_start":
                 sale_note = margin_note_sale_start(old, new_price)
             elif event == "sale_end":
-                sale_item = sale_end_alert(title, old, new_price, fee_f, ship_f, ebay_f,
-                                           row=sheet_row, category=category)
                 if ebay_f is not None and target is not None and ebay_f >= target:
                     # Listing price already covers margin at the new cost — nothing to fix
                     sale_note = (f"sale ended — cost ${old:.2f}→${new_price:.2f}, "
                                  f"eBay ${ebay_f:.2f} already covers margin")
-                    sale_item = None
                 else:
                     flag_update = PRICE_FLAG_YES
+                    prompt = _reprice_prompt(row, COL, categories, status, title, category,
+                                             sheet_row, old, new_price, ebay_f, fee_f, ship_f)
+                    if prompt:
+                        reprice_prompts.append(prompt)
+                    sale_item = sale_end_alert(title, old, new_price, fee_f, ship_f, ebay_f,
+                                               row=sheet_row, category=category,
+                                               target=prompt["target"] if prompt else None)
             elif existing_flag and not price_flag_still_needed(existing_flag, ebay_f, target):
                 flag_update = ""    # listing was repriced — clear the stale flag
             # (an existing YES flag that is still needed is left alone — it used to be blanked
@@ -324,6 +358,12 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             time.sleep(2)
 
     logger.info(f"Active monitor complete. Checked: {checked} | Urgent: {len(urgent_items)}")
+
+    # ── One-tap reprice prompts (sale end / cost rise on a live listing) ──────
+    # Saved first so the bot can re-send a prompt that failed to send or was ignored.
+    for prompt in reprice_prompts:
+        save_pending(prompt)
+        send_reprice_prompt(prompt)
 
     # ── Sale expiry check ──────────────────────────────────────────────────────
     # Online arbitrage model — no inventory held. Sale expiry = repricing event.

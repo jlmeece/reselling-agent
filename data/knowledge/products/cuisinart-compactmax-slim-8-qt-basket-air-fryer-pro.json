@@ -23,6 +23,35 @@
       "top_links": [
         "https://reddit.com/r/BuyItForLife/comments/1tatagi/looking_for_a_genuine_toptier_air_purifier_for_3/"
       ]
+    },
+    {
+      "brand": "Cuisinart",
+      "model": "1965284",
+      "date": "2026-09-23",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/BuyItForLife": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Cuisinart",
+      "model": "1965284",
+      "date": "2026-09-24",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Cuisinart",
+      "model": "1965284",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

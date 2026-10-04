@@ -1,0 +1,29 @@
+{
+  "slug": "spyder-youth-superlite-jacket",
+  "title": "Spyder Youth Superlite Jacket",
+  "category": "Small Appliances",
+  "costco_url": "https://www.costco.com/p/-/spyder-youth-superlite-jacket/4000427197",
+  "brand": "Spyder",
+  "model": "2024459",
+  "first_researched": "2026-09-25",
+  "research_runs": [
+    {
+      "brand": "Spyder",
+      "model": "2024459",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Spyder",
+      "model": "2024459",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "slug": "sunvilla-citadel-4-piece-outdoor-patio-seating-set",
+  "title": "SunVilla Citadel 4-Piece Outdoor Patio Seating Set",
+  "category": "Outdoor Furniture",
+  "costco_url": "https://www.costco.com/p/-/sunvilla-citadel-4-piece-outdoor-patio-seating-set/4000391466",
+  "brand": "SunVilla",
+  "model": "1933990",
+  "first_researched": "2026-09-25",
+  "research_runs": [
+    {
+      "brand": "SunVilla",
+      "model": "1933990",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/HomeImprovement": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "SunVilla",
+      "model": "1933990",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}

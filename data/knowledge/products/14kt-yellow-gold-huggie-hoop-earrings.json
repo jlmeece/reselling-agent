@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-huggie-hoop-earrings/4000334369",
   "brand": null,
-  "model": null,
+  "model": "1906829",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -26,6 +26,24 @@
         "https://reddit.com/r/Gold/comments/1sn1qag/did_i_get_lucky/",
         "https://reddit.com/r/Gold/comments/1shvc64/caution_jewleryweb_supplier_on_walmartcom/"
       ]
+    },
+    {
+      "brand": null,
+      "model": "1906829",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "1906829",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

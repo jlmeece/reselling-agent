@@ -4,7 +4,7 @@
   "category": "Jewelry",
   "costco_url": "https://www.costco.com/p/-/14kt-yellow-gold-round-box-bracelet/4201002163",
   "brand": null,
-  "model": null,
+  "model": "2222552",
   "first_researched": "2026-05-10",
   "research_runs": [
     {
@@ -35,6 +35,24 @@
         "https://www.youtube.com/watch?v=XwLu4qVLwas",
         "https://www.youtube.com/watch?v=NS7ZVKrKmAQ"
       ]
+    },
+    {
+      "brand": null,
+      "model": "2222552",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": null,
+      "model": "2222552",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

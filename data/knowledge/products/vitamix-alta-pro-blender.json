@@ -31,6 +31,24 @@
         "https://reddit.com/r/BuyItForLife/comments/1svkdjx/is_the_zwilling_blender_good/",
         "https://reddit.com/r/BuyItForLife/comments/1ssgcc1/nonplastic_nutribullet_cups/"
       ]
+    },
+    {
+      "brand": "Vitamix",
+      "model": "3561883",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Vitamix",
+      "model": "3561883",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {},
+      "intent_phrases_seen": [],
+      "top_links": []
     }
   ]
 }

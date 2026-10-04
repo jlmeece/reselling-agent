@@ -1,0 +1,51 @@
+{
+  "slug": "10-gram-gold-bar-argor-heraeus-new-in-assay",
+  "title": "10 gram Gold Bar Argor-Heraeus (New in Assay)",
+  "category": "Precious Metals",
+  "costco_url": "https://www.costco.com/p/-/10-gram-gold-bar-argor-heraeus-new-in-assay/4201035827",
+  "brand": "Argor-Heraeus",
+  "model": "2053323",
+  "first_researched": "2026-09-23",
+  "research_runs": [
+    {
+      "brand": null,
+      "model": null,
+      "date": "2026-09-23",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0,
+        "reddit:r/CostcoGold": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Argor-Heraeus",
+      "model": "2053323",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    },
+    {
+      "brand": "Argor-Heraeus",
+      "model": "2053323",
+      "date": "2026-09-25",
+      "signal_strength": 0.0,
+      "by_source": {
+        "reddit:r/Silverbugs": 0,
+        "reddit:r/Gold": 0,
+        "reddit:r/Pmsforsale": 0
+      },
+      "intent_phrases_seen": [],
+      "top_links": []
+    }
+  ]
+}
