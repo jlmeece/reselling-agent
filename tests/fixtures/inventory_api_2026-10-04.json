@@ -1,0 +1,595 @@
+{
+ "11487038": {
+  "name": "Calcium 600 mg",
+  "ui_how_to_get_it": "How To Get It\n77001\nAvailable\nSeattle\nOut of Stock\nDelivery\nEstimated\nThu, Oct 8\nIn-Warehouse\nOut of Stock\nSame-Day Delivery\nOut of Stock\nShipping & Handling Included*\nItem may be available in your local warehouse, prices may vary.",
+  "ui_delivery_out_of_stock": false,
+  "responses": [
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/pickup/389194?quantity=1&selectedWarehouse=1-wh&shippingCodes=USP&action=EDD",
+    "json": {
+     "itemNumber": "389194",
+     "warehouseitemNumber": null,
+     "orderItemId": "0",
+     "warehouseAvailability": {
+      "3rdPartyDelivery": {
+       "availability": "NOSTOCK",
+       "fulfillmentCenter": "1-wh"
+      },
+      "inWarehouse": {
+       "availability": "NOSTOCK",
+       "fulfillmentCenter": "1-wh"
+      }
+     },
+     "shipToWarehouse": null
+    }
+   },
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/v2/389194?destinationState=TX&destinationPostalCode=77001&destinationCountryCode=US&orderItemId=0&shippingCodes=USP&action=EDD&quantity=1",
+    "json": {
+     "itemNumber": "389194",
+     "orderItemId": "0",
+     "availability": "INSTOCK",
+     "availableForSale": true,
+     "itemClassification": "SMALLPACK",
+     "fulfilledBy": null,
+     "firstShipDate": null,
+     "lastShipDate": null,
+     "availableToSellDate": null,
+     "typeDescription": null,
+     "status": "200 OK",
+     "quantityRequested": 1,
+     "webCatalogId": "758-wm",
+     "distributionCenter": "758-WM",
+     "fulfillmentCenterCompanyId": 28,
+     "fulfillmentType": "depot",
+     "isComplex": false,
+     "requiresAssembly": false,
+     "disableShipMethodCode": false,
+     "virtualBundleId": null,
+     "description": null,
+     "shipmodeDates": [
+      {
+       "status": "200 OK",
+       "shippingCode": "USP",
+       "supplierAvailabilityDate": "2026-10-05T00:00:00",
+       "estimatedDeliveryDate": "2026-10-08T00:00:00",
+       "description": null,
+       "supplier": null,
+       "transportPriority": null,
+       "availableDeliveryDates": null
+      }
+     ]
+    }
+   },
+   {
+    "method": "GET",
+    "url": "https://www.costco.com/AjaxSCInventoryUpdate?itemNumber=389194&warehouseNo=847&clientId=X",
+    "json": {
+     "isAvailable": true,
+     "itemNumber": "389194",
+     "backorderType": "0",
+     "inventoryFlag": "0",
+     "catentryId": "1000013993",
+     "ffmCenter": "10151",
+     "viewTaskName": "AjaxActionResponse",
+     "storeId": "10301",
+     "errorParam": {}
+    }
+   }
+  ]
+ },
+ "4000099948": {
+  "name": "Energy Shot",
+  "ui_how_to_get_it": "How To Get It\n77001\nAvailable\nDelivery\nEstimated\nThu, Oct 8\nShipping & Handling Included*",
+  "ui_delivery_out_of_stock": false,
+  "responses": [
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/v2/1711796?destinationState=TX&destinationPostalCode=77001&destinationCountryCode=US&orderItemId=0&shippingCodes=USP&action=EDD&quantity=1",
+    "json": {
+     "itemNumber": "1711796",
+     "orderItemId": "0",
+     "availability": "INSTOCK",
+     "availableForSale": true,
+     "itemClassification": "SMALLPACK",
+     "fulfilledBy": null,
+     "firstShipDate": null,
+     "lastShipDate": null,
+     "availableToSellDate": null,
+     "typeDescription": null,
+     "status": "200 OK",
+     "quantityRequested": 1,
+     "webCatalogId": "758-wm",
+     "distributionCenter": "758-WM",
+     "fulfillmentCenterCompanyId": 28,
+     "fulfillmentType": "depot",
+     "isComplex": false,
+     "requiresAssembly": false,
+     "disableShipMethodCode": false,
+     "virtualBundleId": null,
+     "description": null,
+     "shipmodeDates": [
+      {
+       "status": "200 OK",
+       "shippingCode": "USP",
+       "supplierAvailabilityDate": "2026-10-05T00:00:00",
+       "estimatedDeliveryDate": "2026-10-08T00:00:00",
+       "description": null,
+       "supplier": null,
+       "transportPriority": null,
+       "availableDeliveryDates": null
+      }
+     ]
+    }
+   },
+   {
+    "method": "GET",
+    "url": "https://www.costco.com/AjaxSCInventoryUpdate?itemNumber=1711796&warehouseNo=847&clientId=X",
+    "json": {
+     "isAvailable": true,
+     "itemNumber": "1711796",
+     "backorderType": "0",
+     "inventoryFlag": "0",
+     "catentryId": "3074457345619860653",
+     "ffmCenter": "10151",
+     "viewTaskName": "AjaxActionResponse",
+     "storeId": "10301",
+     "errorParam": {}
+    }
+   }
+  ]
+ },
+ "4000204559": {
+  "name": "Agio Menorca patio set",
+  "ui_how_to_get_it": "How To Get It\n77001\nAvailable\nSeattle\nOut of Stock\nDelivery\nEarliest\nWed, Oct 7\nIn-Warehouse\nOut of Stock\nShipping & Handling Included*\nItem may be available in your local warehouse, prices may vary.\nYour delivery date is not secured until you complete your order.",
+  "ui_delivery_out_of_stock": false,
+  "responses": [
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/v2/1713510?destinationState=TX&destinationPostalCode=77001&destinationCountryCode=US&orderItemId=0&shippingCodes=LTR&action=EDD&quantity=1",
+    "json": {
+     "itemNumber": "1713510",
+     "orderItemId": "0",
+     "availability": "INSTOCK",
+     "availableForSale": true,
+     "itemClassification": "LTL",
+     "fulfilledBy": "Innovel",
+     "firstShipDate": null,
+     "lastShipDate": null,
+     "availableToSellDate": null,
+     "typeDescription": null,
+     "status": "200 OK",
+     "quantityRequested": 1,
+     "webCatalogId": "1254-3pl",
+     "distributionCenter": "1254-3PL",
+     "fulfillmentCenterCompanyId": 37,
+     "fulfillmentType": "3pl",
+     "isComplex": false,
+     "requiresAssembly": false,
+     "disableShipMethodCode": false,
+     "virtualBundleId": null,
+     "description": null,
+     "shipmodeDates": [
+      {
+       "status": "200 OK",
+       "shippingCode": "LTR",
+       "supplierAvailabilityDate": "2026-10-05T00:00:00",
+       "estimatedDeliveryDate": "2026-10-07T00:00:00",
+       "description": null,
+       "supplier": null,
+       "transportPriority": null,
+       "availableDeliveryDates": [
+        {
+         "start": "2026-10-07T00:00:00",
+         "end": null
+        },
+        {
+         "start": "2026-10-08T00:00:00",
+         "end": null
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/pickup/1713510?quantity=1&selectedWarehouse=1-wh&shippingCodes=LTR&action=EDD",
+    "json": {
+     "itemNumber": "1713510",
+     "warehouseitemNumber": null,
+     "orderItemId": "0",
+     "warehouseAvailability": {
+      "inWarehouse": {
+       "availability": "NOSTOCK",
+       "fulfillmentCenter": "1-wh"
+      },
+      "useWarehouseInventory": {
+       "buyable": false,
+       "orderCutOff": "2026-10-04T16:00:00",
+       "orderPickup": "2026-10-04T00:00:00",
+       "maxUnitsAvailable": -3,
+       "fulfillmentCenter": "1-wh",
+       "availability": "NOSTOCK"
+      }
+     },
+     "shipToWarehouse": null
+    }
+   }
+  ]
+ },
+ "4000359830": {
+  "name": "Ninja Flip toaster oven",
+  "ui_how_to_get_it": "How To Get It\n77001\nOut of Stock\nSeattle\nIn Stock\nDelivery\nOut of Stock\nIn-Warehouse\nWarehouse Price\n$\n179.99\nSame-Day Delivery\nPricing May Vary",
+  "ui_delivery_out_of_stock": true,
+  "responses": [
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/pickup/1513024?quantity=1&selectedWarehouse=1-wh&shippingCodes=UPG&action=EDD",
+    "json": {
+     "itemNumber": "1513024",
+     "warehouseitemNumber": null,
+     "orderItemId": "0",
+     "warehouseAvailability": {
+      "3rdPartyDelivery": {
+       "availability": "INSTOCK",
+       "fulfillmentCenter": "1-wh"
+      },
+      "inWarehouse": {
+       "availability": "INSTOCK",
+       "fulfillmentCenter": "1-wh"
+      }
+     },
+     "shipToWarehouse": null
+    }
+   },
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/v2/1513024?destinationState=TX&destinationPostalCode=77001&destinationCountryCode=US&orderItemId=0&shippingCodes=UPG&action=EDD&quantity=1",
+    "json": {
+     "itemNumber": "1513024",
+     "orderItemId": "0",
+     "availability": "INSTOCK",
+     "availableForSale": true,
+     "itemClassification": "SMALLPACK",
+     "fulfilledBy": null,
+     "firstShipDate": null,
+     "lastShipDate": null,
+     "availableToSellDate": null,
+     "typeDescription": null,
+     "status": "200 OK",
+     "quantityRequested": 1,
+     "webCatalogId": "725-wm",
+     "distributionCenter": "725-WM",
+     "fulfillmentCenterCompanyId": 30,
+     "fulfillmentType": "depot",
+     "isComplex": false,
+     "requiresAssembly": false,
+     "disableShipMethodCode": false,
+     "virtualBundleId": null,
+     "description": null,
+     "shipmodeDates": [
+      {
+       "status": "200 OK",
+       "shippingCode": "UPG",
+       "supplierAvailabilityDate": "2026-10-05T00:00:00",
+       "estimatedDeliveryDate": "2026-10-09T00:00:00",
+       "description": null,
+       "supplier": null,
+       "transportPriority": null,
+       "availableDeliveryDates": null
+      }
+     ]
+    }
+   },
+   {
+    "method": "GET",
+    "url": "https://www.costco.com/AjaxSCInventoryUpdate?itemNumber=1513024&warehouseNo=847&clientId=X",
+    "json": {
+     "isAvailable": false,
+     "itemNumber": "1513024",
+     "backorderType": "0",
+     "inventoryFlag": "0",
+     "catentryId": "3074457345620704075",
+     "ffmCenter": "10151",
+     "viewTaskName": "AjaxActionResponse",
+     "storeId": "10301",
+     "errorParam": {}
+    }
+   },
+   {
+    "method": "POST",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/batch",
+    "json": [
+     {
+      "itemNumber": "2030887",
+      "programTypes": {
+       "siteControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     },
+     {
+      "itemNumber": "2030869",
+      "programTypes": {
+       "locationControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       },
+       "ltlPickUp": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     },
+     {
+      "itemNumber": "2030871",
+      "programTypes": {
+       "siteControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     },
+     {
+      "itemNumber": "2030881",
+      "programTypes": {
+       "locationControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     },
+     {
+      "itemNumber": "2030882",
+      "programTypes": {
+       "siteControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     },
+     {
+      "itemNumber": "2030886",
+      "programTypes": {
+       "siteControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     },
+     {
+      "itemNumber": "2030884",
+      "programTypes": {
+       "siteControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     },
+     {
+      "itemNumber": "2030883",
+      "programTypes": {
+       "locationControlledInventory": {
+        "fulfillmentCenter": "847_lg_ntx-edi",
+        "availability": "INSTOCK"
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "4000391466": {
+  "name": "SunVilla Citadel patio set",
+  "ui_how_to_get_it": "How To Get It\n77001\nOut of Stock\nDelivery\nOut of Stock",
+  "ui_delivery_out_of_stock": true,
+  "responses": [
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/v2/1933990?destinationState=TX&destinationPostalCode=77001&destinationCountryCode=US&orderItemId=0&shippingCodes=LTR&action=EDD&quantity=1",
+    "json": {
+     "itemNumber": "1933990",
+     "orderItemId": "0",
+     "availability": "NOSTOCK",
+     "availableForSale": false,
+     "itemClassification": "LTL",
+     "fulfilledBy": "OutOfStock",
+     "firstShipDate": null,
+     "lastShipDate": null,
+     "availableToSellDate": null,
+     "typeDescription": null,
+     "status": "200 OK",
+     "quantityRequested": 1,
+     "webCatalogId": "1254-3pl",
+     "distributionCenter": "1254-3PL",
+     "fulfillmentCenterCompanyId": 37,
+     "fulfillmentType": "3pl",
+     "isComplex": false,
+     "requiresAssembly": false,
+     "disableShipMethodCode": false,
+     "virtualBundleId": null,
+     "description": null,
+     "shipmodeDates": [
+      {
+       "status": "200 OK",
+       "shippingCode": "LTR",
+       "supplierAvailabilityDate": null,
+       "estimatedDeliveryDate": null,
+       "description": null,
+       "supplier": null,
+       "transportPriority": null,
+       "availableDeliveryDates": null
+      }
+     ]
+    }
+   },
+   {
+    "method": "POST",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/batch/v2",
+    "json": [
+     {
+      "itemNumber": "1933990",
+      "programTypes": {
+       "locationControlledInventory": [
+        {
+         "fulfillmentCenter": "1254-3pl",
+         "availability": "NOSTOCK"
+        }
+       ]
+      }
+     },
+     {
+      "itemNumber": "1934040",
+      "programTypes": {
+       "locationControlledInventory": [
+        {
+         "fulfillmentCenter": "1254-3pl",
+         "availability": "INSTOCK"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "4000399020": {
+  "name": "Nature's Domain dog food",
+  "ui_how_to_get_it": "How To Get It\n77001\nAvailable\n2-Day Delivery\nEstimated\nWed, Oct 7\n2-Day Delivery:\n3.00\n2 Business Day Delivery when ordered by 12pm noon local time. No separate delivery fee with 2-Day orders of $75 or more. Item may be available in your local warehouse, prices may vary. Delivery times may be extended due to factors including order size and events outside of our control (i.e. weather/natural disasters). We do not guarantee two-day delivery.",
+  "ui_delivery_out_of_stock": false,
+  "responses": [
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/v2/1936927?destinationState=TX&destinationPostalCode=77001&destinationCountryCode=US&orderItemId=0&shippingCodes=UP2&action=EDD&quantity=1",
+    "json": {
+     "itemNumber": "1936927",
+     "orderItemId": "0",
+     "availability": "INSTOCK",
+     "availableForSale": true,
+     "itemClassification": "SMALLPACK",
+     "fulfilledBy": null,
+     "firstShipDate": null,
+     "lastShipDate": null,
+     "availableToSellDate": null,
+     "typeDescription": null,
+     "status": "200 OK",
+     "quantityRequested": 1,
+     "webCatalogId": "655-bd",
+     "distributionCenter": "655-BD",
+     "fulfillmentCenterCompanyId": 778,
+     "fulfillmentType": "depot",
+     "isComplex": false,
+     "requiresAssembly": false,
+     "disableShipMethodCode": false,
+     "virtualBundleId": null,
+     "description": null,
+     "shipmodeDates": [
+      {
+       "status": "200 OK",
+       "shippingCode": "UP2",
+       "supplierAvailabilityDate": "2026-10-05T00:00:00",
+       "estimatedDeliveryDate": "2026-10-07T00:00:00",
+       "description": null,
+       "supplier": null,
+       "transportPriority": null,
+       "availableDeliveryDates": null
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "4000434781": {
+  "name": "POLYWOOD Eastport cushions",
+  "ui_how_to_get_it": "How To Get It\n77001\nOut of Stock\nDelivery\nOut of Stock",
+  "ui_delivery_out_of_stock": true,
+  "responses": [
+   {
+    "method": "GET",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/v2/1975279?destinationState=TX&destinationPostalCode=77001&destinationCountryCode=US&orderItemId=0&shippingCodes=UPG&action=EDD&quantity=1",
+    "json": {
+     "itemNumber": "1975279",
+     "orderItemId": "0",
+     "availability": "INSTOCK",
+     "availableForSale": true,
+     "itemClassification": "SMALLPACK",
+     "fulfilledBy": null,
+     "firstShipDate": null,
+     "lastShipDate": null,
+     "availableToSellDate": null,
+     "typeDescription": null,
+     "status": "200 OK",
+     "quantityRequested": 1,
+     "webCatalogId": "847_0-edi",
+     "distributionCenter": "0-EDI",
+     "fulfillmentCenterCompanyId": 6,
+     "fulfillmentType": "dropship",
+     "isComplex": false,
+     "requiresAssembly": false,
+     "disableShipMethodCode": false,
+     "virtualBundleId": null,
+     "description": null,
+     "shipmodeDates": [
+      {
+       "status": "400 Bad Request",
+       "shippingCode": "UPG",
+       "supplierAvailabilityDate": null,
+       "estimatedDeliveryDate": null,
+       "description": "Insufficient stock available",
+       "supplier": null,
+       "transportPriority": null,
+       "availableDeliveryDates": null
+      }
+     ]
+    }
+   },
+   {
+    "method": "GET",
+    "url": "https://www.costco.com/AjaxSCInventoryUpdate?itemNumber=1975279&warehouseNo=847&clientId=X",
+    "json": {
+     "isAvailable": false,
+     "itemNumber": "1975279",
+     "backorderType": "0",
+     "inventoryFlag": "0",
+     "catentryId": "3074457345620961661",
+     "ffmCenter": "10151",
+     "viewTaskName": "AjaxActionResponse",
+     "storeId": "10301",
+     "errorParam": {}
+    }
+   },
+   {
+    "method": "POST",
+    "url": "https://ecom-api.costco.com/ebusiness/inventory/v1/inventorylevels/availability/batch/v2",
+    "json": [
+     {
+      "itemNumber": "1975279",
+      "programTypes": {
+       "siteControlledInventory": [
+        {
+         "fulfillmentCenter": "847_0-edi",
+         "availability": "NOSTOCK"
+        }
+       ]
+      }
+     },
+     {
+      "itemNumber": "1975280",
+      "programTypes": {
+       "siteControlledInventory": [
+        {
+         "fulfillmentCenter": "847_0-edi",
+         "availability": "INSTOCK"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

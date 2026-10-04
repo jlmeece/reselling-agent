@@ -881,6 +881,109 @@ def _parse_price_payload(data, whs_order=()):
     return None
 
 
+# ── Inventory API ("How to get it") ───────────────────────────────────────────
+# The "How to get it" box (#fulfillment-title) is filled client-side from these calls,
+# field names confirmed by tools/probe_inventory.py on 7 live products (2026-10-04):
+#   ecom-api.costco.com/.../inventorylevels/availability/v2/<item>   (GET) — DELIVERY:
+#       availability "INSTOCK"/"NOSTOCK", availableForSale bool, fulfilledBy ("OutOfStock"),
+#       shipmodeDates[].status "200 OK" | "400 Bad Request" (+ description
+#       "Insufficient stock available" — v2 can say INSTOCK while the ship mode fails)
+#   www.costco.com/AjaxSCInventoryUpdate?itemNumber=<item>&warehouseNo=847 (GET) — online
+#       inventory: isAvailable bool. Catches what v2 misses (Ninja Flip: v2 INSTOCK/200, UI
+#       "Delivery Out of Stock", isAvailable false). Not fired for 3PL/LTL freight items.
+#   .../availability/pickup/<item> (GET) — WAREHOUSE PICKUP only:
+#       warehouseAvailability.inWarehouse.availability / .3rdPartyDelivery.availability
+#   .../availability/batch/v2 (POST) — every variant of the product
+#       ([{itemNumber, programTypes: {<type>: [{fulfillmentCenter, availability}]}}]);
+#       informational only — the selected variant is the one v2 is asked about.
+_INVENTORY_URL_KEYS = ("inventorylevels/availability", "AjaxSCInventoryUpdate")
+_inventory_stats = {"pages": 0, "misses": 0}
+
+
+def inventory_miss_message(stats=None):
+    """Telegram text when the inventory API looks broken this run (stock silently fell back to
+    the Add-to-Cart guess that caused the 2026-10-04 false "In Stock"s), else None."""
+    s = stats or _inventory_stats
+    if s["misses"] >= PRICE_MISS_MIN and s["misses"] >= PRICE_MISS_RATIO * s["pages"]:
+        return (f"⚠️ <b>Costco inventory API gave no delivery state</b> for {s['misses']} of "
+                f"{s['pages']} product pages this run — stock fell back to the Add-to-Cart guess "
+                "(can misread Delivery). Re-probe with tools/probe_inventory.py.")
+    return None
+
+
+def _parse_inventory_payload(url, data):
+    """
+    One inventory response -> a small record, or None if it isn't one we use.
+      {"kind": "delivery", "item", "availability", "available_for_sale", "ship_ok", "ship_error"}
+      {"kind": "online",   "item", "is_available"}
+      {"kind": "pickup",   "item", "in_warehouse", "third_party"}
+    Batch (variant list) responses are ignored. Never raises.
+    """
+    try:
+        if not isinstance(data, dict):
+            return None
+        if "AjaxSCInventoryUpdate" in url:
+            if "isAvailable" not in data:
+                return None
+            return {"kind": "online", "item": str(data.get("itemNumber") or ""),
+                    "is_available": bool(data["isAvailable"])}
+        if "/availability/pickup/" in url:
+            wa = data.get("warehouseAvailability") or {}
+            return {"kind": "pickup", "item": str(data.get("itemNumber") or ""),
+                    "in_warehouse": (wa.get("inWarehouse") or {}).get("availability"),
+                    "third_party": (wa.get("3rdPartyDelivery") or {}).get("availability")}
+        if "/availability/v2/" in url and "availability" in data:
+            modes = [m for m in (data.get("shipmodeDates") or []) if isinstance(m, dict)]
+            ship_ok = (any(str(m.get("status") or "").startswith("200") for m in modes)
+                       if modes else True)     # no ship-mode list = nothing contradicts availability
+            errors = [m.get("description") for m in modes
+                      if not str(m.get("status") or "").startswith("200") and m.get("description")]
+            return {"kind": "delivery", "item": str(data.get("itemNumber") or ""),
+                    "availability": str(data.get("availability") or "").upper(),
+                    "available_for_sale": data.get("availableForSale"),
+                    "ship_ok": ship_ok, "ship_error": "; ".join(errors) or None}
+    except Exception:
+        return None
+    return None
+
+
+def _delivery_state(records):
+    """
+    Delivery (shipping) availability from parsed inventory records -> (state, pickup).
+      state:  "available" | "backorder" | "oos" | None (no delivery signal -> DOM fallback)
+      pickup: the in-warehouse availability string (e.g. "INSTOCK"/"NOSTOCK") or None —
+              reported only; it never decides stock (we sell shipped, not picked up).
+    v2 decides (NOSTOCK, availableForSale false, or a failed ship mode = oos); an
+    AjaxSCInventoryUpdate isAvailable=false for the same item overrides a v2 "available".
+    """
+    delivery = [r for r in records if r["kind"] == "delivery"]
+    online = [r for r in records if r["kind"] == "online"]
+    pickup = [r for r in records if r["kind"] == "pickup"]
+    pickup_state = pickup[-1]["in_warehouse"] if pickup else None
+
+    state = None
+    item = None
+    if delivery:
+        d = delivery[-1]
+        item = d["item"]
+        avail = d["availability"]
+        if ("NOSTOCK" in avail or "OUTOFSTOCK" in avail or d["available_for_sale"] is False
+                or not d["ship_ok"]):
+            state = "oos"
+        elif any(k in avail for k in ("BACKORDER", "PRESELL", "PREORDER")):
+            state = "backorder"       # inferred value names — not yet seen live
+        else:
+            state = "available"
+    for o in online:
+        if item and o["item"] and o["item"] != item:
+            continue                  # a different item's call (variant / widget) — ignore
+        if o["is_available"] is False:
+            state = "oos"
+        elif state is None:
+            state = "available"
+    return state, pickup_state
+
+
 def _detect_shippable(page, prod_text):
     """True if the product page still offers online shipping.
 
@@ -918,7 +1021,8 @@ def _detect_shippable(page, prod_text):
     return False
 
 
-def _classify_stock(has_atc, atc_class, prod_text, purchase_limit, shippable=False):
+def _classify_stock(has_atc, atc_class, prod_text, purchase_limit, shippable=False,
+                    delivery=None):
     """Pure stock-status decision -> (stock_status, in_stock).
 
     `has_atc`        — True when an Add-to-Cart button element exists on the page.
@@ -926,12 +1030,26 @@ def _classify_stock(has_atc, atc_class, prod_text, purchase_limit, shippable=Fal
     `prod_text`      — lowercased rendered product text.
     `purchase_limit` — numeric limit parsed from the page, or None.
     `shippable`      — from _detect_shippable: the page still offers online shipping.
+    `delivery`       — from _delivery_state (inventory API): "available" | "backorder" |
+                       "oos" | None. When set it DECIDES — Delivery drives the result and
+                       warehouse pickup is ignored. None = the API didn't fire -> DOM rules.
 
-    The one non-obvious rule: an out-of-stock ATC button is only a true sellout when the
-    product is ALSO not shippable — Costco can show pickup-OOS while shipping is available.
+    DOM fallback rule: an out-of-stock ATC button is only a true sellout when the product
+    is ALSO not shippable — Costco can show pickup-OOS while shipping is available.
     """
     def _limit_label(n):
         return f"Available ({n}/day limit)" if n else "Available (purchase limit)"
+
+    if delivery == "oos":
+        return ("OUT OF STOCK", False)
+    if delivery == "backorder":
+        return ("Available (backorder)", True)
+    if delivery == "available":
+        if purchase_limit:
+            return (_limit_label(purchase_limit), True)
+        if any(p in prod_text for p in ("while supplies last", "limited quantity", "low stock")):
+            return ("Available (limited)", True)
+        return ("In Stock", True)
 
     if has_atc:
         if "out-of-stock" in atc_class or "out_of_stock" in atc_class:
@@ -972,7 +1090,12 @@ def scrape_costco(url, page):
               "on_sale": bool, "sale_savings": float|None, "original_price": float|None,
               "sale_expires": str|None, "coupon_type": "MFR"|"STORE"|"OTHER"|None,
               "coupon_label": str|None, "free_shipping": bool,
-              "in_stock": bool, "error": str|None, "http_status": int|None}
+              "in_stock": bool, "error": str|None, "http_status": int|None,
+              "delivery_status": "available"|"backorder"|"oos"|None,
+              "pickup_status": str|None, "stock_source": "inventory_api"|"dom"}
+    Stock: the inventory API's DELIVERY state decides (see _delivery_state); warehouse
+    pickup is reported in pickup_status but ignored. Only when no inventory call fired does
+    the old Add-to-Cart / page-text logic (_classify_stock fallback) run.
     """
     result = {
         "price": None, "stock_status": "Unknown",
@@ -982,6 +1105,7 @@ def scrape_costco(url, page):
         "on_sale": False, "sale_savings": None, "original_price": None,
         "sale_expires": None, "coupon_type": None, "coupon_label": None,
         "free_shipping": False, "error": None, "http_status": None,
+        "delivery_status": None, "pickup_status": None, "stock_source": "dom",
     }
 
     # Item number from URL (most reliable — format: .product.1999611.html)
@@ -1008,6 +1132,23 @@ def scrape_costco(url, page):
             pass
 
     page.on("response", _on_price_response)
+
+    # Intercept the inventory API too — it fills the "How to get it" box (Delivery vs
+    # Warehouse pickup) and is the authority for stock; see _parse_inventory_payload.
+    captured_inventory = []
+
+    def _on_inventory_response(response):
+        url = response.url
+        try:
+            if not any(k in url for k in _INVENTORY_URL_KEYS):
+                return
+            rec = _parse_inventory_payload(url, response.json())
+            if rec:
+                captured_inventory.append(rec)
+        except Exception:
+            pass
+
+    page.on("response", _on_inventory_response)
 
     try:
         page.wait_for_timeout(random.randint(800, 2000))
@@ -1192,10 +1333,27 @@ def scrape_costco(url, page):
 
         body_text = prod_text  # reuse for stock checks below
 
-        shippable = _detect_shippable(page, body_text)
+        # The delivery (v2) call can land after the waits above — give it up to ~3s more.
+        for _ in range(6):
+            if any(r["kind"] in ("delivery", "online") for r in captured_inventory):
+                break
+            page.wait_for_timeout(500)
+        delivery, pickup = _delivery_state(captured_inventory)
+        result["delivery_status"], result["pickup_status"] = delivery, pickup
+        _inventory_stats["pages"] += 1
+        if delivery is None:
+            _inventory_stats["misses"] += 1
+            logger.warning(f"  No delivery state from the Costco inventory API for {url[:90]} — "
+                           "falling back to Add-to-Cart/page-text stock detection")
+        else:
+            result["stock_source"] = "inventory_api"
+            logger.debug(f"  Inventory API: delivery={delivery} pickup={pickup}")
+
+        shippable = _detect_shippable(page, body_text) if delivery is None else False
         atc_class = (add_to_cart.get_attribute("class") or "").lower() if add_to_cart else ""
         result["stock_status"], result["in_stock"] = _classify_stock(
-            add_to_cart is not None, atc_class, body_text, result["purchase_limit"], shippable)
+            add_to_cart is not None, atc_class, body_text, result["purchase_limit"], shippable,
+            delivery=delivery)
 
         result["image_urls"] = _extract_image_urls(page)
         if not result["image_urls"]:
@@ -1230,5 +1388,6 @@ def scrape_costco(url, page):
         result["stock_status"] = "CHECK FAILED"
     finally:
         page.remove_listener("response", _on_price_response)
+        page.remove_listener("response", _on_inventory_response)
 
     return result
