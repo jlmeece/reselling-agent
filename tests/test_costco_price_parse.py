@@ -24,7 +24,7 @@ def test_real_sale_response_store_warehouse_first():
     p = _parse_price_payload(ENERGY, ["847", "1"])
     assert p == {"price": 31.99, "original_price": 39.99, "savings": 8.0,
                  "authoritative": True, "item_id": "1711796", "sale_expires": "10/18/26",
-                 "coupon_type": "MFR", "coupon_label": "Manufacturer Coupon"}
+                 "sale_end_ts": "2026-10-19T06:59:00+00:00", "coupon_type": "MFR", "coupon_label": "Manufacturer Coupon"}
 
 
 def test_warehouse_1_is_a_different_undiscounted_price():
@@ -52,7 +52,7 @@ def test_not_on_sale():
     p = _parse_price_payload(_payload(onlinePrice=24.99, aggregatedDiscountAmt=0, deliveredPrice=24.99), ["847"])
     assert p == {"price": 24.99, "original_price": None, "savings": None,
                  "authoritative": True, "item_id": "1", "sale_expires": None,
-                 "coupon_type": None, "coupon_label": None}
+                 "sale_end_ts": None, "coupon_type": None, "coupon_label": None}
 
 
 def test_strings_dollar_signs_and_commas():
@@ -175,3 +175,11 @@ def test_no_coupon_type_when_not_on_sale_or_no_promotions():
     data["priceData"][0]["discounts"][0]["promotions"] = []
     p = _parse_price_payload(data, ["847", "1"])
     assert p["price"] == 31.99 and p["coupon_type"] is None and p["sale_expires"] is None
+
+
+def test_sale_end_ts_keeps_the_exact_time_utc():
+    # promotionEndDate "2026-10-19T06:59:00Z" = 11:59 PM Pacific on 10/18 — the date badge
+    # drops the time; sale_end_ts keeps it for scheduled repricing.
+    p = _parse_price_payload(ENERGY, ["847", "1"])
+    assert p["sale_end_ts"] == "2026-10-19T06:59:00+00:00"
+    assert _parse_price_payload(ENERGY, ["1", "847"])["sale_end_ts"] is None   # wh 1: no sale

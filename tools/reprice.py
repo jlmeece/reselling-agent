@@ -95,10 +95,30 @@ def reprice_keyboard(item_id, target, retry=False) -> dict:
                                  {"text": "Ignore", "callback_data": ignore}]]}
 
 
+def schedule_keyboard(item_id, target) -> dict:
+    """Pre-stage (before the sale ends) buttons: schedule a reprice / an End, or ignore."""
+    rows = [[{"text": f"✓ Reprice to ${target:.2f} at sale end",
+              "callback_data": f"reprice:sched:{item_id}:{_cents(target)}"}],
+            [{"text": "⛔ End listing at sale end", "callback_data": f"reprice:schedend:{item_id}"},
+             {"text": "Ignore", "callback_data": f"reprice:ignore:{item_id}"}]]
+    for row in rows:
+        for b in row:
+            if len(b["callback_data"].encode("utf-8")) > CALLBACK_MAX_BYTES:
+                raise ValueError(f"callback_data too long: {b['callback_data']!r}")
+    return {"inline_keyboard": rows}
+
+
+def cancel_keyboard(item_id) -> dict:
+    return {"inline_keyboard": [[{"text": "❌ Cancel scheduled action",
+                                  "callback_data": f"reprice:cancel:{item_id}"}]]}
+
+
 def format_reprice_prompt(item: dict) -> str:
     """
     HTML Telegram text. item keys: title, row, item_id, old_cost, new_cost, ebay_price,
     target, fee_rate, ship, ad_rate (optional sku). Free text is truncated, THEN escaped.
+    With item["sale_end_ts"] it is a PRE-STAGE prompt: sent before the sale ends, it names the
+    end time and says the chosen action applies automatically then (after a live re-check).
     """
     title = html.escape((item.get("title") or "(untitled)")[:80])
     fee, ship, ad = item["fee_rate"], item.get("ship") or 0.0, item.get("ad_rate") or 0.0
@@ -109,8 +129,13 @@ def format_reprice_prompt(item: dict) -> str:
     where = f"row {item.get('row')}" if item.get("row") else ""
     if item.get("sku"):
         where = f"#{html.escape(str(item['sku']))} · {where}" if where else f"#{html.escape(str(item['sku']))}"
-    lines = [
-        "💲 <b>Reprice needed</b> — Costco cost went up",
+    sale_end = item.get("sale_end_ts")
+    if sale_end:
+        from tools.sale_schedule import format_end
+        head = [f"⏰ <b>Sale ends {format_end(sale_end)}</b> — Costco cost goes back up"]
+    else:
+        head = ["💲 <b>Reprice needed</b> — Costco cost went up"]
+    lines = head + [
         f"<b>{title}</b>",
         f"{where} · eBay item {html.escape(str(item['item_id']))}".lstrip(" ·"),
         "",
@@ -121,11 +146,16 @@ def format_reprice_prompt(item: dict) -> str:
     if cur > 0 and (tgt - cur) / cur > BIG_JUMP_PCT:
         lines.append(f"⚠️ That is a {(tgt - cur) / cur:.0%} raise — double-check the cost before tapping.")
     lines.append("")
-    lines.append("Tap ✓ to update the live eBay listing. Nothing changes until you tap.")
+    if sale_end:
+        lines.append("Nothing changes now. Pick an action and it applies automatically when the "
+                     "sale ends — only after a live Costco re-check confirms it really ended "
+                     "(an extended sale is rescheduled).")
+    else:
+        lines.append("Tap ✓ to update the live eBay listing. Nothing changes until you tap.")
     return "\n".join(lines)
 
 
-def send_reprice_prompt(item: dict, token=None, chat_id=None) -> bool:
+def send_reprice_prompt(item: dict, token=None, chat_id=None, keyboard=None) -> bool:
     """
     Post the prompt + buttons with the SAME bot token the polling bot uses (TELEGRAM_BOT_TOKEN),
     so the tap routes to its callback handler. Never raises. True iff sent.
@@ -140,7 +170,7 @@ def send_reprice_prompt(item: dict, token=None, chat_id=None) -> bool:
             "chat_id": chat_id,
             "text": format_reprice_prompt(item),
             "parse_mode": "HTML",
-            "reply_markup": reprice_keyboard(item["item_id"], item["target"]),
+            "reply_markup": keyboard or reprice_keyboard(item["item_id"], item["target"]),
         }).encode()
         req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
                                      data=payload, headers={"Content-Type": "application/json"})
@@ -204,7 +234,7 @@ def _parse_ts(s):
 # ── Audit log ────────────────────────────────────────────────────────────────
 
 def log_revise(service, result: dict, *, title="", row=None, old_price=None, source="bot",
-               log_path=None):
+               action="reprice", log_path=None):
     """
     Record one reprice outcome in data/logs/ebay_sync.log AND the Run Log tab (mode "reprice").
     result: revise_fixed_price()-shaped dict ({ok, item_id, price, error_kind, error_code,
@@ -212,18 +242,20 @@ def log_revise(service, result: dict, *, title="", row=None, old_price=None, sou
     """
     old = f"${float(old_price):.2f}" if old_price not in (None, "") else "?"
     new = f"${float(result['price']):.2f}" if result.get("price") is not None else "?"
+    what = (f"item {result.get('item_id')} {old}→{new}" if action == "reprice"
+            else f"END item {result.get('item_id')}")
     if result.get("ok"):
         status = "ok"
-        notes = f"item {result.get('item_id')} {old}→{new} | {(title or '')[:40]} (row {row})"
+        notes = f"{what} | {(title or '')[:40]} (row {row})"
         if result.get("message"):
             notes += f" | {result['message']}"
         errors = ""
     else:
         status = "error"
         code = result.get("error_code") or result.get("error_kind") or "error"
-        notes = f"item {result.get('item_id')} {old}→{new} | {(title or '')[:40]} (row {row})"
+        notes = f"{what} | {(title or '')[:40]} (row {row})"
         errors = f"{code}: {result.get('message', '')} | {notes}"
-    line = (f"{datetime.now():%Y-%m-%d %H:%M:%S} | reprice[{source}] | {status.upper()} | "
+    line = (f"{datetime.now():%Y-%m-%d %H:%M:%S} | {action}[{source}] | {status.upper()} | "
             f"{errors or notes}")
     try:
         path = log_path or EBAY_SYNC_LOG
@@ -234,7 +266,8 @@ def log_revise(service, result: dict, *, title="", row=None, old_price=None, sou
         logger.warning(f"reprice: ebay_sync.log append failed: {e}")
     try:
         from tools.run_logger import log_run_end, log_run_start
-        log_run_end("reprice", log_run_start("reprice"),
+        mode = action if source == "bot" else f"{action}-{source}"   # reprice / reprice-scheduled / end-scheduled
+        log_run_end(mode, log_run_start(mode),
                     {"status": status, "notes": notes, "errors": errors},
                     service, dedup=False)
     except Exception as e:

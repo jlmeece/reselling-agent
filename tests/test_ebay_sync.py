@@ -834,3 +834,65 @@ def test_fetch_item_price_auth_error(monkeypatch, creds):
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", lambda *a, **k: FakeResp(body))
     out = ebay_sync.fetch_item_price("123456789012")
     assert out["ok"] is False and out["error_kind"] == "auth" and out["error_code"] == "932"
+
+
+# ── end_fixed_price (scheduled "End listing") ────────────────────────────────
+
+def _end_resp(ack="Success", errors=""):
+    return (f'<EndItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>{ack}</Ack>'
+            f"{errors}<EndTime>2026-10-19T07:01:00.000Z</EndTime></EndItemResponse>")
+
+
+def test_build_end_xml():
+    xml = ebay_sync._build_end_xml("a<b", "123456789012")
+    assert '<EndItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">' in xml
+    assert "<eBayAuthToken>a&lt;b</eBayAuthToken>" in xml
+    assert "<ItemID>123456789012</ItemID>" in xml
+    assert "<EndingReason>NotAvailable</EndingReason>" in xml
+    assert "StartPrice" not in xml
+
+
+def test_end_success_posts_enditem(monkeypatch, creds):
+    sent = []
+
+    def fake(req, timeout=None):
+        sent.append(req)
+        return FakeResp(_end_resp())
+
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", fake)
+    out = ebay_sync.end_fixed_price("https://www.ebay.com/itm/123456789012")
+    assert out["ok"] is True and out["item_id"] == "123456789012" and out["price"] is None
+    assert "2026-10-19" in out["message"]
+    h = {k.lower(): v for k, v in sent[0].header_items()}
+    assert h["x-ebay-api-call-name"] == "EndItem" and h["x-ebay-api-compatibility-level"] == "1193"
+
+
+def test_end_already_ended_counts_as_ok(monkeypatch, creds):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_end_resp("Failure", _err("1047", "already closed"))))
+    out = ebay_sync.end_fixed_price("123456789012")
+    assert out["ok"] is True and "already ended" in out["message"]
+
+
+@pytest.mark.parametrize("code", ["931", "932", "16110"])
+def test_end_auth_error_is_loud(monkeypatch, creds, logs, code):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_end_resp("Failure", _err(code, "token"))))
+    out = ebay_sync.end_fixed_price("123456789012")
+    assert out["ok"] is False and out["error_kind"] == "auth" and out["error_code"] == code
+    assert any("CRITICAL" in m for m in logs)
+
+
+def test_end_api_error(monkeypatch, creds):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_end_resp("Failure", _err("291", "not allowed"))))
+    out = ebay_sync.end_fixed_price("123456789012")
+    assert out["ok"] is False and out["error_kind"] == "api" and out["error_code"] == "291"
+
+
+@pytest.mark.parametrize("item_id", ["", None, "abc", "https://evil.com/itm/123456789012"])
+def test_end_invalid_id_never_posts(monkeypatch, creds, item_id):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.end_fixed_price(item_id)
+    assert out["ok"] is False and out["error_kind"] == "invalid"

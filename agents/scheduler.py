@@ -31,7 +31,7 @@ import time
 import traceback
 import urllib.request
 import yaml
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -57,8 +57,10 @@ from tools.sale_monitor import (
     record_alerts, sale_column_updates, sale_end_alert, to_float, badge_verified,
 )
 from tools.sale_digest import select_sale_items, format_digest
-from tools.ebay_sync import extract_item_id
-from tools.reprice import restore_margin_price, save_pending, send_reprice_prompt
+from tools.ebay_sync import extract_item_id, end_fixed_price, fetch_item_price, revise_fixed_price
+from tools.reprice import (log_revise, pop_pending, restore_margin_price, save_pending,
+                           schedule_keyboard, send_reprice_prompt)
+from tools import sale_schedule as sched
 from tools.spot_price import check_spot_movement
 from agents.auditor import run_audit
 from tools import ebay_sync, costco_savings
@@ -111,6 +113,16 @@ def _reprice_prompt(row, COL, categories, status, title, category, sheet_row,
         return None
     item_id = extract_item_id(safe_get(row, col_to_idx(COL["ebay_listing_url"])))
     if not item_id:
+        return None
+    # Scheduled path owns this listing: an approved action that is still pending runs on the
+    # next apply_scheduled tick (early revert -> due now, still live-verified); one applied in
+    # the last few days already raised the price (restore_margin_price on the NEW eBay price
+    # would ask to raise it again).
+    if sched.fast_forward(item_id):
+        logger.info(f"  Scheduled action pending for eBay {item_id} — made due now, no reactive prompt")
+        return None
+    if sched.recently_applied(item_id):
+        logger.info(f"  Scheduled reprice already applied for eBay {item_id} — no reactive prompt")
         return None
     cat_cfg = categories.get(category) or {}
     fee = fee_f if fee_f is not None else parse_rate(cat_cfg.get("fee_rate"))
@@ -204,6 +216,11 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             image_urls   = " | ".join(costco_data["image_urls"])
             if costco_data.get("error"):
                 logger.warning(f"  Scrape error: {costco_data.get('error')}")
+            # Exact sale end (time kept) for the scheduled reprice / End — data/.sale_end_times.json
+            _end_change = sched.update_sale_end_from_scrape(
+                costco_url, costco_data, title=title, sku=safe_get(row, col_to_idx(COL["sku"])))
+            if _end_change:
+                logger.info(f"  Sale end {_end_change}: {costco_data.get('sale_end_ts')}")
 
             # APPROVED rows: only check stock — no margin/demand logic needed yet
             if is_approved_check:
@@ -445,6 +462,237 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
         )
     else:
         logger.info("No urgent items — no alert sent.")
+
+
+# ── Mode: APPLY_SCHEDULED (every 10 min) ──────────────────────────────────────
+
+def _notify(text):
+    token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        return _send_telegram(token, chat_id, text)
+    logger.warning("apply_scheduled: Telegram not configured — notice not sent")
+    return False
+
+
+def _rows_by_item_id(rows, COL, item_id, start_row):
+    """[(sheet_row, row)] whose col Q resolves to item_id (row-shift safe identity)."""
+    q = col_to_idx(COL["ebay_listing_url"])
+    return [(start_row + i, r) for i, r in enumerate(rows)
+            if r and extract_item_id(safe_get(r, q)) == item_id]
+
+
+def _sched_log_line(text):
+    """One plain line in data/logs/ebay_sync.log for non-eBay outcomes (extended / skipped)."""
+    from tools.reprice import EBAY_SYNC_LOG
+    try:
+        os.makedirs(os.path.dirname(EBAY_SYNC_LOG), exist_ok=True)
+        with open(EBAY_SYNC_LOG, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} | scheduled | {text}\n")
+    except OSError as e:
+        logger.warning(f"apply_scheduled: ebay_sync.log append failed: {e}")
+    logger.info(f"apply_scheduled: {text}")
+
+
+def _apply_one(a, page, service, COL, sheet_name, start_row, end_row, threshold, now):
+    """
+    Execute ONE due, Jay-approved action after a live Costco re-check. Returns a short note.
+    Outcomes: applied / already done / rescheduled (sale extended) / retry later (sale not off yet,
+    scrape miss, transient eBay error) / dropped (row gone, cost didn't rise, gave up after
+    GIVE_UP_HOURS). Every eBay call is logged via log_revise; auth errors alert loudly.
+    """
+    item_id, action = a["item_id"], a["action"]
+    title = a.get("title") or ""
+    t = html.escape(title[:70])
+    overdue_h = (now - (sched.parse_ts(a.get("apply_at")) or now)).total_seconds() / 3600
+
+    def retry_or_give_up(why):
+        if overdue_h >= sched.GIVE_UP_HOURS:
+            sched.cancel_action(item_id)
+            _sched_log_line(f"GAVE UP {action} item {item_id} after {overdue_h:.0f}h — {why}")
+            _notify(f"⚠️ <b>Scheduled {action} dropped</b> — {t}\n{html.escape(why)} for "
+                    f"{overdue_h:.0f}h after the sale end. Nothing was changed on eBay; check it by hand.")
+            return f"{item_id}: gave up ({why})"
+        if sched.set_last_error(item_id, why):
+            _sched_log_line(f"RETRY {action} item {item_id} — {why}")
+        return f"{item_id}: retry ({why})"
+
+    rows = read_sheet(service, f"'{sheet_name}'!A{start_row}:BB{end_row}")
+    matches = _rows_by_item_id(rows, COL, item_id, start_row)
+    status_i = col_to_idx(COL["status"])
+    if len(matches) != 1 or safe_get(matches[0][1], status_i) != "ACTIVE":
+        why = ("not in col Q of any row" if not matches else
+               f"in col Q of {len(matches)} rows" if len(matches) > 1 else
+               f"status is {safe_get(matches[0][1], status_i) or 'blank'}, not ACTIVE")
+        sched.cancel_action(item_id)
+        log_revise(service, {"ok": False, "item_id": item_id, "price": a.get("target_price"),
+                             "error_kind": "refused", "message": why},
+                   title=title, source="scheduled", action=action)
+        _notify(f"⚠️ Scheduled {action} dropped — {t}: eBay item {item_id} {html.escape(why)}. "
+                "Nothing was changed.")
+        return f"{item_id}: dropped ({why})"
+    row_num, row = matches[0]
+    costco_url = safe_get(row, col_to_idx(COL["costco_url"])) or a.get("costco_url")
+
+    # ── live re-check: is the sale really over? ──────────────────────────────
+    data = scrape_costco(costco_url, page=page)
+    price = data.get("price")
+    if not price:
+        return retry_or_give_up(f"Costco re-check got no price ({data.get('error') or 'no API price'})")
+    new_end = sched.parse_ts(data.get("sale_end_ts"))
+    if data.get("on_sale"):
+        if new_end and new_end > now:
+            sched.reschedule(item_id, new_end)
+            sched.update_sale_end_from_scrape(costco_url, data, title=title, sku=a.get("sku", ""))
+            _sched_log_line(f"sale extended — {action} item {item_id} rescheduled to {new_end.isoformat()}")
+            _notify(f"⏰ <b>Sale extended</b> — {t}\nCostco still ${price:.2f}; your scheduled "
+                    f"{action} moved to {sched.format_end(new_end)}. Nothing changed on eBay.")
+            return f"{item_id}: rescheduled (sale extended)"
+        return retry_or_give_up(f"Costco still shows the sale price ${price:.2f}")
+    sched.update_sale_end_from_scrape(costco_url, data)          # sale over -> clear its end
+    new_cost = a.get("new_cost")
+    if new_cost and price < float(new_cost) - threshold:
+        sched.cancel_action(item_id)
+        _sched_log_line(f"skipped {action} item {item_id} — Costco cost ${price:.2f}, expected "
+                        f"${float(new_cost):.2f}")
+        _notify(f"ℹ️ Scheduled {action} skipped — {t}\nSale ended but Costco is ${price:.2f}, not the "
+                f"expected ${float(new_cost):.2f}. Nothing changed; the monitor will prompt if the "
+                "cost rose.")
+        return f"{item_id}: skipped (cost ${price:.2f} < expected)"
+
+    cost_updates = [(COL["costco_cost"], price)]
+    cost_updates += sale_column_updates(COL, data, bool(safe_get(row, col_to_idx(COL["sale_info"]))),
+                                        bool(safe_get(row, col_to_idx(COL["regular_price"]))))
+
+    def eb_fail(res):
+        log_revise(service, res, title=title, row=row_num, source="scheduled", action=action)
+        err = f"{res.get('error_kind')} {res.get('error_code')}: {res.get('message', '')[:150]}"
+        if res.get("error_kind") == "auth":
+            if sched.set_last_error(item_id, err):
+                _notify(f"🚨 <b>eBay token rejected</b> ({html.escape(res.get('error_code') or 'auth')}) "
+                        f"— renew EBAY_AUTH_TOKEN in .env. Scheduled {action} for {t} is waiting and "
+                        "will retry every 10 min.")
+            return f"{item_id}: auth error"
+        note = retry_or_give_up(f"eBay {err}")
+        return note
+
+    def write_sheet(pairs):
+        """Re-resolve the row (an audit delete may have shifted it) and write. Error text or None."""
+        try:
+            fresh = read_sheet(service, f"'{sheet_name}'!A{start_row}:BB{end_row}")
+            m = _rows_by_item_id(fresh, COL, item_id, start_row)
+            if len(m) != 1:
+                raise RuntimeError(f"item {item_id} now matches {len(m)} sheet rows")
+            safe_write_row(service, sheet_name, m[0][0], pairs)
+            return None
+        except Exception as e:
+            logger.error(f"apply_scheduled: sheet write failed for {item_id}: {e}")
+            return str(e)
+
+    if action == "end":
+        res = end_fixed_price(item_id)
+        if not res["ok"]:
+            return eb_fail(res)
+        err = write_sheet(cost_updates + [(COL["status"], "ENDED"), (COL["price_change"], "")])
+        sched.mark_applied(item_id, res, now=now)
+        pop_pending(item_id)
+        log_revise(service, {**res, "message": res.get("message", "") +
+                             (f" | SHEET WRITE FAILED: {err}" if err else "")},
+                   title=title, row=row_num, source="scheduled", action="end")
+        _notify(f"⛔ <b>Sale ended — listing ended</b>\n{t}\nCostco back to ${price:.2f}. "
+                + ("Row marked ENDED." if not err else
+                   f"⚠️ Sheet not updated ({html.escape(err[:120])}) — set status ENDED by hand."))
+        return f"{item_id}: ended"
+
+    # action == "reprice"
+    target = float(a["target_price"])
+    live = fetch_item_price(item_id)
+    if not live["ok"]:
+        return eb_fail({**live, "price": target})
+    if live["listing_status"] and live["listing_status"] != "Active":
+        sched.cancel_action(item_id)
+        _sched_log_line(f"dropped reprice item {item_id} — eBay listing is {live['listing_status']}")
+        _notify(f"⚠️ Scheduled reprice dropped — {t} is {html.escape(live['listing_status'])} on eBay.")
+        return f"{item_id}: dropped (listing {live['listing_status']})"
+    current = live["price"]
+    if current >= target - 0.005:
+        err = write_sheet(cost_updates + [(COL["ebay_price"], current), (COL["price_change"], "")])
+        res = {"ok": True, "item_id": item_id, "price": current,
+               "message": f"no revise — live price already >= ${target:.2f}"}
+        sched.mark_applied(item_id, res, now=now)
+        pop_pending(item_id)
+        log_revise(service, res, title=title, row=row_num, old_price=current, source="scheduled")
+        _notify(f"✓ Sale ended — {t} is already ${current:.2f} on eBay (≥ ${target:.2f}); nothing revised.")
+        return f"{item_id}: already at target"
+    res = revise_fixed_price(item_id, target)
+    if not res["ok"]:
+        return eb_fail(res)
+    err = write_sheet(cost_updates + [(COL["ebay_price"], target), (COL["price_change"], "")])
+    sched.mark_applied(item_id, res, now=now)
+    pop_pending(item_id)
+    log_revise(service, {**res, "message": res.get("message", "") +
+                         (f" | SHEET WRITE FAILED: {err}" if err else "")},
+               title=title, row=row_num, old_price=current, source="scheduled")
+    _notify(f"✓ <b>Sale ended — repriced to ${target:.2f}</b> (was ${current:.2f})\n{t}\n"
+            f"Costco ${float(a.get('old_cost') or 0):.2f} → ${price:.2f}."
+            + ("" if not err else f"\n⚠️ Sheet not updated ({html.escape(err[:120])}) — set col H to "
+               f"{target:.2f} and clear col P by hand."))
+    return f"{item_id}: repriced ${current:.2f}→${target:.2f}"
+
+
+def run_apply_scheduled(config, COL, service, sheet_name, start_row, end_row, now=None):
+    """
+    apply_scheduled mode (every 10 min, Task WAT-ApplyScheduled):
+      1. pre-stage: ACTIVE listings whose Costco sale ends within PRESTAGE_LEAD_HOURS get the
+         "✓ Reprice / ⛔ End at sale end / Ignore" prompt (once per sale end).
+      2. due actions (approved by a tap, apply_at <= now): take the scheduler lock, re-scrape
+         each product live, then revise / end on eBay only if the sale is really over.
+    Returns Run Log keys, or None when nothing happened (a quiet tick writes no Run Log row and
+    never touches Chrome or the scheduler lock).
+    """
+    now = now or sched.utcnow()
+    notes = []
+
+    # ── 1. pre-stage prompts (Chrome-free) ───────────────────────────────────
+    sale_ends = sched.load_sale_ends()
+    horizon = now + timedelta(hours=sched.PRESTAGE_LEAD_HOURS)
+    if any(now < (sched.parse_ts(v.get("end_ts")) or now) <= horizon for v in sale_ends.values()):
+        rows = read_sheet(service, f"'{sheet_name}'!A{start_row}:BB{end_row}")
+        for p in sched.prestage_candidates(rows, COL, config["categories"], sale_ends,
+                                           sched.load_store(), now=now, start_row=start_row):
+            if send_reprice_prompt(p, keyboard=schedule_keyboard(p["item_id"], p["target"])):
+                sched.record_prompt(p)
+                notes.append(f"prompted {p['item_id']} (ends {p['sale_end_ts'][:16]})")
+            else:
+                logger.warning(f"apply_scheduled: pre-stage prompt for {p['item_id']} not sent — retry next tick")
+
+    # ── 2. due actions ───────────────────────────────────────────────────────
+    due = sched.due_actions(now)
+    if not due:
+        return {"status": "ok", "notes": "; ".join(notes)} if notes else None
+    if not _acquire_lock("apply_scheduled"):
+        # make_browser can kill/relaunch the agent Chrome — never overlap another Chrome run.
+        logger.warning(f"apply_scheduled: {len(due)} due action(s) waiting — scheduler lock busy, "
+                       "retrying next tick")
+        return {"status": "ok", "notes": "; ".join(notes)} if notes else None
+    threshold = float(config["business"].get("price_change_threshold", 0.50))
+    status = "ok"
+    try:
+        with make_browser() as page:
+            for a in due:
+                try:
+                    notes.append(_apply_one(a, page, service, COL, sheet_name, start_row, end_row,
+                                            threshold, now))
+                except Exception as e:
+                    status = "error"
+                    logger.exception(f"apply_scheduled: {a.get('item_id')} failed")
+                    notes.append(f"{a.get('item_id')}: error {e}")
+    except Exception as e:
+        status = "error"
+        logger.error(f"apply_scheduled: browser failed — due actions kept for next tick: {e}")
+        notes.append(f"browser failed: {e}")
+    finally:
+        _release_lock()
+    return {"status": status, "notes": "; ".join(n for n in notes if n)}
 
 
 # ── Mode: DAILY sweep (1x/day) ────────────────────────────────────────────────
@@ -1703,12 +1951,32 @@ def _release_lock() -> None:
         pass
 
 
+def _main_apply_scheduled():
+    config, COL = load_config(), load_col_map()
+    business = config["business"]
+    service = None
+    start = log_run_start("apply_scheduled")
+    try:
+        service = get_sheets_service()
+        result = run_apply_scheduled(config, COL, service, business["sheet_name"],
+                                     business["data_start_row"], business["data_end_row"])
+    except Exception as e:
+        logger.error(f"Scheduler [apply_scheduled] failed: {e}")
+        result = {"status": "error", "errors": traceback.format_exc()[-600:]}
+        _notify(f"💥 Scheduler [apply_scheduled] CRASHED — {html.escape(str(e)[:200])}")
+    if result:
+        logger.info(f"apply_scheduled: {result.get('notes') or result.get('errors', '')}")
+        log_run_end("apply_scheduled", start, result, service)
+    else:
+        logger.debug("apply_scheduled: nothing due")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
-                 "sale-digest", "sale-refresh", "savings"],
+                 "sale-digest", "sale-refresh", "savings", "apply_scheduled"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -1723,7 +1991,8 @@ def main():
             "ebay_sync:      Sync eBay active listings -> units_sold; flag price mismatch / removed listings\n"
             "sale-digest:    ONE Telegram message of tracked items really on sale (read-only)\n"
             "sale-refresh:   Re-scrape non-ACTIVE rows with unverified sale badges (G/X/AW only)\n"
-            "savings:        Scrape Costco Member-Only Savings -> update tracked sales, alert, add new PENDING rows"
+            "savings:        Scrape Costco Member-Only Savings -> update tracked sales, alert, add new PENDING rows\n"
+            "apply_scheduled: every 10 min — pre-stage sale-end prompts; apply approved reprice/End at sale end"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -1741,6 +2010,12 @@ def main():
     parser.add_argument("--queue", action="store_true",
                         help="(sale-refresh only) Scrape SCORED + AUDIT_REVIEW rows, including blank sale badges")
     args = parser.parse_args()
+
+    if args.mode == "apply_scheduled":
+        # Runs every 10 min: takes the scheduler lock itself, and only when an action is due;
+        # no cookie check, and no Run Log row for a quiet tick.
+        _main_apply_scheduled()
+        return
 
     if not _acquire_lock(args.mode):
         return

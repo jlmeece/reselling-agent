@@ -27,7 +27,7 @@ import sys
 import subprocess
 import urllib.request
 from urllib.parse import parse_qs, urlparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from loguru import logger
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -773,6 +773,15 @@ def _end_local(end):
     return f"{local.month}/{local.day}/{local:%y}"
 
 
+def _end_utc_iso(end):
+    """promotionEndDate datetime -> UTC ISO "2026-10-19T06:59:00+00:00" (the exact sale end, kept
+    for scheduled repricing — _end_local's date alone drops the time)."""
+    try:
+        return end.astimezone(timezone.utc).isoformat()
+    except Exception:
+        return None
+
+
 def _promo_end_local(item, warehouse):
     """Sale end date "M/D/YY" (Pacific) of the promotion behind the sale price, or None."""
     _promo, end = _select_promotion(item, warehouse)
@@ -838,7 +847,8 @@ def classify_promotion(promo):
 def _parse_price_payload(data, whs_order=()):
     """
     Parse a Costco price-API JSON body -> {"price", "original_price", "savings",
-    "authoritative", "item_id", "sale_expires", "coupon_type", "coupon_label"} or None when it carries no usable price. Pure (no browser).
+    "authoritative", "item_id", "sale_expires", "sale_end_ts", "coupon_type", "coupon_label"} or None
+    when it carries no usable price. Pure (no browser).
 
     Handles, in order:
       * display-price-lite (Sep 2026): {"priceData": [{"id", "displayPrice": [ {per-warehouse}, ...]}]}.
@@ -871,13 +881,14 @@ def _parse_price_payload(data, whs_order=()):
                 promo, end = (_select_promotion(item, entry.get("warehouseNumber"))
                               if parsed["original_price"] else (None, None))
                 parsed["sale_expires"] = _end_local(end) if end else None
+                parsed["sale_end_ts"] = _end_utc_iso(end) if end else None
                 parsed["coupon_type"], parsed["coupon_label"] = classify_promotion(promo)
                 return parsed
     legacy = _money(data.get("finalOnlinePrice"))
     if legacy:
         return {"price": legacy, "original_price": None, "savings": None,
                 "authoritative": False, "item_id": None, "sale_expires": None,
-                "coupon_type": None, "coupon_label": None}
+                "sale_end_ts": None, "coupon_type": None, "coupon_label": None}
     return None
 
 
@@ -1088,7 +1099,8 @@ def scrape_costco(url, page):
               "dimensions": {"length","width","height"} inches|None,
               "item_number": str|None, "purchase_limit": int|None,
               "on_sale": bool, "sale_savings": float|None, "original_price": float|None,
-              "sale_expires": str|None, "coupon_type": "MFR"|"STORE"|"OTHER"|None,
+              "sale_expires": str|None, "sale_end_ts": UTC ISO str|None (exact end),
+              "coupon_type": "MFR"|"STORE"|"OTHER"|None,
               "coupon_label": str|None, "free_shipping": bool,
               "in_stock": bool, "error": str|None, "http_status": int|None,
               "delivery_status": "available"|"backorder"|"oos"|None,
@@ -1103,7 +1115,7 @@ def scrape_costco(url, page):
         "brand": None, "model": None, "dimensions": None,
         "item_number": None, "purchase_limit": None, "in_stock": False,
         "on_sale": False, "sale_savings": None, "original_price": None,
-        "sale_expires": None, "coupon_type": None, "coupon_label": None,
+        "sale_expires": None, "sale_end_ts": None, "coupon_type": None, "coupon_label": None,
         "free_shipping": False, "error": None, "http_status": None,
         "delivery_status": None, "pickup_status": None, "stock_source": "dom",
     }
@@ -1320,6 +1332,8 @@ def scrape_costco(url, page):
                 # kind of sale (manufacturer coupon vs store instant savings) — pattern data for
                 # sale-cycle prediction; None when the sale came from a DOM fallback (unknown)
                 result["coupon_type"], result["coupon_label"] = api["coupon_type"], api.get("coupon_label")
+            if api and api.get("sale_end_ts"):
+                result["sale_end_ts"] = api["sale_end_ts"]     # exact end (time kept), API only
             if api and api.get("sale_expires"):
                 result["sale_expires"] = api["sale_expires"]   # authoritative: API promotionEndDate
             elif exp_m:

@@ -41,6 +41,8 @@ data/.sale_expiry_alert.json
 data/.savings_alert.json
 data/.savings_seen.json
 data/.reprice_pending.json
+data/.sale_end_times.json
+data/.scheduled_actions.json
 data/ebay_taxonomy_cache.json
 data/.telegram_bot.pid
 data/.telegram_bot.alive

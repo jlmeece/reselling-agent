@@ -52,8 +52,10 @@ from tools.sheet_writer import (
 from tools.spot_price import get_spot_price, parse_gold_weight
 from tools.ebay_sync import extract_item_id, fetch_item_price, revise_fixed_price
 from tools.reprice import (
-    format_reprice_prompt, get_pending, log_ignore, log_revise, pop_pending, reprice_keyboard,
+    cancel_keyboard, format_reprice_prompt, get_pending, log_ignore, log_revise, pop_pending,
+    reprice_keyboard,
 )
+from tools import sale_schedule as sched
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -73,6 +75,7 @@ LOG_FILES = {
     "ebay_sync":     os.path.join(_BASE_DIR, "data", "logs", "ebay_sync.log"),
     "sale-digest":   os.path.join(_BASE_DIR, "data", "logs", "sale_digest.log"),
     "savings":       os.path.join(_BASE_DIR, "data", "logs", "savings.log"),
+    "apply_scheduled": os.path.join(_BASE_DIR, "data", "logs", "apply_scheduled.log"),
     "telegram_bot":  os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
 }
 
@@ -1984,10 +1987,13 @@ def _format_active_line(p):
     return f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
-def _active_action_kb(row_num, reprice_item_id=None):
+def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None):
     rows = []
     if reprice_item_id:   # a one-tap reprice prompt is pending for this listing
         rows.append([InlineKeyboardButton("💲 Reprice", callback_data=f"reprice:offer:{reprice_item_id}")])
+    if cancel_item_id:    # a scheduled reprice / End is waiting for the sale end
+        rows.append([InlineKeyboardButton("❌ Cancel scheduled action",
+                                          callback_data=f"reprice:cancel:{cancel_item_id}")])
     return InlineKeyboardMarkup(rows + [
         [InlineKeyboardButton("🔴 End Listing", callback_data=f"ended:start:{row_num}")],
         [InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"),
@@ -2071,7 +2077,14 @@ async def cb_activelist_pick(update, context, arg):
         lines.append((p.get("ebay_listing_url") or "").strip())
     item_id = extract_item_id(p.get("ebay_listing_url"))
     pending = item_id if (item_id and get_pending(item_id)) else None
-    await _send_screen(update, "\n".join(lines), reply_markup=_active_action_kb(row_num, pending))
+    scheduled = sched.get_action(item_id) if item_id else None
+    if scheduled:
+        what = (f"reprice to ${float(scheduled['target_price']):.2f}" if scheduled["action"] == "reprice"
+                else "END listing")
+        lines.append(f"⏰ Scheduled: {what} at sale end ({sched.format_end(scheduled['apply_at'])})")
+    await _send_screen(update, "\n".join(lines),
+                       reply_markup=_active_action_kb(row_num, pending,
+                                                      cancel_item_id=item_id if scheduled else None))
 
 
 async def cb_ended_start(update, context, arg):
@@ -2282,6 +2295,90 @@ async def cb_reprice_ignore(update, context, arg):
         (base + "\n\n" if base else "")
         + "— Ignored. Col P flag left set; re-open it from Active Listings → 💲 Reprice."
     )
+
+
+def _schedule_guard(item_id):
+    """
+    Checks for scheduling from a pre-stage prompt -> (prompt, error_text). The prompt (saved by
+    apply_scheduled) carries apply_at / costs; the row must still be the unique ACTIVE owner of
+    the eBay item id and the sale end must still be in the future.
+    """
+    prompt = sched.get_prompt(item_id)
+    if not prompt:
+        return None, "This prompt has expired — nothing was scheduled."
+    end = sched.parse_ts(prompt.get("sale_end_ts"))
+    if end is None or end <= sched.utcnow():
+        return None, ("The sale has already ended — nothing was scheduled. The monitor will send "
+                      "a normal ✓ Reprice prompt once the cost rise is seen.")
+    try:
+        col_map, _service, _sheet, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"reprice schedule: sheet read failed: {e}")
+        return None, _SHEET_UNREACHABLE_MSG + " Nothing was scheduled."
+    matches = _rows_for_item_id(rows, col_map, item_id, start)
+    if len(matches) != 1:
+        return None, (f"eBay item {item_id} is not in col Q of exactly one row — nothing scheduled.")
+    if (matches[0].get("status") or "").strip() != "ACTIVE":
+        return None, "This listing is no longer ACTIVE — nothing was scheduled."
+    return prompt, None
+
+
+async def _schedule(update, context, item_id, action, target=None):
+    query = update.callback_query
+    inflight = context.bot_data.setdefault("reprice_inflight", set())
+    if item_id in inflight:
+        return
+    inflight.add(item_id)
+    try:
+        prompt, err = _schedule_guard(item_id)
+        if err:
+            await query.edit_message_text(err)
+            return
+        if action == "reprice" and target is not None and abs(target - float(prompt["target"])) > 0.005:
+            await query.edit_message_text("That button is out of date — nothing was scheduled.")
+            return
+        entry = sched.schedule_action(item_id, action, prompt)
+        when = sched.format_end(entry["apply_at"])
+        t = html.escape((prompt.get("title") or "(untitled)")[:80])
+        what = (f"reprice to <b>${float(entry['target_price']):.2f}</b>" if action == "reprice"
+                else "<b>END the listing</b>")
+        logger.info(f"reprice schedule: {action} item {item_id} at {entry['apply_at']}")
+        await query.edit_message_text(
+            f"⏰ Scheduled: {what}\n<b>{t}</b>\nWhen the sale ends — {when} — after a live Costco "
+            "re-check (an extended sale is rescheduled). Nothing has changed on eBay yet.",
+            parse_mode="HTML", reply_markup=_tg_kb(cancel_keyboard(item_id)),
+        )
+    finally:
+        inflight.discard(item_id)
+
+
+async def cb_reprice_sched(update, context, arg):
+    item_id, target = _parse_reprice_arg(arg)
+    if item_id is None:
+        await update.callback_query.edit_message_text("Button data was malformed — nothing scheduled.")
+        return
+    await _schedule(update, context, item_id, "reprice", target)
+
+
+async def cb_reprice_schedend(update, context, arg):
+    item_id = (arg or "").strip()
+    if extract_item_id(item_id) != item_id:
+        await update.callback_query.edit_message_text("Button data was malformed — nothing scheduled.")
+        return
+    await _schedule(update, context, item_id, "end")
+
+
+async def cb_reprice_cancel(update, context, arg):
+    item_id = (arg or "").strip()
+    removed = sched.cancel_action(item_id)
+    if not removed:
+        await update.callback_query.edit_message_text(
+            "Nothing scheduled for this listing (already applied or cancelled).")
+        return
+    logger.info(f"reprice schedule: cancelled {removed['action']} for item {item_id}")
+    await update.callback_query.edit_message_text(
+        f"❌ Cancelled the scheduled {removed['action']} — "
+        f"{(removed.get('title') or '(untitled)')[:80]}. Nothing will change at sale end.")
 
 
 async def cb_reprice_offer(update, context, arg):
@@ -3122,6 +3219,9 @@ _CALLBACK_ROUTES.update({
     ("reprice", "go"): cb_reprice_go,
     ("reprice", "ignore"): cb_reprice_ignore,
     ("reprice", "offer"): cb_reprice_offer,
+    ("reprice", "sched"): cb_reprice_sched,
+    ("reprice", "schedend"): cb_reprice_schedend,
+    ("reprice", "cancel"): cb_reprice_cancel,
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
     ("ebayimport", "start"): cb_ebayimport_start,

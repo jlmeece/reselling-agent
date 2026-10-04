@@ -284,3 +284,44 @@ def test_no_prompt_when_listing_already_covers_margin(harness):
                                  ebay_url=EBAY_URL)],
                     _scrape(39.99, False))
     assert calls["prompts"] == []
+
+
+# ── scheduled reprice interplay ──────────────────────────────────────────────
+
+from tools import sale_schedule as sched  # noqa: E402
+
+
+def test_monitor_records_and_clears_exact_sale_end(harness):
+    scrape = _scrape(31.99, True, original=39.99, savings=8.0, expires="10/18/26")
+    scrape["sale_end_ts"] = "2026-10-19T06:59:00+00:00"
+    harness([_energy_row(39.99, ebay_url=EBAY_URL)], scrape)       # URL x.product.1711796.html
+    assert sched.get_sale_end("1711796")["end_ts"] == "2026-10-19T06:59:00+00:00"
+    # the /p/-/slug/<id> URL shape is keyed by its trailing product id
+    harness([_row(status="ACTIVE", title="Energy Shot", category="Pharmacy",
+                  costco_url="https://www.costco.com/p/-/energy-shot/4000099948",
+                  costco_cost="39.99", ebay_price="41.48", fee_rate="13.25%", ship_cost="0",
+                  stock_status="In Stock")], scrape)
+    assert sched.get_sale_end("4000099948")["end_ts"] == "2026-10-19T06:59:00+00:00"
+    harness([_row(status="ACTIVE", title="Energy Shot", category="Pharmacy",
+                  costco_url="https://www.costco.com/p/-/energy-shot/4000099948",
+                  costco_cost="31.99", ebay_price="41.48", fee_rate="13.25%", ship_cost="0",
+                  stock_status="In Stock")], _scrape(39.99, False))
+    assert sched.get_sale_end("4000099948") is None                 # sale over -> cleared
+
+
+def test_pending_scheduled_action_is_fast_forwarded_not_reprompted(harness):
+    sched.schedule_action("123456789012", "reprice", {"target": 50.99,
+                          "sale_end_ts": "2099-01-01T00:00:00+00:00"})
+    calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/14/26", regular="39.99",
+                                 ebay_price="41.48", ebay_url=EBAY_URL)], _scrape(39.99, False))
+    assert calls["prompts"] == []                                   # scheduled path owns it
+    assert sched.due_actions()                                      # early revert -> due now
+
+
+def test_recent_scheduled_reprice_suppresses_reactive_prompt(harness):
+    sched.schedule_action("123456789012", "reprice", {"target": 50.99,
+                          "sale_end_ts": "2026-10-04T00:00:00+00:00"})
+    sched.mark_applied("123456789012", {"ok": True})
+    calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/14/26", regular="39.99",
+                                 ebay_price="41.48", ebay_url=EBAY_URL)], _scrape(39.99, False))
+    assert calls["prompts"] == []

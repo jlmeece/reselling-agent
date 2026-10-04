@@ -190,3 +190,81 @@ def test_active_card_shows_reprice_button_only_when_pending():
 def test_routes_registered():
     for action in ("go", "ignore", "offer"):
         assert ("reprice", action) in tb._CALLBACK_ROUTES
+
+
+# ── scheduled reprice / End (pre-stage prompt buttons) ───────────────────────
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from tools import sale_schedule as sched  # noqa: E402
+
+
+def _prompt(hours_left=20):
+    end = (datetime.now(timezone.utc) + timedelta(hours=hours_left)).replace(microsecond=0)
+    return {"item_id": ITEM_ID, "title": "Energy Shot <48>", "sku": "4000099948", "target": 50.99,
+            "sale_end_ts": end.isoformat(), "costco_pid": "4000099948", "costco_url": "u",
+            "old_cost": 31.99, "new_cost": 39.99, "ebay_price": 41.48}
+
+
+def test_sched_reprice_stores_action_without_touching_ebay(env):
+    prompt = _prompt()
+    sched.record_prompt(prompt)
+    q = _tap(f"{ITEM_ID}:5099", action=tb.cb_reprice_sched)
+    text, kb = _final(q)
+    a = sched.get_action(ITEM_ID)
+    assert a["action"] == "reprice" and a["target_price"] == 50.99
+    assert a["apply_at"] == prompt["sale_end_ts"]                # applies exactly at the sale end
+    assert env["revise"] == [] and env["writes"] == []           # nothing on eBay / sheet now
+    assert "Scheduled" in text and "$50.99" in text and "&lt;48&gt;" in text
+    assert kb.inline_keyboard[0][0].callback_data == f"reprice:cancel:{ITEM_ID}"
+
+
+def test_sched_end_stores_end_action(env):
+    sched.record_prompt(_prompt())
+    text, _ = _final(_tap(ITEM_ID, action=tb.cb_reprice_schedend))
+    assert sched.get_action(ITEM_ID)["action"] == "end"
+    assert "END the listing" in text
+
+
+def test_sched_refuses_without_prompt_or_after_end(env):
+    text, _ = _final(_tap(f"{ITEM_ID}:5099", action=tb.cb_reprice_sched))
+    assert "expired" in text and sched.get_action(ITEM_ID) is None
+    sched.record_prompt(_prompt(hours_left=-1))
+    text, _ = _final(_tap(f"{ITEM_ID}:5099", action=tb.cb_reprice_sched))
+    assert "already ended" in text and sched.get_action(ITEM_ID) is None
+
+
+@pytest.mark.parametrize("rows,needle", [
+    ([_row(status="ENDED")], "no longer ACTIVE"),
+    ([_row(url="")], "exactly one row"),
+])
+def test_sched_row_guards(env, rows, needle):
+    sched.record_prompt(_prompt())
+    env["rows"] = rows
+    text, _ = _final(_tap(ITEM_ID, action=tb.cb_reprice_schedend))
+    assert needle in text and sched.get_action(ITEM_ID) is None
+
+
+def test_sched_stale_price_button_refused(env):
+    sched.record_prompt(_prompt())
+    text, _ = _final(_tap(f"{ITEM_ID}:4999", action=tb.cb_reprice_sched))
+    assert "out of date" in text and sched.get_action(ITEM_ID) is None
+
+
+def test_cancel_removes_action(env):
+    sched.record_prompt(_prompt())
+    sched.schedule_action(ITEM_ID, "end", _prompt())
+    text, _ = _final(_tap(ITEM_ID, action=tb.cb_reprice_cancel))
+    assert "Cancelled the scheduled end" in text and sched.get_action(ITEM_ID) is None
+    text, _ = _final(_tap(ITEM_ID, action=tb.cb_reprice_cancel))
+    assert "Nothing scheduled" in text
+
+
+def test_active_card_cancel_button_when_scheduled():
+    kb = tb._active_action_kb(7, None, cancel_item_id=ITEM_ID)
+    assert kb.inline_keyboard[0][0].callback_data == f"reprice:cancel:{ITEM_ID}"
+
+
+def test_schedule_routes_registered():
+    for action in ("sched", "schedend", "cancel"):
+        assert ("reprice", action) in tb._CALLBACK_ROUTES

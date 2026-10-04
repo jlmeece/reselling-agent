@@ -19,9 +19,11 @@ sold_90d == 0. Everything else is silent.
 The sync itself never touches eBay data and never changes any price. Run via
 `python agents/scheduler.py --mode ebay_sync [--dry-run]`.
 
-The ONLY eBay write in this module is revise_fixed_price() (ReviseFixedPriceItem), called
-solely by the Telegram bot's "✓ Reprice" button — Jay's tap is the approval; nothing
-calls it automatically. fetch_item_price() (GetItem) is its read-only guard.
+The ONLY eBay writes in this module are revise_fixed_price() (ReviseFixedPriceItem) and
+end_fixed_price() (EndItem). Both run only for something Jay approved with a Telegram tap —
+"✓ Reprice" (immediately) or a scheduled "Reprice / End at sale end" (applied by
+`--mode apply_scheduled` after a live Costco re-check). fetch_item_price() (GetItem) is the
+read-only guard.
 
 Known Stage-1 limit: GetMyeBaySelling's ActiveList only holds live listings, so a
 listing that sold out completely drops off it. Its last sale is therefore NOT
@@ -414,6 +416,55 @@ def revise_fixed_price(item_id, new_price) -> dict:
     out["message"] = "; ".join(warnings)
     logger.info(f"revise_fixed_price: item {iid} -> ${price:.2f} OK"
                 + (f" (warnings: {out['message']})" if warnings else ""))
+    return out
+
+
+ALREADY_ENDED_CODES = {"1047"}    # "The auction has already been closed."
+
+
+def _build_end_xml(token: str, item_id: str, reason: str = "NotAvailable") -> str:
+    """EndItem body. reason: eBay EndReasonCodeType — NotAvailable = item no longer available."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<EndItemRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"<EndingReason>{_xml_escape(reason)}</EndingReason>"
+        "</EndItemRequest>"
+    )
+
+
+def end_fixed_price(item_id, reason="NotAvailable") -> dict:
+    """
+    End a live listing via EndItem. Same return shape as revise_fixed_price:
+    {ok, item_id, price (always None), error_kind, error_code, message}. Never raises.
+    Called ONLY for an "End listing" action Jay approved with a tap (scheduled apply).
+    Error 1047 (already ended) counts as ok — e.g. a retried call whose first attempt landed.
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
+           "error_kind": None, "error_code": "", "message": ""}
+    if not iid:
+        out.update(error_kind="invalid", message=f"refused — item_id={item_id!r}")
+        logger.error(f"end_fixed_price: {out['message']}")
+        return out
+    try:
+        root, err = _call("EndItem", lambda tok: _build_end_xml(tok, iid, reason))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err and err["error_code"] in ALREADY_ENDED_CODES:
+        out.update(ok=True, message=f"already ended ({err['message']})")
+        logger.info(f"end_fixed_price: item {iid} was already ended")
+        return out
+    if err:
+        out.update(err)
+        level = logger.critical if err["error_kind"] == "auth" else logger.error
+        level(f"end_fixed_price: item {iid} FAILED [{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    out["ok"] = True
+    out["message"] = f"ended {_text(root, 'EndTime')}".strip()
+    logger.info(f"end_fixed_price: item {iid} ended")
     return out
 
 

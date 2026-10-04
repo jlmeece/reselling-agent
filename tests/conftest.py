@@ -37,3 +37,15 @@ def _no_live_ebay_taxonomy(monkeypatch, tmp_path):
     et.reset_state()
     yield
     et.reset_state()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_reprice_state(monkeypatch, tmp_path):
+    """No test may touch the real reprice / scheduled-action state or ebay_sync.log:
+    data/.sale_end_times.json, data/.scheduled_actions.json, data/.reprice_pending.json."""
+    from tools import reprice, sale_schedule
+
+    monkeypatch.setattr(sale_schedule, "SALE_END_PATH", str(tmp_path / "sale_end_times.json"))
+    monkeypatch.setattr(sale_schedule, "ACTIONS_PATH", str(tmp_path / "scheduled_actions.json"))
+    monkeypatch.setattr(reprice, "PENDING_PATH", str(tmp_path / "reprice_pending.json"))
+    monkeypatch.setattr(reprice, "EBAY_SYNC_LOG", str(tmp_path / "ebay_sync.log"))
