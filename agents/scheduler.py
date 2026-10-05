@@ -1809,9 +1809,11 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
 def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
     """
     ebay_sync mode: fetch eBay listings, write units_sold, return Run Log keys
-    (status/notes/errors). Telegram fires ONLY when tools.ebay_sync built an alert
-    (losing-money margin breach, ACTIVE-but-not-on-eBay, or a rejected auth token) or,
-    at most once a day, a thin-margin digest — silent otherwise.
+    (status/notes/errors). Losing-money breaches on ACTIVE rows are auto-repriced to
+    break-even on eBay inside run_ebay_sync (business.ebay_sync.auto_reprice). Telegram
+    fires ONLY when tools.ebay_sync built an alert (auto-reprice outcomes, losing-money
+    margin breach, ACTIVE-but-not-on-eBay, or a rejected auth token) or, at most once a
+    day, a thin-margin digest — silent otherwise.
     """
     result = ebay_sync.run_ebay_sync(config, COL, service, sheet_name, start_row,
                                      end_row, dry_run=dry_run)

@@ -679,7 +679,8 @@ def _check_margin(row, listing, report):
     sold_raw = _to_float(row.get("sold_90d", ""))
     sold = None if sold_raw is None else int(sold_raw)
     base = {"row_num": row["row_num"], "title": row.get("title", ""),
-            "item_id": listing["item_id"]}
+            "item_id": listing["item_id"],
+            "status": str(row.get("status", "")).strip().upper()}
 
     severity = margin_flag(price, cost, fee, ship, ad, sold)
     if price is None or cost is None or fee is None:
@@ -848,6 +849,10 @@ def summarize(report: dict) -> str:
          f"not_in_sheet {len(report['on_ebay_not_in_sheet'])}")
     if report.get("buy_cost_snapshots"):
         s += f", buy_cost_snapped {len(report['buy_cost_snapshots'])}"
+    for outcome in ("repriced", "held", "failed"):
+        n = sum(1 for m in report["margin_breach"] if m.get("auto") == outcome)
+        if n:
+            s += f", auto_{outcome} {n}"
     if report["margin_unchecked"]:
         s += f", margin_unchecked {len(report['margin_unchecked'])}"
     n_links = sum(1 for g in report["active_not_on_ebay"] if g.get("suggested_item_id"))
@@ -880,7 +885,10 @@ def alert_message(report: dict) -> str | None:
     go to digest_message(), everything else stays in the Run Log. Raw price movement is
     never alerted. Sheet-derived titles are truncated THEN html-escaped.
     """
-    losing = [m for m in report["margin_breach"] if m["severity"] == "hard"]
+    # Breaches auto-repriced to break-even this run are fixed — they show in the
+    # auto-reprice summary instead. Failed / held ones still need Jay.
+    losing = [m for m in report["margin_breach"]
+              if m["severity"] == "hard" and m.get("auto") != "repriced"]
     gone = report["active_not_on_ebay"]
     if not losing and not gone:
         return None
@@ -969,6 +977,119 @@ def _dedupe_alert(alert, dry_run=False, now=None):
     return alert
 
 
+# ── Auto-reprice hard breaches to break-even ──────────────────────────────────
+#
+# The ONE eBay write that runs without a tap (Jay's call, 2026-10-05). Guards: ACTIVE rows
+# only (PAUSED_* = Jay is on it), never lower, a raise above AUTO_MAX_JUMP_PCT is held for a
+# manual look (a raise that big usually means bad cost data in col G/BB, e.g. a variant
+# mismatch, not a real loss), and col H is written only when the row still holds the same
+# title (the auditor may have shifted rows).
+
+AUTO_MAX_JUMP_PCT = 0.50   # same threshold as tools/reprice.BIG_JUMP_PCT (circular import)
+
+
+def auto_reprice_breaches(report: dict, service, COL, sheet_name: str, *, title_reader=None,
+                          dry_run: bool = False, enabled: bool = True,
+                          max_jump_pct: float = AUTO_MAX_JUMP_PCT) -> list[dict]:
+    """
+    Push every HARD breach (net < 0) on an ACTIVE row to round_up_99(break_even) via
+    revise_fixed_price, then write the new price to col H. Marks each handled breach
+    m["auto"] = "repriced" | "held" | "failed" | "dry_run" (alert_message drops "repriced").
+
+    Returns [{item_id, title, row_num, old_price, new_price, ok, outcome, error, sheet_note}].
+    Skipped silently: soft breaches, non-ACTIVE rows, missing item id / price / break-even,
+    break-even already <= the live price. Never raises for eBay errors; an auth error stops
+    the loop (every later call would fail the same way).
+    """
+    from tools.reprice import log_revise, round_up_99   # reprice imports this module
+
+    if not enabled:
+        return []
+    results, titles = [], None
+    for m in report.get("margin_breach", []):
+        if m.get("severity") != "hard" or m.get("status") != "ACTIVE":
+            continue
+        item_id, be, old_price = m.get("item_id"), m.get("break_even"), m.get("ebay_price")
+        title, row_num = m.get("title", ""), m.get("row_num")
+        if not item_id or not be or not old_price:
+            continue
+        new_price = round_up_99(be)
+        if new_price <= old_price + 0.005:
+            continue
+
+        entry = {"item_id": item_id, "title": title, "row_num": row_num,
+                 "old_price": old_price, "new_price": new_price,
+                 "ok": False, "outcome": None, "error": None, "sheet_note": None}
+        results.append(entry)
+
+        if new_price > old_price * (1 + max_jump_pct):
+            entry["outcome"] = m["auto"] = "held"
+            entry["error"] = f"raise >{max_jump_pct:.0%} — check cost (col G/BB) before repricing"
+            logger.warning(f"auto_reprice: HELD item {item_id} ${old_price:.2f}→${new_price:.2f} "
+                           f"({title[:40]}) — jump >{max_jump_pct:.0%}")
+            continue
+        if dry_run:
+            entry["ok"], entry["outcome"] = True, "dry_run"
+            m["auto"] = "dry_run"
+            logger.info(f"auto_reprice (dry run): item {item_id} "
+                        f"${old_price:.2f}→${new_price:.2f} ({title[:40]})")
+            continue
+
+        result = revise_fixed_price(item_id, new_price)
+        log_revise(service, result, title=title, row=row_num, old_price=old_price, source="auto")
+        if not result.get("ok"):
+            entry["outcome"] = m["auto"] = "failed"
+            entry["error"] = (f"{result.get('error_code') or result.get('error_kind') or 'error'}: "
+                              f"{result.get('message', '')}")
+            if result.get("error_kind") == "auth":
+                entry["error"] = "eBay token rejected — generate a new EBAY_AUTH_TOKEN"
+                logger.critical("auto_reprice: auth error — stopping")
+                break
+            continue
+
+        entry["ok"], entry["outcome"] = True, "repriced"
+        m["auto"] = "repriced"
+        # eBay is updated — sync col H, only if the row still holds this title.
+        try:
+            if titles is None:
+                titles = title_reader() if title_reader else {}
+            if title_reader and titles.get(row_num, "").strip() != str(title).strip():
+                entry["sheet_note"] = "eBay OK — sheet col H NOT updated (row moved)"
+                logger.warning(f"auto_reprice: row {row_num} title changed — col H not written")
+            else:
+                safe_write_row(service, sheet_name, row_num, [(COL["ebay_price"], new_price)])
+                _sleep(WRITE_DELAY)
+        except Exception as e:
+            entry["sheet_note"] = f"eBay OK — sheet col H write failed: {e}"[:120]
+            logger.error(f"auto_reprice: item {item_id} revised but col H write failed: {e}")
+    return results
+
+
+def format_auto_reprice_summary(results: list[dict]) -> str | None:
+    """Telegram HTML block for the eBay sync alert, or None when nothing was attempted."""
+    if not results:
+        return None
+    lines = ["🔧 <b>Auto-repriced to break-even</b>"]
+    for r in results:
+        t = html.escape(_truncate(r.get("title", "")))
+        op = f"${r['old_price']:.2f}" if r.get("old_price") else "?"
+        np_ = f"${r['new_price']:.2f}"
+        row = f" (row {r['row_num']})" if r.get("row_num") else ""
+        outcome = r.get("outcome")
+        if outcome == "dry_run":
+            lines.append(f"• {t} — {op}→{np_} (dry run, not sent){row}")
+        elif outcome == "repriced":
+            note = f" — ⚠️ {html.escape(r['sheet_note'])}" if r.get("sheet_note") else ""
+            lines.append(f"• ✓ {t} — {op}→{np_}{row}{note}")
+        elif outcome == "held":
+            lines.append(f"• ⏸ {t} — NOT repriced ({op}→{np_}): "
+                         f"{html.escape(r.get('error') or '')}{row}")
+        else:
+            err = html.escape((r.get("error") or "unknown error")[:80])
+            lines.append(f"• ❌ {t} — reprice to {np_} failed: {err}{row}")
+    return "\n".join(lines)
+
+
 # ── Orchestration (called by agents/scheduler.py --mode ebay_sync) ────────────
 
 def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
@@ -1001,11 +1122,33 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         service, rows, listings, dry_run=dry_run, sheet_name=sheet_name, col_map=COL,
         title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
     )
+    # Auto-reprice hard breaches BEFORE building the alert (repriced ones leave "Losing money").
+    auto_cfg = ((config or {}).get("business") or {}).get("ebay_sync") or {}
+    auto_summary = None
+    try:
+        auto_results = auto_reprice_breaches(
+            report, service, COL, sheet_name,
+            title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
+            dry_run=dry_run, enabled=bool(auto_cfg.get("auto_reprice", True)),
+            max_jump_pct=float(auto_cfg.get("auto_reprice_max_jump_pct", AUTO_MAX_JUMP_PCT)))
+        auto_summary = format_auto_reprice_summary(auto_results)
+    except Exception as e:  # never let auto-reprice break the units_sold sync
+        logger.exception(f"ebay_sync: auto-reprice failed: {e}")
+
+    base_alert = alert_message(report)
+    if base_alert and auto_summary:
+        combined_alert = base_alert + "\n" + auto_summary
+    elif auto_summary:
+        combined_alert = ("🛒 <b>eBay sync</b>" + (" (dry run)" if dry_run else "")
+                          + "\n" + auto_summary)
+    else:
+        combined_alert = base_alert
+
     digest = digest_message(report)
     if digest and not _digest_due(dry_run=dry_run):
         digest = None
     result = {"status": "ok", "notes": summarize(report),
-              "alert": _dedupe_alert(alert_message(report), dry_run=dry_run),
+              "alert": _dedupe_alert(combined_alert, dry_run=dry_run),
               "digest": digest}
     if report["write_errors"]:
         result["status"] = "error"

@@ -33,6 +33,13 @@ def _alert_state(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_revise_log(monkeypatch):
+    """Auto-reprice logs via tools.reprice.log_revise (Run Log tab) — never for real in tests."""
+    import tools.reprice as reprice
+    monkeypatch.setattr(reprice, "log_revise", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _digest_state(monkeypatch, tmp_path):
     """Never touch the real data/.ebay_sync_digest.json."""
     monkeypatch.setattr(ebay_sync, "DIGEST_STATE_PATH", str(tmp_path / "digest.json"))
@@ -564,8 +571,12 @@ def test_alert_message_escapes_and_truncates_and_caps(writes):
 
 # ── run_ebay_sync orchestration ───────────────────────────────────────────────
 
-def _cfg_args():
-    return ({}, COL, "svc", "Product Tracker", 4, 500)
+_ALERT_ONLY = {"business": {"ebay_sync": {"auto_reprice": False}}}
+
+
+def _cfg_args(config=None):
+    """Default = auto-reprice OFF (the alert-only path); auto-reprice tests pass their own."""
+    return (_ALERT_ONLY if config is None else config, COL, "svc", "Product Tracker", 4, 500)
 
 
 def test_run_skips_cleanly_without_token(monkeypatch):
@@ -896,3 +907,163 @@ def test_end_invalid_id_never_posts(monkeypatch, creds, item_id):
                         lambda *a, **k: pytest.fail("must not hit the network"))
     out = ebay_sync.end_fixed_price(item_id)
     assert out["ok"] is False and out["error_kind"] == "invalid"
+
+
+# ── auto-reprice hard breaches to break-even ──────────────────────────────────
+
+@pytest.fixture
+def ebay(monkeypatch):
+    """Stub revise_fixed_price + log_revise; record calls."""
+    import tools.reprice as reprice
+    state = {"revise": [], "logged": [], "result": None}
+
+    def fake_revise(item_id, price):
+        state["revise"].append((item_id, price))
+        return state["result"] or {"ok": True, "item_id": item_id, "price": price,
+                                   "error_kind": None, "error_code": "", "message": ""}
+
+    monkeypatch.setattr(ebay_sync, "revise_fixed_price", fake_revise)
+    monkeypatch.setattr(reprice, "log_revise",
+                        lambda svc, result, **kw: state["logged"].append((result, kw)))
+    return state
+
+
+def _breach_report(*rows_and_prices):
+    rows = [r for r, _ in rows_and_prices]
+    listings = [_listing(extract_item_id(r["ebay_listing_url"]), price=p) for r, p in rows_and_prices]
+    return _sync(rows, listings, dry_run=True)   # sync's own units_sold writes are irrelevant here
+
+
+def _auto(rep, titles=None, **kw):
+    titles = titles if titles is not None else {4: "Widget", 5: "Widget"}
+    return ebay_sync.auto_reprice_breaches(rep, "svc", COL, "Product Tracker",
+                                           title_reader=lambda: titles, **kw)
+
+
+# eBay $29, cost $30, fee 10% -> net -3.90, break-even 33.33 -> 33.99 (+17%)
+_HARD = dict(costco_cost="$30", fee_rate="0.10", sold_90d="4")
+
+
+def test_auto_reprice_hard_breach_revises_to_break_even_and_syncs_col_h(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
+    (r,) = _auto(rep)
+    assert ebay["revise"] == [("111111111111", 33.99)]
+    assert r["ok"] and r["outcome"] == "repriced" and r["old_price"] == 29.0 and r["new_price"] == 33.99
+    assert writes == [(4, [("H", 33.99)])]
+    (logged,) = ebay["logged"]
+    assert logged[1]["source"] == "auto" and logged[1]["old_price"] == 29.0 and logged[1]["row"] == 4
+    assert rep["margin_breach"][0]["auto"] == "repriced"
+    assert alert_message(rep) is None                         # fixed -> no "Losing money" line
+    assert "auto_repriced 1" in summarize(rep)
+
+
+def test_auto_reprice_skips_when_break_even_not_above_price(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
+    rep["margin_breach"][0]["break_even"] = 28.50             # round_up_99 -> 28.99 <= 29.00
+    assert _auto(rep) == [] and ebay["revise"] == [] and writes == []
+
+
+def test_auto_reprice_ignores_soft_breach(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", costco_cost="$26", fee_rate="0.10", sold_90d="0"), 29.0))
+    assert rep["margin_breach"][0]["severity"] == "soft"
+    assert _auto(rep) == [] and ebay["revise"] == []
+
+
+def test_auto_reprice_ignores_non_active_rows(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", status="PAUSED_OOS", **_HARD), 29.0))
+    assert rep["margin_breach"][0]["severity"] == "hard"
+    assert _auto(rep) == [] and ebay["revise"] == []
+
+
+def test_auto_reprice_dry_run_never_calls_ebay(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
+    (r,) = _auto(rep, dry_run=True)
+    assert r["outcome"] == "dry_run" and r["ok"] and ebay["revise"] == [] and writes == []
+    assert ebay["logged"] == []
+
+
+def test_auto_reprice_disabled_does_nothing(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
+    assert _auto(rep, enabled=False) == [] and ebay["revise"] == []
+    assert "Losing money" in alert_message(rep)
+
+
+def test_auto_reprice_holds_big_jump_as_likely_bad_cost(ebay, writes):
+    # eBay $47.99 vs cost $189.99 (the Tramontina case) -> +300% -> held, alert stays
+    rep = _breach_report((_row(4, "111111111111", costco_cost="$189.99", fee_rate="0.13",
+                               sold_90d="1"), 47.99))
+    (r,) = _auto(rep)
+    assert r["outcome"] == "held" and not r["ok"] and ebay["revise"] == [] and writes == []
+    assert "check cost" in r["error"]
+    assert "Losing money" in alert_message(rep)
+    assert "auto_held 1" in summarize(rep)
+
+
+def test_auto_reprice_row_moved_revises_but_skips_sheet_write(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
+    (r,) = _auto(rep, titles={4: "Some Other Item"})
+    assert ebay["revise"] and r["outcome"] == "repriced" and writes == []
+    assert "row moved" in r["sheet_note"]
+
+
+def test_auto_reprice_failure_keeps_alert_and_writes_nothing(ebay, writes):
+    ebay["result"] = {"ok": False, "item_id": "111111111111", "price": 33.99, "error_kind": "api",
+                      "error_code": "21916", "message": "Variation listing"}
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
+    (r,) = _auto(rep)
+    assert r["outcome"] == "failed" and "21916" in r["error"] and writes == []
+    assert len(ebay["logged"]) == 1                           # failures are logged too
+    assert "Losing money" in alert_message(rep)
+
+
+def test_auto_reprice_auth_error_stops_the_loop(ebay, writes):
+    ebay["result"] = {"ok": False, "item_id": "x", "price": 1, "error_kind": "auth",
+                      "error_code": "931", "message": "token"}
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0),
+                         (_row(5, "222222222222", **_HARD), 29.0))
+    results = _auto(rep)
+    assert len(ebay["revise"]) == 1 and len(results) == 1
+    assert "EBAY_AUTH_TOKEN" in results[0]["error"]
+
+
+def test_format_auto_reprice_summary_variants():
+    fmt = ebay_sync.format_auto_reprice_summary
+    assert fmt([]) is None
+    ok = fmt([{"title": "Tom & Jerry", "row_num": 4, "old_price": 29.0, "new_price": 33.99,
+               "outcome": "repriced", "ok": True}])
+    assert "Auto-repriced" in ok and "$29.00→$33.99" in ok and "Tom &amp; Jerry" in ok and "row 4" in ok
+    bad = fmt([{"title": "W", "old_price": 29.0, "new_price": 33.99, "outcome": "failed",
+                "error": "21916: <bad>"}])
+    assert "❌" in bad and "21916: &lt;bad&gt;" in bad
+    held = fmt([{"title": "W", "old_price": 47.99, "new_price": 249.99, "outcome": "held",
+                 "error": "raise >50% — check cost"}])
+    assert "⏸" in held and "NOT repriced" in held
+    dry = fmt([{"title": "W", "old_price": 29.0, "new_price": 33.99, "outcome": "dry_run", "ok": True}])
+    assert "dry run" in dry
+
+
+def test_run_auto_reprices_and_alert_says_so(monkeypatch, creds, writes, ebay):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="29.00", sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
+        _row(4, "111111111111", price="$29.00", sold="0", **_HARD)])
+    monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget"})
+    res = run_ebay_sync(*_cfg_args({}))                       # no config key -> enabled by default
+    assert ebay["revise"] == [("111111111111", 33.99)]
+    assert writes == [(4, [("H", 33.99)])]
+    assert res["alert"].startswith("🛒 <b>eBay sync</b>") and "Auto-repriced to break-even" in res["alert"]
+    assert "Losing money" not in res["alert"]
+    assert "auto_repriced 1" in res["notes"]
+
+
+def test_run_auto_reprice_crash_never_breaks_the_sync(monkeypatch, creds, writes):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="29.00", sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
+        _row(4, "111111111111", price="$29.00", sold="0", **_HARD)])
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(ebay_sync, "auto_reprice_breaches", boom)
+    res = run_ebay_sync(*_cfg_args({}))
+    assert res["status"] == "ok" and "Losing money" in res["alert"]

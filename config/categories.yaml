@@ -13,6 +13,14 @@ business:
   sale_warn_hours: 48              # first sale expiry warning — time to reprice or plan listing end
   sale_urgent_hours: 24            # urgent sale expiry warning — last chance before margin changes
 
+  # eBay sync (--mode ebay_sync): a HARD margin breach (net < 0 at the live eBay price) on an
+  # ACTIVE row is repriced on eBay to break-even (rounded up to .99) and col H is synced — no tap.
+  # A raise bigger than auto_reprice_max_jump_pct is held (alert only): it usually means bad cost
+  # data in col G/BB. auto_reprice: false = alert only (the pre-2026-10-05 behaviour).
+  ebay_sync:
+    auto_reprice: true
+    auto_reprice_max_jump_pct: 0.50
+
   # Member-Only Savings discovery (--mode savings). scrape_limit = max product pages opened per run
   # (~7s each; Costco blocks after ~14 so the session refreshes every 10); add_limit = max NEW rows.
   # keywords: which savings-page items are "ours". Regex fragments (word-bounded, case-insensitive);
