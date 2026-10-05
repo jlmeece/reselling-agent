@@ -47,5 +47,6 @@ def _isolated_reprice_state(monkeypatch, tmp_path):
 
     monkeypatch.setattr(sale_schedule, "SALE_END_PATH", str(tmp_path / "sale_end_times.json"))
     monkeypatch.setattr(sale_schedule, "ACTIONS_PATH", str(tmp_path / "scheduled_actions.json"))
+    monkeypatch.setattr(sale_schedule, "OOS_ENDED_PATH", str(tmp_path / "oos_ended.json"))
     monkeypatch.setattr(reprice, "PENDING_PATH", str(tmp_path / "reprice_pending.json"))
     monkeypatch.setattr(reprice, "EBAY_SYNC_LOG", str(tmp_path / "ebay_sync.log"))

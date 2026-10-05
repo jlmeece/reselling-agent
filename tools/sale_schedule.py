@@ -30,6 +30,7 @@ from tools.status_logic import suggest_reprice
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SALE_END_PATH = os.path.join(_BASE_DIR, "data", ".sale_end_times.json")
 ACTIONS_PATH = os.path.join(_BASE_DIR, "data", ".scheduled_actions.json")
+OOS_ENDED_PATH = os.path.join(_BASE_DIR, "data", ".oos_ended.json")   # listings auto-ended on OOS
 
 PRESTAGE_LEAD_HOURS = 24        # prompt this long before the sale ends (less left -> at once)
 APPLIED_KEEP_DAYS = 30          # history of executed actions
@@ -109,6 +110,28 @@ def _save(path, data):
             os.remove(tmp)
         except OSError:
             pass
+
+
+# ── auto-ended-on-OOS store (data/.oos_ended.json) ───────────────────────────
+# {item_id: {title, row, ended_at}} — written when the active monitor ends a listing because
+# Costco went OOS; popped by the daily sweep on restock so its note can say "relist on eBay".
+
+def record_oos_ended(item_id, *, title="", row=None, path=None, now=None):
+    path = path or OOS_ENDED_PATH
+    data = _load(path)
+    data[str(item_id)] = {"title": title, "row": row,
+                          "ended_at": _iso(now or utcnow())}
+    _save(path, data)
+
+
+def pop_oos_ended(item_id, path=None):
+    """The record for item_id (and remove it), or None."""
+    path = path or OOS_ENDED_PATH
+    data = _load(path)
+    entry = data.pop(str(item_id), None)
+    if entry is not None:
+        _save(path, data)
+    return entry
 
 
 # ── sale-end store (data/.sale_end_times.json) ───────────────────────────────

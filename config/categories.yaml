@@ -20,6 +20,8 @@ business:
   ebay_sync:
     auto_reprice: true
     auto_reprice_max_jump_pct: 0.50
+    # End a live eBay listing automatically when Costco goes OOS (avoid unfilled orders). false = alert only.
+    auto_end_oos: true
 
   # Member-Only Savings discovery (--mode savings). scrape_limit = max product pages opened per run
   # (~7s each; Costco blocks after ~14 so the session refreshes every 10); add_limit = max NEW rows.
