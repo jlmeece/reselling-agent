@@ -57,7 +57,8 @@ from tools.sale_monitor import (
     record_alerts, sale_column_updates, sale_end_alert, to_float, badge_verified,
 )
 from tools.sale_digest import select_sale_items, format_digest
-from tools.ebay_sync import extract_item_id, end_fixed_price, fetch_item_price, revise_fixed_price
+from tools.ebay_sync import (extract_item_id, end_fixed_price, fetch_item_price, revise_fixed_price,
+                             set_quantity, set_quantity_zero, compute_net)
 from tools.reprice import (log_revise, pop_pending, restore_margin_price, save_pending,
                            schedule_keyboard, send_reprice_prompt)
 from tools import sale_schedule as sched
@@ -138,48 +139,153 @@ def _reprice_prompt(row, COL, categories, status, title, category, sheet_row,
 
 
 OOS_PAUSE_NOTE = "OUT OF STOCK — pause eBay listing immediately to avoid unfilled orders"  # status_logic
-OOS_ENDED_NOTE = "OUT OF STOCK — eBay listing ended automatically"
+OOS_HIDDEN_NOTE = "OUT OF STOCK — eBay listing hidden (quantity 0)"
+OOS_HANDLED = ("hidden", "ended_by_ebay", "already_off")   # nothing left for Jay to do now
 
 
-def _auto_end_oos(service, item_id, costco_data, title, sheet_row):
+def _auto_hide_oos(service, item_id, costco_data, title, sheet_row):
     """
-    End the live eBay listing of an ACTIVE row Costco just reported out of stock
-    (business.ebay_sync.auto_end_oos). Returns (outcome, note); note replaces the OOS line in
+    Hide the live eBay listing of an ACTIVE row Costco just reported out of stock: quantity 0 via
+    ReviseInventoryStatus (business.ebay_sync.auto_end_oos). With Jay's Out of Stock setting on
+    and a GTC listing, eBay keeps it (watchers, sales history, search rank) and the daily sweep
+    restores the quantity on restock. Returns (outcome, note); note replaces the OOS line in
     col T / the urgent reason. Never raises. Outcomes:
-      "ended"    — EndItem ok (1047 already-ended counts); pending scheduled action + reprice
-                   prompt for the item dropped; recorded in data/.oos_ended.json for the restock note
-      "dom_only" — the OOS came from page text, not the inventory API's Delivery state -> NOT ended
-                   (the DOM read was wrong both ways on 10/04; ending loses watchers + search rank)
-      "auth"     — token rejected; the caller stops auto-ending for the rest of the run
-      "failed"   — any other eBay error / exception; manual fallback via the urgent alert
+      "hidden"        — qty 0 ok on a GTC listing (Out of Stock control not reported off)
+      "ended_by_ebay" — qty 0 ok, but the listing is fixed-duration or OutOfStockControl is off,
+                        so eBay ended it — relist on restock
+      "already_off"   — GetItem says the listing isn't Active (e.g. Jay ended it) — nothing sent
+      "dom_only"      — the OOS came from page text, not the inventory API's Delivery state -> NOT
+                        hidden (the DOM read was wrong both ways on 10/04)
+      "auth"          — token rejected; the caller stops auto-hiding for the rest of the run
+      "failed"        — any other eBay error / exception; manual fallback via the urgent alert
+    The three handled outcomes drop the item's pending scheduled action + reprice prompt and
+    record it in data/.oos_hidden.json (prev_qty, hidden) for the daily sweep.
     """
     if costco_data.get("stock_source") != "inventory_api":
         return "dom_only", ("OUT OF STOCK (page text only, not confirmed by Costco's inventory API) — "
-                            "NOT auto-ended; verify on Costco, then end the eBay listing by hand")
-    try:
-        res = end_fixed_price(item_id)
-        log_revise(service, res, title=title, row=sheet_row, source="active_oos", action="end")
-    except Exception as e:
-        logger.error(f"  Auto-end OOS: unexpected error for eBay {item_id}: {e}")
-        return "failed", f"OUT OF STOCK — auto-end FAILED (unexpected: {e}) — end the eBay listing manually"
-    if res.get("ok"):
+                            "NOT auto-hidden; verify on Costco, then set the eBay quantity to 0 by hand")
+
+    def handled(outcome, note, prev_qty=None):
         try:
-            sched.cancel_action(item_id)    # a scheduled reprice/End at sale end would hit a dead listing
+            sched.cancel_action(item_id)    # a scheduled reprice/End at sale end would hit a hidden listing
             pop_pending(item_id)            # ...and so would a re-posted "✓ Reprice" prompt
-            sched.record_oos_ended(item_id, title=title, row=sheet_row)
+            sched.record_oos_hidden(item_id, title=title, row=sheet_row, prev_qty=prev_qty,
+                                    hidden=(outcome == "hidden"))
         except Exception as e:
-            logger.warning(f"  Auto-end OOS: follow-up cleanup failed for eBay {item_id}: {e}")
-        return "ended", OOS_ENDED_NOTE
+            logger.warning(f"  Auto-hide OOS: follow-up bookkeeping failed for eBay {item_id}: {e}")
+        return outcome, note
+
+    try:
+        info = fetch_item_price(item_id)
+        if info.get("error_kind") == "auth":
+            log_revise(service, info, title=title, row=sheet_row, source="active_oos", action="oos_hide")
+            return "auth", (f"OUT OF STOCK — auto-hide FAILED ({info.get('error_code') or 'auth'}: "
+                            f"{(info.get('message') or '')[:120]}) — set the eBay quantity to 0 manually")
+        if info.get("ok") and info.get("listing_status") and info["listing_status"] != "Active":
+            return handled("already_off", f"OUT OF STOCK — eBay listing already {info['listing_status']} "
+                                          "(not Active), nothing to hide")
+        res = set_quantity_zero(item_id)
+        log_revise(service, res, title=title, row=sheet_row, source="active_oos", action="oos_hide")
+    except Exception as e:
+        logger.error(f"  Auto-hide OOS: unexpected error for eBay {item_id}: {e}")
+        return "failed", f"OUT OF STOCK — auto-hide FAILED (unexpected: {e}) — set the eBay quantity to 0 manually"
+    if res.get("ok"):
+        prev_qty = info.get("quantity_available") if info.get("ok") else None
+        duration, oosc = info.get("listing_duration"), info.get("out_of_stock_control")
+        if info.get("ok") and (duration and duration != "GTC" or oosc is False):
+            why = f"listing is {duration}, not GTC" if duration and duration != "GTC" else                   "Out of Stock control is off on this listing"
+            return handled("ended_by_ebay", f"OUT OF STOCK — eBay quantity set to 0, but {why}, so eBay "
+                                            "ENDED it — relist when Costco restocks", prev_qty)
+        return handled("hidden", OOS_HIDDEN_NOTE, prev_qty)
     code = res.get("error_code") or res.get("error_kind") or "error"
-    note = (f"OUT OF STOCK — auto-end FAILED ({code}: {(res.get('message') or '')[:120]}) — "
-            "end the eBay listing manually")
+    note = (f"OUT OF STOCK — auto-hide FAILED ({code}: {(res.get('message') or '')[:120]}) — "
+            "set the eBay quantity to 0 manually")
     return ("auth" if res.get("error_kind") == "auth" else "failed"), note
+
+
+def _restore_oos_listing(service, row, COL, categories, costco_data, title, category, sheet_row,
+                         item_id, record):
+    """
+    Daily sweep, PAUSED_OOS row that Costco restocked and whose listing the monitor hid
+    (data/.oos_hidden.json). Restores the eBay quantity — but only if selling still makes money.
+    Returns (new_status | None, note, telegram_line | None, kind); new_status None = stay
+    PAUSED_OOS and retry tomorrow (record kept). kind: "restored" | "needs_you" | "wait".
+      - restock seen only in page text (not the inventory API) -> wait (mirrors the hide guard)
+      - GetItem fails -> wait (auth error -> also a Telegram line)
+      - listing not Active on eBay (eBay/Jay ended it) -> WATCH + "relist, then update col Q"
+      - net < 0 at the LIVE eBay price and the new Costco cost, or margin unknown -> WATCH
+      - else set_quantity(prev_qty | col W purchase limit | 99) -> ACTIVE
+    Never raises.
+    """
+    t = html.escape(title[:40])
+    if costco_data.get("stock_source") != "inventory_api":
+        return None, ("Back in stock per page text only — waiting for Costco's inventory API to "
+                      "confirm before restoring the eBay quantity"), None, "wait"
+    try:
+        info = fetch_item_price(item_id)
+        if not info.get("ok"):
+            code = info.get("error_code") or info.get("error_kind") or "error"
+            note = f"Back in stock — eBay check failed ({code}), retrying the quantity restore tomorrow"
+            line = (f"🚨 {t} (row {sheet_row}): eBay token rejected — renew EBAY_AUTH_TOKEN; quantity "
+                    "not restored" if info.get("error_kind") == "auth" else None)
+            return None, note, line, "wait"
+        if info.get("listing_status") != "Active":
+            return ("WATCH",
+                    f"Back in stock — eBay item {item_id} is {info.get('listing_status') or 'not active'} "
+                    "(ended) — Relist it on eBay, then update col Q",
+                    f"• {t} (row {sheet_row}): eBay listing {item_id} was ended — Relist it, then "
+                    "update col Q", "needs_you")
+
+        price = info["price"]
+        cost = to_float(costco_data.get("price")) or to_float(safe_get(row, col_to_idx(COL["costco_cost"])))
+        cat_cfg = categories.get(category) or {}
+        fee = parse_rate(safe_get(row, col_to_idx(COL["fee_rate"])))
+        if fee is None:
+            fee = parse_rate(cat_cfg.get("fee_rate"))
+        ship = to_float(safe_get(row, col_to_idx(COL["ship_cost"]))) or 0.0
+        ad = price * (parse_rate(cat_cfg.get("ad_rate", 0)) or 0.0)
+        if cost is None or fee is None:
+            return ("WATCH", "Back in stock — couldn't check the margin (cost/fee unknown); the eBay "
+                             "listing is still hidden — check it, then raise the quantity by hand",
+                    f"• {t} (row {sheet_row}): margin unknown — check, then raise the eBay quantity",
+                    "needs_you")
+        net = compute_net(price, cost, fee, ship, ad)
+        if net < 0:
+            return ("WATCH",
+                    f"Back in stock — but eBay ${price:.2f} vs Costco ${cost:.2f} loses ${-net:.2f}/sale; "
+                    "listing left hidden — reprice, then raise the eBay quantity",
+                    f"• {t} (row {sheet_row}): would lose ${-net:.2f}/sale at ${price:.2f} (Costco "
+                    f"${cost:.2f}) — reprice, then raise the quantity", "needs_you")
+
+        qty = record.get("prev_qty")
+        if not isinstance(qty, int) or qty < 1:
+            from tools.ebay_export import _quantity_from_limit
+            qty = int(_quantity_from_limit(safe_get(row, col_to_idx(COL["purchase_limit"]))))
+        res = set_quantity(item_id, qty)
+        log_revise(service, res, title=title, row=sheet_row, source="daily", action="oos_restore")
+    except Exception as e:
+        logger.error(f"  OOS restore: unexpected error for eBay {item_id}: {e}")
+        return None, f"Back in stock — quantity restore failed (unexpected: {e}), retrying tomorrow", None, "wait"
+    if res.get("ok"):
+        return ("ACTIVE", f"Back in stock — eBay quantity restored to {qty} (net ${net:.2f}/sale)",
+                f"• {t} (row {sheet_row}): quantity {qty} at ${price:.2f}, net ${net:.2f}/sale",
+                "restored")
+    code = res.get("error_code") or res.get("error_kind") or "error"
+    msg = (res.get("message") or "")[:120]
+    if res.get("error_kind") == "auth":
+        return (None, f"Back in stock — eBay token rejected ({code}), retrying the quantity restore tomorrow",
+                f"🚨 {t} (row {sheet_row}): eBay token rejected — renew EBAY_AUTH_TOKEN; quantity "
+                "not restored", "wait")
+    return ("WATCH", f"Back in stock — eBay quantity restore FAILED ({code}: {msg}) — raise it by hand",
+            f"• {t} (row {sheet_row}): restore failed ({html.escape(code)}) — raise the quantity by hand",
+            "needs_you")
 
 
 def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, only_rows=None):
     """
     Checks all ACTIVE listings every run.
-    - Detects stock changes -> PAUSED_OOS
+    - Detects stock changes -> PAUSED_OOS; an OOS live listing (col Q) is hidden on eBay
+      (qty 0, _auto_hide_oos — business.ebay_sync.auto_end_oos)
     - Detects Costco SALE START (cost dropped + on_sale) -> writes G / AW / X, keeps the eBay
       price (margin just improved), no reprice suggestion
     - Detects SALE END / cost rise -> col P flag + URGENT reprice-up alert; for an ACTIVE row with
@@ -202,8 +308,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
     reprice_prompts = []
     checked = 0
     auto_end_oos = (business.get("ebay_sync") or {}).get("auto_end_oos", True)
-    auto_ended = []         # listings ended on eBay this run (Costco OOS)
-    stop_auto_end = False   # token rejected -> don't hit the same auth error on every OOS row
+    oos_handled = []        # listings hidden (qty 0) / found already off on eBay this run
+    stop_auto_hide = False  # token rejected -> don't hit the same auth error on every OOS row
 
     # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL/APPROVED rows.
     # This prevents a guaranteed crash on CI (GitHub Actions) where no local Chrome exists.
@@ -338,24 +444,25 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             except (ValueError, TypeError):
                 pass
 
-            # ── OOS on a live listing: end it on eBay (status stays PAUSED_OOS so the daily
-            #    sweep keeps watching for a restock) ─────────────────────────────────────
-            this_auto_ended = False
-            if reason_code == "oos" and auto_end_oos and not stop_auto_end:
+            # ── OOS on a live listing: hide it on eBay (qty 0). Status stays PAUSED_OOS so the
+            #    daily sweep keeps watching and restores the quantity on restock ───────────
+            oos_done = False
+            if reason_code == "oos" and auto_end_oos and not stop_auto_hide:
                 oos_iid = extract_item_id(ebay_url)
                 if oos_iid:
-                    outcome, oos_note = _auto_end_oos(service, oos_iid, costco_data, title, sheet_row)
+                    outcome, oos_note = _auto_hide_oos(service, oos_iid, costco_data, title, sheet_row)
                     notes = (notes.replace(OOS_PAUSE_NOTE, oos_note) if OOS_PAUSE_NOTE in notes
                              else f"{oos_note} | {notes}" if notes else oos_note)
-                    if outcome == "ended":
-                        this_auto_ended = True
-                        auto_ended.append({"title": title, "item_id": oos_iid, "row": sheet_row})
-                        logger.info(f"  Auto-ended OOS listing: {title[:50]} (eBay {oos_iid})")
+                    if outcome in OOS_HANDLED:
+                        oos_done = True
+                        oos_handled.append({"title": title, "item_id": oos_iid, "row": sheet_row,
+                                            "outcome": outcome})
+                        logger.info(f"  OOS listing {outcome}: {title[:50]} (eBay {oos_iid})")
                     elif outcome == "auth":
-                        stop_auto_end = True
-                        _notify("🚨 <b>eBay token rejected</b> during auto-end (Costco OOS) — renew "
+                        stop_auto_hide = True
+                        _notify("🚨 <b>eBay token rejected</b> while hiding an OOS listing — renew "
                                 "EBAY_AUTH_TOKEN in .env. Remaining OOS listings this run were NOT "
-                                "ended; end them by hand.")
+                                "hidden; set their eBay quantity to 0 by hand.")
 
             # Sale columns X (badge) / AW (regular price): refreshed while on sale, cleared when
             # the sale is gone. A scrape with no price never touches them.
@@ -418,8 +525,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                          coupon_type=costco_data.get("coupon_type") or "",
                          coupon_label=costco_data.get("coupon_label") or "")
 
-            # Collect items needing action (an auto-ended OOS listing needs none — summary below)
-            if this_auto_ended:
+            # Collect items needing action (a handled OOS listing needs none — summary below)
+            if oos_done:
                 if sale_item:
                     urgent_items.append(sale_item)
             elif reason_code not in ("ok", "ebay_url_detected"):
@@ -441,13 +548,18 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
 
     logger.info(f"Active monitor complete. Checked: {checked} | Urgent: {len(urgent_items)}")
 
-    if auto_ended:
-        lines = [f"⛔ <b>Auto-ended {len(auto_ended)} OOS listing(s) on eBay</b> (Costco out of stock):"]
-        lines += [f"• {html.escape(a['title'][:40])} (row {a['row']}, eBay {a['item_id']})"
-                  for a in auto_ended]
-        lines.append("Rows stay PAUSED_OOS; the daily sweep flags a restock — relist on eBay then.")
+    if oos_handled:
+        tag = {"hidden": "", "ended_by_ebay": " ⚠️ eBay ENDED it (not GTC / Out of Stock off) — relist on restock",
+               "already_off": " (already off eBay — nothing sent)"}
+        n_hidden = sum(a["outcome"] == "hidden" for a in oos_handled)
+        lines = [f"🙈 <b>Costco out of stock — hid {n_hidden} eBay listing(s) (quantity 0)</b>"
+                 if n_hidden else "🙈 <b>Costco out of stock on live listing(s)</b>"]
+        lines += [f"• {html.escape(a['title'][:40])} (row {a['row']}, eBay {a['item_id']}){tag[a['outcome']]}"
+                  for a in oos_handled]
+        lines.append("Rows are PAUSED_OOS; the daily sweep restores the quantity when Costco restocks "
+                     "(if it's still profitable).")
         _notify("\n".join(lines))
-        logger.info(f"Auto-ended {len(auto_ended)} OOS listing(s)")
+        logger.info(f"OOS handled on eBay: {len(oos_handled)} listing(s), {n_hidden} hidden")
 
     # ── One-tap reprice prompts (sale end / cost rise on a live listing) ──────
     # Saved first so the bot can re-send a prompt that failed to send or was ignored.
@@ -773,7 +885,9 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     """
     Handles APPROVED, PAUSED_OOS, and PAUSED_MARGIN rows once per day:
     - APPROVED:       verify Costco stock, ensure copy exists -> promote to READY
-    - PAUSED_OOS:     check if restocked -> promote to WATCH
+    - PAUSED_OOS:     check if restocked -> promote to WATCH; a listing the active monitor hid
+                      (qty 0, data/.oos_hidden.json) gets its eBay quantity restored -> ACTIVE
+                      when still profitable (_restore_oos_listing)
     - PAUSED_MARGIN:  check if margin recovered -> promote to WATCH
     Also promotes PAUSED_SEASONAL/PAUSED_DEMAND rows whose re_eval_date has passed -> PENDING.
     Sends alerts only when something changes.
@@ -815,7 +929,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     products_need_copy = []
     copy_row_map       = []
     oos_recovered      = []
-    relist_needed      = []   # restocked rows whose eBay listing the monitor auto-ended on OOS
+    oos_restore_lines  = {"restored": [], "needs_you": [], "wait": []}   # hidden-on-OOS restocks
     margin_recovered   = []
     re_eval_promoted   = []
 
@@ -938,16 +1052,23 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                     _, reason_code, notes = determine_status(
                         status, stock_status, None, False, None,
                     )
-                    if reason_code == "restock":
-                        # Auto-ended on OOS by the active monitor? col Q now points at a dead
-                        # listing — say so, or it goes ACTIVE again unlisted.
-                        ended_iid = extract_item_id(safe_get(row, col_to_idx(COL["ebay_listing_url"])))
-                        ended = sched.pop_oos_ended(ended_iid) if ended_iid else None
-                        if ended:
-                            notes = (f"{notes} | eBay item {ended_iid} was auto-ended "
-                                     f"{(ended.get('ended_at') or '')[:10]} for OOS — Relist it on "
-                                     "eBay, then update col Q")
-                            relist_needed.append({"title": title, "row": sheet_row, "item_id": ended_iid})
+                    oos_iid = extract_item_id(safe_get(row, col_to_idx(COL["ebay_listing_url"])))
+                    hidden_rec = sched.get_oos_hidden(oos_iid) if oos_iid else None
+                    if reason_code == "restock" and hidden_rec:
+                        # The monitor hid this listing (qty 0) on OOS — bring it back if profitable
+                        new_st, notes, line, kind = _restore_oos_listing(
+                            service, row, COL, categories, costco_data, title, category, sheet_row,
+                            oos_iid, hidden_rec)
+                        if line:
+                            oos_restore_lines[kind].append(line)
+                        if new_st:
+                            updates.append((COL["status"], new_st))
+                            sched.pop_oos_hidden(oos_iid)
+                            oos_recovered.append({"title": title, "row": sheet_row})
+                            logger.info(f"  PAUSED_OOS -> {new_st} (restocked, {kind})")
+                        else:
+                            logger.info(f"  PAUSED_OOS held — {notes}")
+                    elif reason_code == "restock":
                         updates.append((COL["status"], "WATCH"))
                         oos_recovered.append({"title": title, "row": sheet_row})
                         logger.info(f"  PAUSED_OOS -> WATCH (restocked)")
@@ -1019,18 +1140,24 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     # ── Alerts ────────────────────────────────────────────────────────────────
     if ready_items:
         send_ready_to_list_alert(ready_items, run_time=run_time)
-    if relist_needed:
-        lines = [f"♻️ <b>Back in stock at Costco — {len(relist_needed)} auto-ended listing(s) to relist:</b>"]
-        lines += [f"• {html.escape(r['title'][:40])} (row {r['row']}, old eBay {r['item_id']})"
-                  for r in relist_needed]
-        lines.append("Rows moved to WATCH. Use Relist on eBay, then put the new item URL in col Q.")
+    if any(oos_restore_lines.values()):
+        lines = []
+        if oos_restore_lines["restored"]:
+            lines.append(f"♻️ <b>Back in stock — restored {len(oos_restore_lines['restored'])} eBay "
+                         "listing(s)</b> (now ACTIVE):")
+            lines += oos_restore_lines["restored"]
+        if oos_restore_lines["needs_you"]:
+            lines.append(f"⚠️ <b>Back in stock — {len(oos_restore_lines['needs_you'])} need you</b> "
+                         "(moved to WATCH):")
+            lines += oos_restore_lines["needs_you"]
+        lines += oos_restore_lines["wait"]
         _notify("\n".join(lines))
 
     changes = len(ready_items) + len(newly_paused) + len(oos_recovered) + len(margin_recovered) + len(re_eval_promoted) + len(stale_scored)
     if changes > 0:
         summary_rows = [
             ("Ready to list (new)",        len(ready_items),      "#007aff"),
-            ("Restocked -> WATCH",          len(oos_recovered),    "#34c759"),
+            ("Restocked -> WATCH/ACTIVE",   len(oos_recovered),    "#34c759"),
             ("Margin recovered -> WATCH",   len(margin_recovered), "#34c759"),
             ("Re-eval date -> PENDING",     len(re_eval_promoted), "#ff9500"),
             ("Stale SCORED -> PENDING",     len(stale_scored),     "#ff9500"),

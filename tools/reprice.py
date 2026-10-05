@@ -242,8 +242,12 @@ def log_revise(service, result: dict, *, title="", row=None, old_price=None, sou
     """
     old = f"${float(old_price):.2f}" if old_price not in (None, "") else "?"
     new = f"${float(result['price']):.2f}" if result.get("price") is not None else "?"
-    what = (f"item {result.get('item_id')} {old}→{new}" if action == "reprice"
-            else f"END item {result.get('item_id')}")
+    iid = result.get("item_id")
+    what = {"reprice": f"item {iid} {old}→{new}",
+            "end": f"END item {iid}",
+            "oos_hide": f"HIDE item {iid} (qty 0)",
+            "oos_restore": f"RESTORE item {iid} ({result.get('message') or 'qty ?'})",
+            }.get(action, f"{action.upper()} item {iid}")
     if result.get("ok"):
         status = "ok"
         notes = f"{what} | {(title or '')[:40]} (row {row})"

@@ -20,7 +20,10 @@ business:
   ebay_sync:
     auto_reprice: true
     auto_reprice_max_jump_pct: 0.50
-    # End a live eBay listing automatically when Costco goes OOS (avoid unfilled orders). false = alert only.
+    # Costco OOS on a live listing -> set its eBay quantity to 0 (ReviseInventoryStatus). With the
+    # account's Out of Stock setting + GTC listings eBay HIDES it (watchers/rank kept); the daily
+    # sweep restores the quantity on restock if still profitable. false = alert only.
+    # (Key name kept from the first version, which ended the listing.)
     auto_end_oos: true
 
   # Member-Only Savings discovery (--mode savings). scrape_limit = max product pages opened per run

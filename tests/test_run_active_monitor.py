@@ -60,15 +60,22 @@ def _scrape(price, on_sale, original=None, savings=None, expires=None,
 def harness(monkeypatch):
     calls = {"writes": [], "urgent": [], "expiry": [], "sales": [], "recorded": [],
              "prompts": [], "pending": [], "ended": [], "revise_log": [], "notify": []}
-    # end_fixed_price result per call (list consumed in order; default ok) — never reaches eBay
-    state_end = {"results": []}
+    # set_quantity_zero result per call (list consumed in order; default ok) + the GetItem view
+    # of the listing — never reaches eBay. end_fixed_price must never be called on OOS.
+    state_end = {"results": [], "info": None}
 
-    def _end(item_id, reason="NotAvailable"):
+    def _hide(item_id):
         calls["ended"].append(item_id)
         res = state_end["results"].pop(0) if state_end["results"] else {"ok": True}
         return {"item_id": item_id, "price": None, "error_kind": None, "error_code": "",
-                "message": "", **res}
-    monkeypatch.setattr(sch, "end_fixed_price", _end)
+                "message": "quantity 0", **res}
+    monkeypatch.setattr(sch, "set_quantity_zero", _hide)
+    monkeypatch.setattr(sch, "fetch_item_price", lambda iid: {
+        "ok": True, "item_id": iid, "price": 59.99, "listing_status": "Active",
+        "quantity_available": 7, "listing_duration": "GTC", "out_of_stock_control": True,
+        "error_kind": None, "error_code": "", "message": "", **(state_end["info"] or {})})
+    monkeypatch.setattr(sch, "end_fixed_price",
+                        lambda *a, **k: pytest.fail("EndItem must not be used for OOS"))
     monkeypatch.setattr(sch, "log_revise", lambda svc, res, **k: calls["revise_log"].append((res, k)))
     monkeypatch.setattr(sch, "_notify", lambda text: calls["notify"].append(text) or True)
     state = {"rows": [], "scrape": None}
@@ -94,11 +101,11 @@ def harness(monkeypatch):
     monkeypatch.setattr(sch, "save_pending", lambda item: calls["pending"].append(item))
     monkeypatch.setattr(sch, "datetime", _FixedDT)
 
-    def run(rows, scrape, only_rows=None, config=CONFIG, end_results=()):
+    def run(rows, scrape, only_rows=None, config=CONFIG, end_results=(), item_info=None):
         for key in calls:
             calls[key].clear()
         state["rows"], state["scrape"] = rows, scrape
-        state_end["results"] = list(end_results)
+        state_end["results"], state_end["info"] = list(end_results), item_info
         sch.run_active_monitor(config, COL, object(), "Product Tracker", START_ROW, 500,
                                only_rows=only_rows)
         return calls
@@ -339,7 +346,7 @@ def test_recent_scheduled_reprice_suppresses_reactive_prompt(harness):
     assert calls["prompts"] == []
 
 
-# ── auto-end on Costco OOS (business.ebay_sync.auto_end_oos) ─────────────────
+# ── auto-hide on Costco OOS (business.ebay_sync.auto_end_oos) ────────────────
 
 EBAY_URL_2 = "https://www.ebay.com/itm/210987654321"
 
@@ -348,7 +355,7 @@ def _oos(source="inventory_api"):
     return _scrape(31.99, False, stock_status="OUT OF STOCK", stock_source=source)
 
 
-def test_oos_live_listing_is_ended_on_ebay_and_not_alerted(harness):
+def test_oos_live_listing_is_hidden_qty_zero_and_not_alerted(harness):
     sched.schedule_action("123456789012", "reprice", {"target": 50.99,
                           "sale_end_ts": "2099-01-01T00:00:00+00:00"})
     from tools import reprice
@@ -356,18 +363,62 @@ def test_oos_live_listing_is_ended_on_ebay_and_not_alerted(harness):
     calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], _oos())
     assert calls["ended"] == ["123456789012"]
     (res, kw), = calls["revise_log"]
-    assert kw["source"] == "active_oos" and kw["action"] == "end" and kw["row"] == START_ROW
+    assert kw["source"] == "active_oos" and kw["action"] == "oos_hide" and kw["row"] == START_ROW
     _, w = _written(calls)
     assert w[COL["status"]] == "PAUSED_OOS"                       # sweep keeps watching for restock
-    assert "ended automatically" in w[COL["tier_summary"]]
+    assert w[COL["tier_summary"]].startswith("OUT OF STOCK — eBay listing hidden (quantity 0)")
     assert "pause eBay listing" not in w[COL["tier_summary"]]
     assert calls["urgent"] == []                                  # nothing for Jay to do
     (summary,) = calls["notify"]
-    assert "Auto-ended 1 OOS listing" in summary and "Energy Shot" in summary
-    # follow-ups for a dead listing are dropped; restock note will know it was ended
+    assert "hid 1 eBay listing" in summary and "Energy Shot" in summary
+    # follow-ups for a hidden listing are dropped; the sweep knows what to restore
     assert sched.get_action("123456789012") is None
     assert reprice.get_pending("123456789012") is None
-    assert sched.pop_oos_ended("123456789012")["row"] == START_ROW
+    rec = sched.get_oos_hidden("123456789012")
+    assert rec["row"] == START_ROW and rec["prev_qty"] == 7 and rec["hidden"] is True
+
+
+@pytest.mark.parametrize("info, why", [
+    ({"listing_duration": "Days_30"}, "Days_30, not GTC"),
+    ({"out_of_stock_control": False}, "Out of Stock control is off"),
+])
+def test_qty_zero_on_non_gtc_or_oos_control_off_says_ebay_ended_it(harness, info, why):
+    calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], _oos(), item_info=info)
+    _, w = _written(calls)
+    assert why in w[COL["tier_summary"]] and "ENDED" in w[COL["tier_summary"]]
+    assert calls["urgent"] == []
+    assert "eBay ENDED it" in calls["notify"][0]
+    assert sched.get_oos_hidden("123456789012")["hidden"] is False
+
+
+def test_listing_already_ended_on_ebay_sends_nothing(harness):
+    calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], _oos(),
+                    item_info={"listing_status": "Completed"})
+    assert calls["ended"] == [] and calls["revise_log"] == []
+    _, w = _written(calls)
+    assert w[COL["status"]] == "PAUSED_OOS" and "already Completed" in w[COL["tier_summary"]]
+    assert calls["urgent"] == []
+
+
+def test_getitem_down_still_hides(harness):
+    calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], _oos(),
+                    item_info={"ok": False, "price": None, "listing_status": "",
+                               "quantity_available": None, "listing_duration": "",
+                               "out_of_stock_control": None, "error_kind": "network"})
+    assert calls["ended"] == ["123456789012"] and calls["urgent"] == []
+    assert sched.get_oos_hidden("123456789012")["prev_qty"] is None
+
+
+def test_auth_error_on_getitem_stops_auto_hide(harness):
+    rows = [_energy_row(31.99, ebay_url=EBAY_URL), _energy_row(31.99, ebay_url=EBAY_URL_2)]
+    calls = harness(rows, _oos(), item_info={"ok": False, "error_kind": "auth",
+                                             "error_code": "932", "message": "token expired"})
+    assert calls["ended"] == []
+    (_, items), = calls["urgent"]
+    assert len(items) == 2
+    assert "auto-hide FAILED (932" in items[0]["reason"]
+    assert "pause eBay listing" in items[1]["reason"]
+    assert len(calls["notify"]) == 1 and "token rejected" in calls["notify"][0]
 
 
 def test_oos_flag_off_alerts_only(harness):
@@ -384,49 +435,48 @@ def test_oos_without_item_id_alerts_only(harness):
     assert len(calls["urgent"]) == 1 and "pause eBay listing" in calls["urgent"][0][1][0]["reason"]
 
 
-def test_oos_from_page_text_only_is_not_ended(harness):
+def test_oos_from_page_text_only_is_not_hidden(harness):
     calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], _oos(source="dom"))
     assert calls["ended"] == []
     _, w = _written(calls)
     assert w[COL["status"]] == "PAUSED_OOS"
     (_, items), = calls["urgent"]
-    assert "NOT auto-ended" in items[0]["reason"]
+    assert "NOT auto-hidden" in items[0]["reason"]
 
 
-def test_auth_error_stops_auto_end_for_the_rest_of_the_run(harness):
+def test_auth_error_on_hide_stops_auto_hide_for_the_rest_of_the_run(harness):
     rows = [_energy_row(31.99, ebay_url=EBAY_URL), _energy_row(31.99, ebay_url=EBAY_URL_2)]
     calls = harness(rows, _oos(), end_results=[{"ok": False, "error_kind": "auth",
                                                 "error_code": "932", "message": "token expired"}])
     assert calls["ended"] == ["123456789012"]                     # second row never tried
     (_, items), = calls["urgent"]
-    assert len(items) == 2                                        # both stay manual
-    assert "auto-end FAILED (932" in items[0]["reason"]
+    assert len(items) == 2
+    assert "auto-hide FAILED (932" in items[0]["reason"]
     assert "pause eBay listing" in items[1]["reason"]
     assert len(calls["notify"]) == 1 and "token rejected" in calls["notify"][0]
-    assert sched.pop_oos_ended("123456789012") is None
+    assert sched.get_oos_hidden("123456789012") is None
 
 
 def test_non_auth_failure_falls_back_to_urgent_alert(harness):
     calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], _oos(),
-                    end_results=[{"ok": False, "error_kind": "api", "error_code": "291",
-                                  "message": "not allowed to end"}])
-    assert calls["ended"] == ["123456789012"]
+                    end_results=[{"ok": False, "error_kind": "api", "error_code": "21916799",
+                                  "message": "SKU required for variations"}])
     (_, items), = calls["urgent"]
-    assert "auto-end FAILED (291: not allowed to end)" in items[0]["reason"]
-    assert calls["notify"] == []                                  # no "auto-ended" summary
+    assert "auto-hide FAILED (21916799: SKU required" in items[0]["reason"]
+    assert calls["notify"] == []                                  # no "hid" summary
 
 
 def test_unexpected_exception_falls_back_to_urgent_alert(harness, monkeypatch):
-    def boom(item_id, reason="NotAvailable"):
+    def boom(item_id):
         raise RuntimeError("kaput")
-    monkeypatch.setattr(sch, "end_fixed_price", boom)
+    monkeypatch.setattr(sch, "set_quantity_zero", boom)
     calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], _oos())
     (_, items), = calls["urgent"]
-    assert "auto-end FAILED" in items[0]["reason"]
+    assert "auto-hide FAILED" in items[0]["reason"]
 
 
 @pytest.mark.parametrize("stock", ["Limited", "CHECK FAILED", "In Stock"])
-def test_non_oos_never_ends_listing(harness, stock):
+def test_non_oos_never_touches_listing(harness, stock):
     calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)],
                     _scrape(31.99, False, stock_status=stock, stock_source="inventory_api"))
     assert calls["ended"] == []

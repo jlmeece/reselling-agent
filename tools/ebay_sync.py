@@ -336,6 +336,7 @@ def _build_revise_xml(token: str, item_id: str, price: float) -> str:
 def _build_get_item_xml(token: str, item_id: str) -> str:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "Item.ItemID", "Item.ListingType", "Item.SellingStatus", "Item.Title",
+        "Item.Quantity", "Item.ListingDuration", "Item.OutOfStockControl",
     ))
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
@@ -468,16 +469,77 @@ def end_fixed_price(item_id, reason="NotAvailable") -> dict:
     return out
 
 
+def _build_qty_xml(token: str, item_id: str, qty: int) -> str:
+    """ReviseInventoryStatus body — quantity only (a multi-variation listing needs a SKU and
+    is rejected by eBay; the error surfaces to the caller)."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<ReviseInventoryStatusRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        "<InventoryStatus>"
+        f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"<Quantity>{int(qty)}</Quantity>"
+        "</InventoryStatus>"
+        "</ReviseInventoryStatusRequest>"
+    )
+
+
+def set_quantity(item_id, qty) -> dict:
+    """
+    Set a live listing's available quantity via ReviseInventoryStatus. qty 0 + the account's
+    Out of Stock setting + a GTC listing = listing HIDDEN (watchers, sales history and search
+    rank kept); restoring qty > 0 brings it back. Without the setting, or on a fixed-duration
+    listing, eBay ENDS a qty-0 listing. Same return shape as end_fixed_price:
+    {ok, item_id, price (always None), error_kind, error_code, message}. Never raises.
+    Idempotent — setting the same quantity twice is safe.
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
+           "error_kind": None, "error_code": "", "message": ""}
+    try:
+        q = int(qty)
+        if q != float(qty):
+            q = None
+    except (TypeError, ValueError):
+        q = None
+    if not iid or q is None or q < 0:
+        out.update(error_kind="invalid", message=f"refused — item_id={item_id!r} qty={qty!r}")
+        logger.error(f"set_quantity: {out['message']}")
+        return out
+    try:
+        root, err = _call("ReviseInventoryStatus", lambda tok: _build_qty_xml(tok, iid, q))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        level = logger.critical if err["error_kind"] == "auth" else logger.error
+        level(f"set_quantity: item {iid} -> {q} FAILED [{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    out["ok"] = True
+    out["message"] = f"quantity {q}"
+    logger.info(f"set_quantity: item {iid} quantity -> {q}")
+    return out
+
+
+def set_quantity_zero(item_id) -> dict:
+    """Hide a live listing (quantity 0) — see set_quantity."""
+    return set_quantity(item_id, 0)
+
+
 def fetch_item_price(item_id) -> dict:
     """
     Live Buy It Now price of one listing via GetItem — the reprice guard reads this rather
     than col H, which Jay edits by hand and can be stale.
-    Returns {ok, item_id, price, listing_status, listing_type, error_kind, error_code, message}.
-    Never raises.
+    Returns {ok, item_id, price, listing_status, listing_type, quantity_available,
+    listing_duration, out_of_stock_control, error_kind, error_code, message}.
+    quantity_available = Quantity - QuantitySold (None if unknown); listing_duration e.g. "GTC";
+    out_of_stock_control True/False, None when eBay didn't send it. Never raises.
     """
     iid = extract_item_id(item_id)
     out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
            "listing_status": "", "listing_type": "",
+           "quantity_available": None, "listing_duration": "", "out_of_stock_control": None,
            "error_kind": None, "error_code": "", "message": ""}
     if not iid:
         out.update(error_kind="invalid", message=f"bad item id {item_id!r}")
@@ -497,6 +559,13 @@ def fetch_item_price(item_id) -> dict:
         out["listing_status"] = _text(status, "ListingStatus")
     if item is not None:
         out["listing_type"] = _text(item, "ListingType")
+        out["listing_duration"] = _text(item, "ListingDuration")
+        oosc = _text(item, "OutOfStockControl").lower()
+        out["out_of_stock_control"] = {"true": True, "false": False}.get(oosc)
+        total = _num(_text(item, "Quantity"), int, None)
+        sold = _num(_text(status, "QuantitySold"), int, 0) if status is not None else 0
+        if total is not None:
+            out["quantity_available"] = max(total - (sold or 0), 0)
     out["ok"] = out["price"] is not None
     if not out["ok"]:
         out.update(error_kind="api", message="GetItem returned no CurrentPrice")

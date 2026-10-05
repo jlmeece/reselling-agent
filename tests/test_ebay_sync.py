@@ -909,6 +909,99 @@ def test_end_invalid_id_never_posts(monkeypatch, creds, item_id):
     assert out["ok"] is False and out["error_kind"] == "invalid"
 
 
+# ── set_quantity (OOS hide / restock restore via ReviseInventoryStatus) ──────
+
+def _qty_resp(ack="Success", errors=""):
+    return (f'<ReviseInventoryStatusResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>{ack}</Ack>'
+            f"{errors}<InventoryStatus><ItemID>123456789012</ItemID><Quantity>0</Quantity>"
+            "</InventoryStatus></ReviseInventoryStatusResponse>")
+
+
+@pytest.mark.parametrize("qty", [0, 7])
+def test_build_qty_xml_changes_only_quantity(qty):
+    xml = ebay_sync._build_qty_xml("a<b", "123456789012", qty)
+    assert '<ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents">' in xml
+    assert "<eBayAuthToken>a&lt;b</eBayAuthToken>" in xml
+    assert (f"<InventoryStatus><ItemID>123456789012</ItemID><Quantity>{qty}</Quantity>"
+            "</InventoryStatus>") in xml
+    assert "StartPrice" not in xml and "EndingReason" not in xml
+
+
+def test_set_quantity_zero_posts_revise_inventory_status(monkeypatch, creds):
+    sent = []
+
+    def fake(req, timeout=None):
+        sent.append(req)
+        return FakeResp(_qty_resp())
+
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", fake)
+    out = ebay_sync.set_quantity_zero("https://www.ebay.com/itm/123456789012")
+    assert out["ok"] is True and out["item_id"] == "123456789012" and out["price"] is None
+    assert out["message"] == "quantity 0"
+    h = {k.lower(): v for k, v in sent[0].header_items()}
+    assert h["x-ebay-api-call-name"] == "ReviseInventoryStatus"
+    assert b"<Quantity>0</Quantity>" in sent[0].data
+
+
+@pytest.mark.parametrize("code", ["931", "932", "16110"])
+def test_set_quantity_auth_error_is_loud(monkeypatch, creds, logs, code):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_qty_resp("Failure", _err(code, "token"))))
+    out = ebay_sync.set_quantity("123456789012", 5)
+    assert out["ok"] is False and out["error_kind"] == "auth" and out["error_code"] == code
+    assert any("CRITICAL" in m for m in logs)
+
+
+def test_set_quantity_api_error(monkeypatch, creds):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_qty_resp("Failure", _err("21916799", "SKU needed"))))
+    out = ebay_sync.set_quantity("123456789012", 0)
+    assert out["ok"] is False and out["error_kind"] == "api" and out["error_code"] == "21916799"
+
+
+@pytest.mark.parametrize("item_id,qty", [
+    ("", 0), ("abc", 0), ("https://evil.com/itm/123456789012", 0),
+    ("123456789012", -1), ("123456789012", None), ("123456789012", "x"), ("123456789012", 2.5),
+])
+def test_set_quantity_invalid_input_never_posts(monkeypatch, creds, item_id, qty):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.set_quantity(item_id, qty)
+    assert out["ok"] is False and out["error_kind"] == "invalid"
+
+
+def test_fetch_item_price_reads_quantity_duration_and_oos_control(monkeypatch, creds):
+    sent = []
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            "<ItemID>123456789012</ItemID><ListingType>FixedPriceItem</ListingType>"
+            "<ListingDuration>GTC</ListingDuration><OutOfStockControl>true</OutOfStockControl>"
+            "<Quantity>12</Quantity>"
+            '<SellingStatus><CurrentPrice currencyID="USD">41.48</CurrentPrice>'
+            "<QuantitySold>5</QuantitySold><ListingStatus>Active</ListingStatus></SellingStatus>"
+            "</Item></GetItemResponse>")
+
+    def fake(req, timeout=None):
+        sent.append(req)
+        return FakeResp(body)
+
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", fake)
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["quantity_available"] == 7
+    assert out["listing_duration"] == "GTC" and out["out_of_stock_control"] is True
+    for sel in (b"Item.Quantity", b"Item.ListingDuration", b"Item.OutOfStockControl"):
+        assert b"<OutputSelector>" + sel + b"</OutputSelector>" in sent[0].data
+
+
+def test_fetch_item_price_missing_quantity_fields_are_unknown(monkeypatch, creds):
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            '<SellingStatus><CurrentPrice currencyID="USD">41.48</CurrentPrice>'
+            "<ListingStatus>Active</ListingStatus></SellingStatus></Item></GetItemResponse>")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", lambda *a, **k: FakeResp(body))
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["ok"] and out["quantity_available"] is None
+    assert out["listing_duration"] == "" and out["out_of_stock_control"] is None
+
+
 # ── auto-reprice hard breaches to break-even ──────────────────────────────────
 
 @pytest.fixture
