@@ -21,7 +21,7 @@ The sync itself never touches eBay data and never changes any price. Run via
 
 The ONLY eBay writes in this module are revise_fixed_price() (ReviseFixedPriceItem) and
 end_fixed_price() (EndItem). Both run only for something Jay approved with a Telegram tap —
-"✓ Reprice" (immediately) or a scheduled "Reprice / End at sale end" (applied by
+"✓ Reprice" (immediately) or a scheduled "Reprice / Hide at sale end" (applied by
 `--mode apply_scheduled` after a live Costco re-check). fetch_item_price() (GetItem) is the
 read-only guard.
 
@@ -440,7 +440,9 @@ def end_fixed_price(item_id, reason="NotAvailable") -> dict:
     """
     End a live listing via EndItem. Same return shape as revise_fixed_price:
     {ok, item_id, price (always None), error_kind, error_code, message}. Never raises.
-    Called ONLY for an "End listing" action Jay approved with a tap (scheduled apply).
+    Currently UNUSED (2026-10-05): OOS and the scheduled sale-end action both hide the listing
+    with set_quantity_zero instead, which keeps watchers and search rank. Kept for a future
+    explicit "end for good" action.
     Error 1047 (already ended) counts as ok — e.g. a retried call whose first attempt landed.
     """
     iid = extract_item_id(item_id)

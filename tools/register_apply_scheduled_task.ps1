@@ -1,7 +1,7 @@
 # register_apply_scheduled_task.ps1 - (re)register the WAT-ApplyScheduled scheduled task.
 # Idempotent: -Force replaces any existing task of the same name.
 # Runs `scheduler.py --mode apply_scheduled` every 10 minutes, all day, as the current user,
-# hidden, no overlap. Each tick (1) sends "Reprice / End at sale end" prompts for ACTIVE
+# hidden, no overlap. Each tick (1) sends "Reprice / Hide at sale end" prompts for ACTIVE
 # listings whose Costco sale ends within 24h and (2) applies actions Jay approved whose sale end
 # has passed, after a live Costco re-check. A quiet tick (nothing due) is a few seconds, never
 # opens Chrome, never takes the scheduler lock and writes no Run Log row. When an action IS due

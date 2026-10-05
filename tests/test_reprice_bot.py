@@ -223,7 +223,7 @@ def test_sched_end_stores_end_action(env):
     sched.record_prompt(_prompt())
     text, _ = _final(_tap(ITEM_ID, action=tb.cb_reprice_schedend))
     assert sched.get_action(ITEM_ID)["action"] == "end"
-    assert "END the listing" in text
+    assert "HIDE the listing (quantity 0)" in text
 
 
 def test_sched_refuses_without_prompt_or_after_end(env):

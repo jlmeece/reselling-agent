@@ -66,12 +66,12 @@ def env(monkeypatch):
         return st["revise"] or {"ok": True, "item_id": i, "price": p, "error_kind": None,
                                 "error_code": "", "message": ""}
 
-    def end(i):
-        st["calls"].append(("end", i))
+    def hide(i):
+        st["calls"].append(("hide", i))
         return st["end"] or {"ok": True, "item_id": i, "price": None, "error_kind": None,
-                             "error_code": "", "message": "ended"}
+                             "error_code": "", "message": "quantity 0"}
     monkeypatch.setattr(sch, "revise_fixed_price", revise)
-    monkeypatch.setattr(sch, "end_fixed_price", end)
+    monkeypatch.setattr(sch, "set_quantity_zero", hide)
     monkeypatch.setattr(sch, "safe_write_row",
                         lambda svc, sheet, row, pairs: st["writes"].append((row, dict(pairs))))
     monkeypatch.setattr(sch, "log_revise", lambda svc, res, **k: st["logs"].append((res, k)))
@@ -115,6 +115,8 @@ def test_prestage_sends_schedule_prompt_once(env):
     assert item["target"] == 50.99 and item["sale_end_ts"] == END.isoformat()
     datas = [b["callback_data"] for r in kb["inline_keyboard"] for b in r]
     assert datas == [f"reprice:sched:{ITEM}:5099", f"reprice:schedend:{ITEM}", f"reprice:ignore:{ITEM}"]
+    labels = [b["text"] for r in kb["inline_keyboard"] for b in r]
+    assert "⛔ Hide listing at sale end" in labels
     assert "prompted" in res["notes"] and sched.get_prompt(ITEM)
     assert env["browser"] == 0                                   # pre-stage never needs Chrome
     env["run"](now=END - timedelta(hours=19))
@@ -235,15 +237,17 @@ def test_sheet_write_failure_after_ebay_success_is_reported(env, monkeypatch):
 
 # ── end ──────────────────────────────────────────────────────────────────────
 
-def test_due_end_ends_listing_and_marks_row_ended(env):
+def test_due_end_hides_listing_qty_zero_and_marks_row_paused_margin(env):
     _schedule("end")
     env["run"]()
-    assert env["calls"] == [("end", ITEM)]
+    assert env["calls"] == [("hide", ITEM)]                       # quantity 0, never EndItem
     (row, w), = env["writes"]
-    assert w[COL["status"]] == "ENDED" and w[COL["price_change"]] == ""
+    assert w[COL["status"]] == "PAUSED_MARGIN" and w[COL["price_change"]] == ""
     assert sched.get_action(ITEM) is None
-    assert env["logs"][0][1]["action"] == "end"
-    assert "listing ended" in env["notes"][0]
+    assert env["logs"][0][1]["action"] == "sale_end_hide"
+    assert env["logs"][0][1]["source"] == "scheduled"
+    assert "listing hidden (quantity 0)" in env["notes"][0]
+    assert "Row marked PAUSED_MARGIN." in env["notes"][0]
 
 
 def test_end_is_also_skipped_when_sale_extended(env):

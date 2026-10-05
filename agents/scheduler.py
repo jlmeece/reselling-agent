@@ -57,7 +57,7 @@ from tools.sale_monitor import (
     record_alerts, sale_column_updates, sale_end_alert, to_float, badge_verified,
 )
 from tools.sale_digest import select_sale_items, format_digest
-from tools.ebay_sync import (extract_item_id, end_fixed_price, fetch_item_price, revise_fixed_price,
+from tools.ebay_sync import (extract_item_id, fetch_item_price, revise_fixed_price,
                              set_quantity, set_quantity_zero, compute_net)
 from tools.reprice import (log_revise, pop_pending, restore_margin_price, save_pending,
                            schedule_keyboard, send_reprice_prompt)
@@ -167,7 +167,7 @@ def _auto_hide_oos(service, item_id, costco_data, title, sheet_row):
 
     def handled(outcome, note, prev_qty=None):
         try:
-            sched.cancel_action(item_id)    # a scheduled reprice/End at sale end would hit a hidden listing
+            sched.cancel_action(item_id)    # a scheduled reprice/Hide at sale end would hit a hidden listing
             pop_pending(item_id)            # ...and so would a re-posted "✓ Reprice" prompt
             sched.record_oos_hidden(item_id, title=title, row=sheet_row, prev_qty=prev_qty,
                                     hidden=(outcome == "hidden"))
@@ -685,6 +685,7 @@ def _apply_one(a, page, service, COL, sheet_name, start_row, end_row, threshold,
     GIVE_UP_HOURS). Every eBay call is logged via log_revise; auth errors alert loudly.
     """
     item_id, action = a["item_id"], a["action"]
+    log_action = "sale_end_hide" if action == "end" else action   # Run Log name
     title = a.get("title") or ""
     t = html.escape(title[:70])
     overdue_h = (now - (sched.parse_ts(a.get("apply_at")) or now)).total_seconds() / 3600
@@ -710,7 +711,7 @@ def _apply_one(a, page, service, COL, sheet_name, start_row, end_row, threshold,
         sched.cancel_action(item_id)
         log_revise(service, {"ok": False, "item_id": item_id, "price": a.get("target_price"),
                              "error_kind": "refused", "message": why},
-                   title=title, source="scheduled", action=action)
+                   title=title, source="scheduled", action=log_action)
         _notify(f"⚠️ Scheduled {action} dropped — {t}: eBay item {item_id} {html.escape(why)}. "
                 "Nothing was changed.")
         return f"{item_id}: dropped ({why})"
@@ -748,7 +749,7 @@ def _apply_one(a, page, service, COL, sheet_name, start_row, end_row, threshold,
                                         bool(safe_get(row, col_to_idx(COL["regular_price"]))))
 
     def eb_fail(res):
-        log_revise(service, res, title=title, row=row_num, source="scheduled", action=action)
+        log_revise(service, res, title=title, row=row_num, source="scheduled", action=log_action)
         err = f"{res.get('error_kind')} {res.get('error_code')}: {res.get('message', '')[:150]}"
         if res.get("error_kind") == "auth":
             if sched.set_last_error(item_id, err):
@@ -773,19 +774,22 @@ def _apply_one(a, page, service, COL, sheet_name, start_row, end_row, threshold,
             return str(e)
 
     if action == "end":
-        res = end_fixed_price(item_id)
+        # "Hide listing at sale end": quantity 0 (ReviseInventoryStatus), not EndItem — with Jay's
+        # Out of Stock setting + GTC the listing keeps watchers and search rank. Jay raises the
+        # quantity by hand to relist (no auto-restore on the PAUSED_MARGIN path).
+        res = set_quantity_zero(item_id)
         if not res["ok"]:
             return eb_fail(res)
-        err = write_sheet(cost_updates + [(COL["status"], "ENDED"), (COL["price_change"], "")])
+        err = write_sheet(cost_updates + [(COL["status"], "PAUSED_MARGIN"), (COL["price_change"], "")])
         sched.mark_applied(item_id, res, now=now)
         pop_pending(item_id)
         log_revise(service, {**res, "message": res.get("message", "") +
                              (f" | SHEET WRITE FAILED: {err}" if err else "")},
-                   title=title, row=row_num, source="scheduled", action="end")
-        _notify(f"⛔ <b>Sale ended — listing ended</b>\n{t}\nCostco back to ${price:.2f}. "
-                + ("Row marked ENDED." if not err else
-                   f"⚠️ Sheet not updated ({html.escape(err[:120])}) — set status ENDED by hand."))
-        return f"{item_id}: ended"
+                   title=title, row=row_num, source="scheduled", action="sale_end_hide")
+        _notify(f"⛔ <b>Sale ended — listing hidden (quantity 0)</b>\n{t}\nCostco back to ${price:.2f}. "
+                + ("Row marked PAUSED_MARGIN." if not err else
+                   f"⚠️ Sheet not updated ({html.escape(err[:120])}) — set status PAUSED_MARGIN by hand."))
+        return f"{item_id}: hidden"
 
     # action == "reprice"
     target = float(a["target_price"])
@@ -827,7 +831,7 @@ def run_apply_scheduled(config, COL, service, sheet_name, start_row, end_row, no
     """
     apply_scheduled mode (every 10 min, Task WAT-ApplyScheduled):
       1. pre-stage: ACTIVE listings whose Costco sale ends within PRESTAGE_LEAD_HOURS get the
-         "✓ Reprice / ⛔ End at sale end / Ignore" prompt (once per sale end).
+         "✓ Reprice / ⛔ Hide at sale end / Ignore" prompt (once per sale end).
       2. due actions (approved by a tap, apply_at <= now): take the scheduler lock, re-scrape
          each product live, then revise / end on eBay only if the sale is really over.
     Returns Run Log keys, or None when nothing happened (a quiet tick writes no Run Log row and
@@ -2209,7 +2213,7 @@ def main():
             "sale-digest:    ONE Telegram message of tracked items really on sale (read-only)\n"
             "sale-refresh:   Re-scrape non-ACTIVE rows with unverified sale badges (G/X/AW only)\n"
             "savings:        Scrape Costco Member-Only Savings -> update tracked sales, alert, add new PENDING rows\n"
-            "apply_scheduled: every 10 min — pre-stage sale-end prompts; apply approved reprice/End at sale end"
+            "apply_scheduled: every 10 min — pre-stage sale-end prompts; apply approved reprice/Hide at sale end"
         ),
     )
     parser.add_argument("--category", type=str, default=None,

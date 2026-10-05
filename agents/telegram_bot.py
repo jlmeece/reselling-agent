@@ -2066,7 +2066,7 @@ async def cb_activelist_pick(update, context, arg):
     scheduled = sched.get_action(item_id) if item_id else None
     if scheduled:
         what = (f"reprice to ${float(scheduled['target_price']):.2f}" if scheduled["action"] == "reprice"
-                else "END listing")
+                else "HIDE listing (qty 0)")
         lines.append(f"⏰ Scheduled: {what} at sale end ({sched.format_end(scheduled['apply_at'])})")
     await _send_screen(update, "\n".join(lines),
                        reply_markup=_active_action_kb(row_num, pending,
@@ -2327,7 +2327,7 @@ async def _schedule(update, context, item_id, action, target=None):
         when = sched.format_end(entry["apply_at"])
         t = html.escape((prompt.get("title") or "(untitled)")[:80])
         what = (f"reprice to <b>${float(entry['target_price']):.2f}</b>" if action == "reprice"
-                else "<b>END the listing</b>")
+                else "<b>HIDE the listing (quantity 0)</b>")
         logger.info(f"reprice schedule: {action} item {item_id} at {entry['apply_at']}")
         await query.edit_message_text(
             f"⏰ Scheduled: {what}\n<b>{t}</b>\nWhen the sale ends — {when} — after a live Costco "

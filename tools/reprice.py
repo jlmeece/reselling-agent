@@ -96,10 +96,10 @@ def reprice_keyboard(item_id, target, retry=False) -> dict:
 
 
 def schedule_keyboard(item_id, target) -> dict:
-    """Pre-stage (before the sale ends) buttons: schedule a reprice / an End, or ignore."""
+    """Pre-stage (before the sale ends) buttons: schedule a reprice / a hide (qty 0), or ignore."""
     rows = [[{"text": f"✓ Reprice to ${target:.2f} at sale end",
               "callback_data": f"reprice:sched:{item_id}:{_cents(target)}"}],
-            [{"text": "⛔ End listing at sale end", "callback_data": f"reprice:schedend:{item_id}"},
+            [{"text": "⛔ Hide listing at sale end", "callback_data": f"reprice:schedend:{item_id}"},
              {"text": "Ignore", "callback_data": f"reprice:ignore:{item_id}"}]]
     for row in rows:
         for b in row:
@@ -245,6 +245,7 @@ def log_revise(service, result: dict, *, title="", row=None, old_price=None, sou
     iid = result.get("item_id")
     what = {"reprice": f"item {iid} {old}→{new}",
             "end": f"END item {iid}",
+            "sale_end_hide": f"HIDE item {iid} (qty 0, sale end)",
             "oos_hide": f"HIDE item {iid} (qty 0)",
             "oos_restore": f"RESTORE item {iid} ({result.get('message') or 'qty ?'})",
             }.get(action, f"{action.upper()} item {iid}")

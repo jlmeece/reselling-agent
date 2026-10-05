@@ -1,12 +1,12 @@
 """
-Scheduled reprice / End listing — sale-end store, pre-stage eligibility, action store.
+Scheduled reprice / Hide listing (qty 0) — sale-end store, pre-stage eligibility, action store.
 
 Flow (see agents/scheduler.py run_apply_scheduled, every 10 min):
   1. run_active_monitor scrapes each ACTIVE row; the Costco price API's exact sale end
      (promotionEndDate -> scrape_costco()["sale_end_ts"], UTC ISO) is kept in
      data/.sale_end_times.json keyed by Costco product id (record_sale_end / clear_sale_end).
   2. PRESTAGE_LEAD_HOURS before that end, an ACTIVE row with an eBay item id in col Q gets a
-     Telegram prompt (prestage_candidates): "✓ Reprice at sale end" / "⛔ End at sale end" / Ignore.
+     Telegram prompt (prestage_candidates): "✓ Reprice at sale end" / "⛔ Hide listing at sale end" / Ignore.
   3. A tap stores an approved action in data/.scheduled_actions.json (schedule_action). Nothing
      is changed on eBay then.
   4. At apply_at (= the sale end) apply_scheduled re-scrapes the product LIVE and only revises /

@@ -61,7 +61,7 @@ def harness(monkeypatch):
     calls = {"writes": [], "urgent": [], "expiry": [], "sales": [], "recorded": [],
              "prompts": [], "pending": [], "ended": [], "revise_log": [], "notify": []}
     # set_quantity_zero result per call (list consumed in order; default ok) + the GetItem view
-    # of the listing — never reaches eBay. end_fixed_price must never be called on OOS.
+    # of the listing — never reaches eBay.
     state_end = {"results": [], "info": None}
 
     def _hide(item_id):
@@ -74,8 +74,6 @@ def harness(monkeypatch):
         "ok": True, "item_id": iid, "price": 59.99, "listing_status": "Active",
         "quantity_available": 7, "listing_duration": "GTC", "out_of_stock_control": True,
         "error_kind": None, "error_code": "", "message": "", **(state_end["info"] or {})})
-    monkeypatch.setattr(sch, "end_fixed_price",
-                        lambda *a, **k: pytest.fail("EndItem must not be used for OOS"))
     monkeypatch.setattr(sch, "log_revise", lambda svc, res, **k: calls["revise_log"].append((res, k)))
     monkeypatch.setattr(sch, "_notify", lambda text: calls["notify"].append(text) or True)
     state = {"rows": [], "scrape": None}
