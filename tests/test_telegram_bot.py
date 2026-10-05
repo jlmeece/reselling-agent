@@ -793,8 +793,8 @@ def test_format_top_opportunities_limits_to_n():
 
 def test_format_sale_urgency_section_sorts_soonest_first():
     rows = [
-        _make_dash_row(C="Later Sale", X="🔥 -$50 ends 12/31/26"),
-        _make_dash_row(C="Sooner Sale", X="🔥 -$50 ends 10/01/26"),
+        _make_dash_row(C="Later Sale", X="🔥 -$50 ends 9/24/26"),   # both inside the 7-day window
+        _make_dash_row(C="Sooner Sale", X="🔥 -$50 ends 9/20/26"),
     ]
     products = extract_dashboard_products(rows, _DASH_COL)
     now = datetime(2026, 9, 18, 12, 0)

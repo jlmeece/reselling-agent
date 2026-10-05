@@ -1259,7 +1259,7 @@ async def cmd_help(update, context):
         return
     text = (
         "<b>WAT Reselling Agent — Commands</b>\n\n"
-        "/menu — button-driven home screen (Dashboard, Search, Review, Alerts, Operations, Logs)\n"
+        "/menu — Dashboard (home screen; the button tray below has Review, Alerts, Sales, Run a Mode, Search)\n"
         "/start — show the persistent button keyboard\n"
         "/status — last run time, pass/fail, cookie age\n"
         "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, ebay_sync, sale-digest, savings, telegram_bot)\n"
@@ -1470,16 +1470,16 @@ _SHEET_UNREACHABLE_MSG = "Couldn't reach the product sheet right now — try aga
 
 
 def _home_inline_kb():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="menu:root")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")]])
 
 
-# ── Persistent home keyboard (spec Part 2) ─────────────────────────────────────
+# ── Persistent shortcut tray ────────────────────────────────────────────────────
 
 _HOME_KEYBOARD = ReplyKeyboardMarkup(
     [
-        ["📊 Dashboard", "🔍 Search"],
-        ["✅ Review", "🚨 Alerts"],
-        ["⚙️ Operations", "📋 Logs"],
+        ["✅ Review Queue", "🚨 Alerts"],
+        ["🔥 Sales on Now", "⚙️ Run a Mode"],
+        ["🔍 Search", "📊 Dashboard"],
     ],
     resize_keyboard=True,
 )
@@ -1500,7 +1500,7 @@ async def cmd_start(update, context):
 async def cmd_menu(update, context):
     if not _authorized(update, context.bot_data["chat_id"]):
         return
-    await cb_menu_root(update, context, None)
+    await cb_menu_dashboard(update, context, None)
 
 
 # ── Callback data scheme + router ───────────────────────────────────────────
@@ -1545,26 +1545,12 @@ async def on_callback(update, context):
             pass
 
 
-# ── Root menu / Dashboard screens ────────────────────────────────────────────
-
-async def cb_menu_root(update, context, arg):
-    context.user_data["awaiting_search"] = False
-    _clear_listing_state(context)
-    context.user_data["queue"] = None
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
-         InlineKeyboardButton("🔍 Search", callback_data="menu:search")],
-        [InlineKeyboardButton("✅ Review", callback_data="menu:review"),
-         InlineKeyboardButton("🚨 Alerts", callback_data="menu:alerts")],
-        [InlineKeyboardButton("⚙️ Operations", callback_data="menu:ops"),
-         InlineKeyboardButton("📋 Logs", callback_data="menu:logs")],
-    ])
-    await _send_screen(update, "🏠 Home — tap a screen:", reply_markup=kb)
-
+# ── Dashboard screens (the Dashboard is the home screen) ─────────────────────
 
 async def cb_menu_dashboard(update, context, arg):
     context.user_data["awaiting_search"] = False
     _clear_listing_state(context)
+    context.user_data["queue"] = None
     try:
         col_map, service, sheet_name, start, rows = _read_product_rows()
     except Exception as e:
@@ -1599,7 +1585,7 @@ async def cb_menu_dashboard(update, context, arg):
         [InlineKeyboardButton("📤 Export CSV", callback_data="job:export"),
          InlineKeyboardButton("💰 Spot Prices", callback_data="menu:spot")],
         [InlineKeyboardButton("📈 Category ROI", callback_data="menu:roi"),
-         InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+         InlineKeyboardButton("⚙️ Run a Mode", callback_data="menu:ops")],
     ])
     await _send_screen(update, text, reply_markup=kb)
 
@@ -1622,7 +1608,7 @@ async def cb_menu_sales(update, context, arg):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔁 Scrape sale dates", callback_data="queue:scrape"),
          InlineKeyboardButton("🔄 Refresh", callback_data="menu:sales")],
-        [InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+        [InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
     ])
     await _send_screen(update, text, reply_markup=kb)
 
@@ -1687,7 +1673,7 @@ async def cb_menu_stock(update, context, arg):
             callback_data=f"stock:relist:{p.get('row_num')}")])
     kb_rows.append([
         InlineKeyboardButton("🔄 Refresh", callback_data="menu:stock"),
-        InlineKeyboardButton("🏠 Home", callback_data="menu:root"),
+        InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
     ])
     await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(kb_rows))
 
@@ -1744,7 +1730,7 @@ def _search_action_kb(row_num, status):
             InlineKeyboardButton("🔍 Audit", callback_data=f"review:audit:{row_num}"),
         ])
     rows_.append([InlineKeyboardButton("🔍 Search Again", callback_data="menu:search")])
-    rows_.append([InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+    rows_.append([InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")])
     return InlineKeyboardMarkup(rows_)
 
 
@@ -1754,7 +1740,7 @@ def _search_match_buttons_kb(matches):
                                callback_data=f"search:pick:{m['row_num']}")]
         for m in matches
     ]
-    rows_.append([InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+    rows_.append([InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")])
     return InlineKeyboardMarkup(rows_)
 
 
@@ -1997,7 +1983,7 @@ def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None):
     return InlineKeyboardMarkup(rows + [
         [InlineKeyboardButton("🔴 End Listing", callback_data=f"ended:start:{row_num}")],
         [InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"),
-         InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+         InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
     ])
 
 
@@ -2048,7 +2034,7 @@ async def cb_activelist_show(update, context, arg):
     ]
     kb_rows.append([
         InlineKeyboardButton("🔄 Refresh", callback_data="activelist:show"),
-        InlineKeyboardButton("🏠 Home", callback_data="menu:root"),
+        InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
     ])
     await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(kb_rows))
 
@@ -2419,7 +2405,7 @@ def _review_card_kb(row_num):
          InlineKeyboardButton("⏸️ Pause", callback_data=f"review:pause:{row_num}")],
         [InlineKeyboardButton("🔍 Flag for review", callback_data=f"review:audit:{row_num}"),
          InlineKeyboardButton("⏭️ Skip", callback_data=f"review:skip:{row_num}")],
-        [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
+        [InlineKeyboardButton("✅ Done", callback_data="menu:dashboard")],
     ])
 
 
@@ -2428,7 +2414,7 @@ def _queue_dump_kb(kind):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(one, callback_data=f"queue:onepass:{kind}"),
          InlineKeyboardButton("🔁 Scrape sale dates", callback_data="queue:scrape")],
-        [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
+        [InlineKeyboardButton("✅ Done", callback_data="menu:dashboard")],
     ])
 
 
@@ -2640,7 +2626,7 @@ def _audit_card_kb(row_num):
         [InlineKeyboardButton("✅ Keep", callback_data=f"audit:keep:{row_num}"),
          InlineKeyboardButton("🗑️ Archive", callback_data=f"audit:delete:{row_num}")],
         [InlineKeyboardButton("⏭️ Skip", callback_data=f"audit:skip:{row_num}")],
-        [InlineKeyboardButton("🏠 Done", callback_data="menu:root")],
+        [InlineKeyboardButton("✅ Done", callback_data="menu:dashboard")],
     ])
 
 
@@ -2827,7 +2813,7 @@ async def cb_menu_alerts(update, context, arg):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🗂️ Audit Queue", callback_data="menu:audit")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="menu:alerts"),
-         InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+         InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
     ])
     await _send_screen(update, text, reply_markup=kb)
 
@@ -2870,7 +2856,8 @@ async def cb_menu_ops(update, context, arg):
         InlineKeyboardButton("🔗 eBay Hub", url="https://www.ebay.com/sh/ovw"),
     ])
     rows_.append([InlineKeyboardButton("🔄 Refresh", callback_data="menu:ops"),
-                  InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+                  InlineKeyboardButton("📋 Logs", callback_data="menu:logs")])
+    rows_.append([InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")])
     await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(rows_))
 
 
@@ -2954,7 +2941,7 @@ async def cb_menu_spot(update, context, arg):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Refresh", callback_data="menu:spot"),
          InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
-        [InlineKeyboardButton("🏠 Home", callback_data="menu:root")],
+        [InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
     ])
     await _send_screen(update, text, reply_markup=kb)
 
@@ -2975,7 +2962,7 @@ def _format_log_tail(mode):
 async def cb_menu_logs(update, context, arg):
     mode_buttons = [InlineKeyboardButton(m, callback_data=f"logs:show:{m}") for m in LOG_FILES]
     rows_ = [mode_buttons[i:i + 2] for i in range(0, len(mode_buttons), 2)]
-    rows_.append([InlineKeyboardButton("🏠 Home", callback_data="menu:root")])
+    rows_.append([InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")])
     await _send_screen(update, "📋 Pick a log:", reply_markup=InlineKeyboardMarkup(rows_))
 
 
@@ -2986,7 +2973,7 @@ async def cb_logs_show(update, context, arg):
         return
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton("📋 Logs", callback_data="menu:logs"),
-        InlineKeyboardButton("🏠 Home", callback_data="menu:root"),
+        InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
     ]])
     await _send_screen(update, _format_log_tail(mode), reply_markup=kb, parse_mode="HTML")
 
@@ -2994,10 +2981,15 @@ async def cb_logs_show(update, context, arg):
 # ── Free-text handler + persistent-keyboard label routing ───────────────────
 
 _HOME_LABEL_HANDLERS = {
-    "📊 Dashboard": cb_menu_dashboard,
-    "🔍 Search": cb_menu_search,
-    "✅ Review": cb_menu_review,
+    "✅ Review Queue": cb_menu_review,
     "🚨 Alerts": cb_menu_alerts,
+    "🔥 Sales on Now": cb_menu_sales,
+    "⚙️ Run a Mode": cb_menu_ops,
+    "🔍 Search": cb_menu_search,
+    "📊 Dashboard": cb_menu_dashboard,
+    # Old tray labels — a client keeps showing the previous tray until the bot
+    # sends a new keyboard, so these still route instead of hitting the fallback.
+    "✅ Review": cb_menu_review,
     "⚙️ Operations": cb_menu_ops,
     "📋 Logs": cb_menu_logs,
 }
@@ -3174,12 +3166,12 @@ async def on_text(update, context):
         return
 
     await update.message.reply_text(
-        "🏠 Use the buttons below, or /help for text commands.", reply_markup=_HOME_KEYBOARD
+        "Use the buttons below, or /help for text commands.", reply_markup=_HOME_KEYBOARD
     )
 
 
 _CALLBACK_ROUTES.update({
-    ("menu", "root"): cb_menu_root,
+    ("menu", "root"): cb_menu_dashboard,  # 🏠 Home buttons on old messages
     ("menu", "dashboard"): cb_menu_dashboard,
     ("menu", "search"): cb_menu_search,
     ("menu", "review"): cb_menu_review,

@@ -98,7 +98,7 @@ def test_confirm_with_url_writes_status_and_url_then_shows_home(sheet):
     assert sheet["writes"] == [(4, [("A", "ACTIVE"), ("E", "eBay"), ("Q", URL)])]
     text, markup = _screen(query)
     assert "Marked ACTIVE — monitoring" in text
-    assert "menu:root" in _buttons(markup)
+    assert "menu:dashboard" in _buttons(markup)
     assert "pending_listed" not in ctx.user_data
 
 
@@ -205,14 +205,37 @@ def test_cancel_clears_state_and_returns_home(sheet):
     ctx = _ctx({"awaiting_listing": {"row_num": 4, "title": "x"}, "pending_listed": {"row_num": 4}})
     asyncio.run(tb.cb_listed_cancel(update, ctx, "4"))
     assert "awaiting_listing" not in ctx.user_data and "pending_listed" not in ctx.user_data
-    assert "menu:root" in _buttons(_screen(query)[1])
+    assert "menu:dashboard" in _buttons(_screen(query)[1])
 
 
-def test_home_menu_clears_listing_state():
+def test_dashboard_clears_listing_state_even_if_sheet_unreachable(monkeypatch):
+    def _boom():
+        raise RuntimeError("sheet down")
+    monkeypatch.setattr(tb, "_read_product_rows", _boom)
     update, query = _query_update()
-    ctx = _ctx({"awaiting_listing": {"row_num": 4, "title": "x"}, "pending_listed": {"row_num": 4}})
-    asyncio.run(tb.cb_menu_root(update, ctx, None))
+    ctx = _ctx({"awaiting_listing": {"row_num": 4, "title": "x"}, "pending_listed": {"row_num": 4},
+                "queue": ["x"]})
+    asyncio.run(tb.cb_menu_dashboard(update, ctx, None))
     assert "awaiting_listing" not in ctx.user_data and "pending_listed" not in ctx.user_data
+    assert ctx.user_data["queue"] is None
+
+
+# ── shortcut tray / Dashboard-as-home ────────────────────────────────────────
+
+def test_every_tray_label_routes_to_a_handler():
+    labels = [getattr(b, "text", b) for r in tb._HOME_KEYBOARD.keyboard for b in r]
+    assert len(labels) == 6
+    for label in labels:
+        assert label in tb._HOME_LABEL_HANDLERS, label
+
+
+def test_old_home_buttons_still_route_to_dashboard():
+    assert tb._CALLBACK_ROUTES[("menu", "root")] is tb.cb_menu_dashboard
+
+
+def test_no_button_points_at_removed_home_screen():
+    with open(tb.__file__, encoding="utf-8") as f:
+        assert 'callback_data="menu:root"' not in f.read()
 
 
 def test_routes_registered():
