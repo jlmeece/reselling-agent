@@ -456,7 +456,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                     if outcome in OOS_HANDLED:
                         oos_done = True
                         oos_handled.append({"title": title, "item_id": oos_iid, "row": sheet_row,
-                                            "outcome": outcome})
+                                            "outcome": outcome,
+                                            "removed": bool(costco_data.get("removed"))})
                         logger.info(f"  OOS listing {outcome}: {title[:50]} (eBay {oos_iid})")
                     elif outcome == "auth":
                         stop_auto_hide = True
@@ -551,15 +552,25 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
     if oos_handled:
         tag = {"hidden": "", "ended_by_ebay": " ⚠️ eBay ENDED it (not GTC / Out of Stock off) — relist on restock",
                "already_off": " (already off eBay — nothing sent)"}
-        n_hidden = sum(a["outcome"] == "hidden" for a in oos_handled)
-        lines = [f"🙈 <b>Costco out of stock — hid {n_hidden} eBay listing(s) (quantity 0)</b>"
-                 if n_hidden else "🙈 <b>Costco out of stock on live listing(s)</b>"]
-        lines += [f"• {html.escape(a['title'][:40])} (row {a['row']}, eBay {a['item_id']}){tag[a['outcome']]}"
-                  for a in oos_handled]
-        lines.append("Rows are PAUSED_OOS; the daily sweep restores the quantity when Costco restocks "
-                     "(if it's still profitable).")
+        removed = [a for a in oos_handled if a.get("removed")]
+        oos_only = [a for a in oos_handled if not a.get("removed")]
+        lines = []
+        if removed:
+            lines.append(f"🚫 <b>Removed from Costco — {len(removed)} listing(s) hidden (quantity 0)</b>")
+            lines += [f"• {html.escape(a['title'][:40])} (row {a['row']}, eBay {a['item_id']}) — END THIS LISTING" for a in removed]
+        if oos_only:
+            n_hidden = sum(a["outcome"] == "hidden" for a in oos_only)
+            lines.append(f"🙈 <b>Costco out of stock — hid {n_hidden} eBay listing(s) (quantity 0)</b>"
+                         if n_hidden else "🙈 <b>Costco out of stock on live listing(s)</b>")
+            lines += [f"• {html.escape(a['title'][:40])} (row {a['row']}, eBay {a['item_id']}){tag[a['outcome']]}"
+                      for a in oos_only]
+        if removed:
+            lines.append("Removed items will NOT restock — end them on eBay permanently.")
+        if oos_only:
+            lines.append("OOS rows are PAUSED_OOS; the daily sweep restores quantity when Costco restocks (if still profitable).")
         _notify("\n".join(lines))
-        logger.info(f"OOS handled on eBay: {len(oos_handled)} listing(s), {n_hidden} hidden")
+        logger.info(f"OOS handled on eBay: {len(oos_handled)} listing(s), "
+                    f"{sum(a['outcome'] == 'hidden' for a in oos_handled)} hidden, {len(removed)} removed")
 
     # ── One-tap reprice prompts (sale end / cost rise on a live listing) ──────
     # Saved first so the bot can re-send a prompt that failed to send or was ignored.

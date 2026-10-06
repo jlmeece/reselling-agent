@@ -1114,6 +1114,7 @@ def scrape_costco(url, page):
         "image_urls": [], "title": None,
         "brand": None, "model": None, "dimensions": None,
         "item_number": None, "purchase_limit": None, "in_stock": False,
+        "removed": False,
         "on_sale": False, "sale_savings": None, "original_price": None,
         "sale_expires": None, "sale_end_ts": None, "coupon_type": None, "coupon_label": None,
         "free_shipping": False, "error": None, "http_status": None,
@@ -1172,8 +1173,14 @@ def scrape_costco(url, page):
         result["http_status"] = response.status if response else None
 
         if response and response.status >= 400:
-            result["error"] = f"HTTP {response.status}: blocked by server"
-            result["stock_status"] = "CHECK FAILED"
+            if response.status in (404, 410):
+                # 404/410 = the product is GONE from Costco, not a scrape failure.
+                result["removed"] = True
+                result["stock_status"] = "OUT OF STOCK"
+                result["error"] = f"Product removed from Costco (HTTP {response.status})"
+            else:
+                result["error"] = f"HTTP {response.status}: blocked by server"
+                result["stock_status"] = "CHECK FAILED"
             try:
                 page.goto("https://www.costco.com", timeout=15000, wait_until="domcontentloaded")
                 page.wait_for_timeout(1500)
@@ -1201,6 +1208,19 @@ def scrape_costco(url, page):
         if genuinely_blocked:
             result["error"] = f"Bot/CAPTCHA page ({len(html)} chars)"
             result["stock_status"] = "CHECK FAILED"
+            return result
+
+        # Soft 404: Costco sometimes returns HTTP 200 with a "product not found"
+        # page for delisted products. Treat it as removed, not a scrape failure.
+        _removed_markers = (
+            "product not found", "no longer available", "we couldn't find",
+            "page not found", "the product you are looking for",
+            "item is no longer available",
+        )
+        if any(m in page_lower for m in _removed_markers) and "add to cart" not in page_lower:
+            result["removed"] = True
+            result["stock_status"] = "OUT OF STOCK"
+            result["error"] = "Product removed from Costco (not-found page)"
             return result
 
         # Price (+ regular price / savings when discounted) from the intercepted API call
