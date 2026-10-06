@@ -817,14 +817,22 @@ def _parse_currency(raw):
 
 
 def _parse_sold(raw):
-    """Parse a units_sold cell ('3' or '3.0') to int; 0 when blank/unparseable."""
+    """Parse a units_sold cell to a non-negative integer count.
+
+    Rejects fractional or negative values (e.g. a dollar amount like '2599.99'
+    that leaked into col U) and returns 0, so one bad cell can't inflate the
+    realized-net or sold totals.
+    """
     raw = (raw or "").strip()
     if not raw:
         return 0
     try:
-        return int(float(raw.replace(",", "")))
+        v = float(raw.replace(",", "").replace("$", ""))
     except ValueError:
         return 0
+    if v < 0 or v != int(v):
+        return 0
+    return int(v)
 
 
 def _sku_tag(sku):
@@ -1980,7 +1988,7 @@ def _format_active_line(p):
     cost = _format_price(p.get("costco_cost"))
     price = _format_price(p.get("ebay_price"))
     net = _format_net_fragment(p.get("net_profit"), p.get("net_margin"))
-    units = (p.get("units_sold") or "").strip() or "0"
+    units = str(_parse_sold(p.get("units_sold")))
     return f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
@@ -2041,8 +2049,11 @@ async def cb_activelist_show(update, context, arg):
         f"🎯 Potential net (if each sells 1): ${potential_net:,.2f}",
         f"💰 Realized net: ${realized_net:,.2f} · 📦 sold {sold_total}",
     ]
-    for i, p in enumerate(items, 1):
+    _ACTIVE_LIST_MAX = 25
+    for i, p in enumerate(items[:_ACTIVE_LIST_MAX], 1):
         lines.append(f"{i}. {_format_active_line(p)}")
+    if len(items) > _ACTIVE_LIST_MAX:
+        lines.append(f"…and {len(items) - _ACTIVE_LIST_MAX} more (tap below for the rest)")
     text = "\n".join(lines)
     if len(text) > _MAX_MSG - 20:
         text = text[:_MAX_MSG - 40] + "\n[truncated]"
