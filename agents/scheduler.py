@@ -496,6 +496,23 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             # (an existing YES flag that is still needed is left alone — it used to be blanked
             #  on the very next quiet run)
 
+            # A re-scrape that reveals a losing ACTIVE listing is always urgent, even when
+            # it wasn't a clean "sale ended" event (stale sale badge, small cost drift).
+            # Without this, a negative margin only wrote a col T note and could sit
+            # unnoticed for days — the exact gap that let a listing go negative for a week.
+            if (status == "ACTIVE" and margin is not None and margin < 0
+                    and flag_update != PRICE_FLAG_YES and sale_item is None and new_price):
+                flag_update = PRICE_FLAG_YES
+                prompt = _reprice_prompt(row, COL, categories, status, title, category,
+                                         sheet_row, old, new_price, ebay_f, fee_f, ship_f)
+                if prompt:
+                    reprice_prompts.append(prompt)
+                sale_item = sale_end_alert(title, old, new_price, fee_f, ship_f, ebay_f,
+                                           row=sheet_row, category=category,
+                                           target=prompt["target"] if prompt else None)
+                notes = (f"losing money (margin {margin:.1%})"
+                         if notes in ("", "All clear") else f"{notes} | losing money (margin {margin:.1%})")
+
             if sale_note:
                 notes = sale_note if notes in ("", "All clear") else f"{notes} | {sale_note}"
 
