@@ -816,6 +816,17 @@ def _parse_currency(raw):
         return None
 
 
+def _parse_sold(raw):
+    """Parse a units_sold cell ('3' or '3.0') to int; 0 when blank/unparseable."""
+    raw = (raw or "").strip()
+    if not raw:
+        return 0
+    try:
+        return int(float(raw.replace(",", "")))
+    except ValueError:
+        return 0
+
+
 def _sku_tag(sku):
     """' #1700000' when a SKU is present, else '' — the stable product handle shown
     next to a row number so the two can't be confused after an audit shifts rows."""
@@ -2019,8 +2030,17 @@ async def cb_activelist_show(update, context, arg):
         await _send_screen(update, "No active listings right now.", reply_markup=_home_inline_kb())
         return
 
-    total_net = sum(_parse_currency(p.get("net_profit")) or 0.0 for p in items)
-    lines = [f"🟢 Active Listings ({len(items)}) · 💰 total net ${total_net:,.2f}"]
+    potential_net = sum(_parse_currency(p.get("net_profit")) or 0.0 for p in items)
+    sold_total = sum(_parse_sold(p.get("units_sold")) for p in items)
+    realized_net = sum(
+        (_parse_currency(p.get("net_profit")) or 0.0) * _parse_sold(p.get("units_sold"))
+        for p in items
+    )
+    lines = [
+        f"🟢 Active Listings ({len(items)})",
+        f"🎯 Potential net (if each sells 1): ${potential_net:,.2f}",
+        f"💰 Realized net: ${realized_net:,.2f} · 📦 sold {sold_total}",
+    ]
     for i, p in enumerate(items, 1):
         lines.append(f"{i}. {_format_active_line(p)}")
     text = "\n".join(lines)
