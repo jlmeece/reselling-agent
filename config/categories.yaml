@@ -475,7 +475,7 @@ categories:
 
   # ── Blenders, stand mixers, air fryers, etc. ─────────────────────────────────
   Small Appliances:
-    fee_rate: 0.1255
+    fee_rate: 0.1325   # eBay FVF for small kitchen appliances (was 0.1255 — understated; verified Oct 2026 vs real sale)
     ad_rate: 0.0
     fulfillment_risk: medium
     site_url: "coming-soon.com/appliances"
