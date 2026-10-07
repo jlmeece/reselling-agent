@@ -55,3 +55,6 @@ data/.cookie_expiry_alert_ts
 data/.cookie_autorefresh_ts
 data/exports/
 data/CostcoAgentProfile/
+
+# Generated listing photos (tools/photo_compositor.py) — regenerable
+data/listing_photos/

@@ -13,3 +13,4 @@ playwright-stealth>=2.0.0
 colorama>=0.4.6
 python-telegram-bot>=20.0
 psutil>=5.9.0
+pillow>=11.2
