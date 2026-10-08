@@ -14,12 +14,14 @@ business:
   sale_urgent_hours: 24            # urgent sale expiry warning — last chance before margin changes
 
   # eBay sync (--mode ebay_sync): a HARD margin breach (net < 0 at the live eBay price) on an
-  # ACTIVE row is repriced on eBay to break-even (rounded up to .99) and col H is synced — no tap.
-  # A raise bigger than auto_reprice_max_jump_pct is held (alert only): it usually means bad cost
-  # data in col G/BB. auto_reprice: false = alert only (the pre-2026-10-05 behaviour).
+  # ACTIVE row is repriced on eBay to the target-margin price (margin_target net, rounded up
+  # to .99) and col H is synced — no tap. A raise bigger than auto_reprice_max_jump_pct is
+  # held (alert only): it usually means bad cost data in col G/BB.
+  # auto_reprice: false = alert only (the pre-2026-10-05 behaviour).
   ebay_sync:
     auto_reprice: true
     auto_reprice_max_jump_pct: 0.50
+    margin_target: 20.0     # Jay's per-sale net target — a losing listing reprices to this, not $0
     # Costco OOS on a live listing -> set its eBay quantity to 0 (ReviseInventoryStatus). With the
     # account's Out of Stock setting + GTC listings eBay HIDES it (watchers/rank kept); the daily
     # sweep restores the quantity on restock if still profitable. false = alert only.

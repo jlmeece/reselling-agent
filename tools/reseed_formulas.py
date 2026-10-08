@@ -30,7 +30,10 @@ Run on Windows where the Google credentials live (the VPS .env has no sheet cred
 import os
 import sys
 
+from dotenv import load_dotenv
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+load_dotenv(encoding="utf-8", override=True)
 
 from tools.sheet_writer import get_sheets_service, execute_with_retry
 from tools.formula_seeder import _get_tab_id, _col_idx

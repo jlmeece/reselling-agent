@@ -1034,16 +1034,17 @@ def _auto(rep, titles=None, **kw):
                                            title_reader=lambda: titles, **kw)
 
 
-# eBay $29, cost $30, fee 10% -> net -6.91, break-even 36.74 -> 36.99 (+28%)
+# eBay $29, cost $30, fee 10% -> net -6.91, $20-margin target 59.17 -> 59.99 (+107%)
+# (break-even 36.74 is only +27%, so the bad-cost guard does NOT hold this.)
 _HARD = dict(costco_cost="$30", fee_rate="0.10", sold_90d="4")
 
 
-def test_auto_reprice_hard_breach_revises_to_break_even_and_syncs_col_h(ebay, writes):
+def test_auto_reprice_hard_breach_revises_to_target_margin_and_syncs_col_h(ebay, writes):
     rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
     (r,) = _auto(rep)
-    assert ebay["revise"] == [("111111111111", 36.99)]
-    assert r["ok"] and r["outcome"] == "repriced" and r["old_price"] == 29.0 and r["new_price"] == 36.99
-    assert writes == [(4, [("H", 36.99)])]
+    assert ebay["revise"] == [("111111111111", 59.99)]
+    assert r["ok"] and r["outcome"] == "repriced" and r["old_price"] == 29.0 and r["new_price"] == 59.99
+    assert writes == [(4, [("H", 59.99)])]
     (logged,) = ebay["logged"]
     assert logged[1]["source"] == "auto" and logged[1]["old_price"] == 29.0 and logged[1]["row"] == 4
     assert rep["margin_breach"][0]["auto"] == "repriced"
@@ -1051,9 +1052,9 @@ def test_auto_reprice_hard_breach_revises_to_break_even_and_syncs_col_h(ebay, wr
     assert "auto_repriced 1" in summarize(rep)
 
 
-def test_auto_reprice_skips_when_break_even_not_above_price(ebay, writes):
+def test_auto_reprice_skips_when_no_valid_target(ebay, writes):
     rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
-    rep["margin_breach"][0]["break_even"] = 28.50             # round_up_99 -> 28.99 <= 29.00
+    rep["margin_breach"][0]["fee_rate"] = 1.5                 # denom <= 0 -> no valid target
     assert _auto(rep) == [] and ebay["revise"] == [] and writes == []
 
 
@@ -1143,9 +1144,9 @@ def test_run_auto_reprices_and_alert_says_so(monkeypatch, creds, writes, ebay):
         _row(4, "111111111111", price="$29.00", sold="0", **_HARD)])
     monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget"})
     res = run_ebay_sync(*_cfg_args({}))                       # no config key -> enabled by default
-    assert ebay["revise"] == [("111111111111", 36.99)]
-    assert writes == [(4, [("H", 36.99)])]
-    assert res["alert"].startswith("🛒 <b>eBay sync</b>") and "Auto-repriced to break-even" in res["alert"]
+    assert ebay["revise"] == [("111111111111", 59.99)]
+    assert writes == [(4, [("H", 59.99)])]
+    assert res["alert"].startswith("🛒 <b>eBay sync</b>") and "Auto-repriced to target margin" in res["alert"]
     assert "Losing money" not in res["alert"]
     assert "auto_repriced 1" in res["notes"]
 
