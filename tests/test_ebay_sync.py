@@ -1161,3 +1161,51 @@ def test_run_auto_reprice_crash_never_breaks_the_sync(monkeypatch, creds, writes
     monkeypatch.setattr(ebay_sync, "auto_reprice_breaches", boom)
     res = run_ebay_sync(*_cfg_args({}))
     assert res["status"] == "ok" and "Losing money" in res["alert"]
+
+
+# ── true-sale reconciliation (GetItemTransactions) ────────────────────────────
+
+_TXN_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<GetItemTransactionsResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+  <Ack>Success</Ack>
+  <TransactionArray>
+    <Transaction>
+      <TransactionID>111</TransactionID>
+      <TransactionPrice currencyID="USD">389.99</TransactionPrice>
+      <FinalValueFee currencyID="USD">58.41</FinalValueFee>
+      <QuantityPurchased>1</QuantityPurchased>
+      <CreatedDate>2026-10-07T10:00:00.000Z</CreatedDate>
+    </Transaction>
+    <Transaction>
+      <TransactionID>222</TransactionID>
+      <TransactionPrice currencyID="USD">100.00</TransactionPrice>
+      <FinalValueFee currencyID="USD">10.00</FinalValueFee>
+      <QuantityPurchased>2</QuantityPurchased>
+      <CreatedDate>2026-10-08T10:00:00.000Z</CreatedDate>
+    </Transaction>
+  </TransactionArray>
+</GetItemTransactionsResponse>"""
+
+
+def test_fetch_item_transactions_parses_real_fee(monkeypatch):
+    monkeypatch.setattr(ebay_sync, "_load_credentials", lambda: ("TOKEN", "A", "D", "C", None, ""))
+    monkeypatch.setattr(ebay_sync, "_post", lambda body, headers: _TXN_XML)
+    txns = ebay_sync.fetch_item_transactions("123456789012")
+    assert len(txns) == 2
+    assert txns[0]["price"] == 389.99 and txns[0]["fee"] == 58.41 and txns[0]["quantity"] == 1
+    assert txns[1]["price"] == 100.0 and txns[1]["fee"] == 10.0 and txns[1]["quantity"] == 2
+
+
+def test_actual_net_per_unit_reconciles_real_sale():
+    # The SimplyGood coffee maker: price 389.99, real fee 58.41, cost 299.99.
+    # payout = 389.99 - 58.41 = 331.58; cost+tax = 299.99*1.0825 = 324.74 -> net 6.84.
+    assert ebay_sync.actual_net_per_unit({"price": 389.99, "fee": 58.41, "quantity": 1}, 299.99) == 6.84
+    # Multi-unit: fee is split across the qty.
+    # payout/unit = 100.00 - 10.00/2 = 95.00; cost+tax = 80*1.0825 = 86.60 -> net 8.40.
+    assert ebay_sync.actual_net_per_unit({"price": 100.0, "fee": 10.0, "quantity": 2}, 80.0) == 8.40
+
+
+def test_actual_net_per_unit_unknown_inputs_are_none():
+    assert ebay_sync.actual_net_per_unit({"price": None, "fee": 1.0, "quantity": 1}, 10.0) is None
+    assert ebay_sync.actual_net_per_unit({"price": 1.0, "fee": None, "quantity": 1}, 10.0) is None
+    assert ebay_sync.actual_net_per_unit({"price": 1.0, "fee": 1.0, "quantity": 1}, None) is None

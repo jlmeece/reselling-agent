@@ -47,6 +47,7 @@ import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
 from xml.sax.saxutils import escape as _xml_escape
 
 import yaml
@@ -1173,6 +1174,117 @@ def format_auto_reprice_summary(results: list[dict]) -> str | None:
     return "\n".join(lines)
 
 
+# ── True sale reconciliation (GetItemTransactions) ────────────────────────────
+
+def _build_get_item_transactions_xml(token: str, item_id: str, days_back: int = 30) -> str:
+    now = datetime.now(timezone.utc)
+    fr = (now - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    to = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
+        "TransactionArray.Transaction.TransactionPrice",
+        "TransactionArray.Transaction.FinalValueFee",
+        "TransactionArray.Transaction.QuantityPurchased",
+        "TransactionArray.Transaction.CreatedDate",
+        "TransactionArray.Transaction.TransactionID",
+    ))
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<GetItemTransactionsRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"<ModTimeFrom>{fr}</ModTimeFrom><ModTimeTo>{to}</ModTimeTo>"
+        f"{selectors}"
+        "</GetItemTransactionsRequest>"
+    )
+
+
+def fetch_item_transactions(item_id, days_back: int = 30) -> list[dict]:
+    """Actual sales for one listing via GetItemTransactions. Each entry holds the REAL
+    price and the REAL FinalValueFee eBay charged — the inputs for reconciling true net.
+    Returns [{transaction_id, price, fee, quantity, created}]; [] on any failure
+    (missing creds / network / Ack=Failure / bad XML). Never raises."""
+    iid = extract_item_id(item_id)
+    if not iid:
+        return []
+    token, app_id, dev_id, cert_id, err_kind, err_msg = _load_credentials()
+    if err_kind:
+        logger.warning(f"fetch_item_transactions: skipped — {err_msg}")
+        return []
+    try:
+        raw = _post(_build_get_item_transactions_xml(token, iid, days_back),
+                    _headers(app_id, dev_id, cert_id, "GetItemTransactions"))
+    except OSError as e:
+        logger.error(f"fetch_item_transactions: eBay request failed: {e}")
+        return []
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError as e:
+        logger.error(f"fetch_item_transactions: unparseable response: {e}")
+        return []
+    if _text(root, "Ack") not in ("Success", "Warning"):
+        errors = _parse_errors(root)
+        logger.error(f"fetch_item_transactions: eBay error — "
+                     + ("; ".join(f"{c}: {m}" for c, m in errors) or "Ack not Success"))
+        return []
+    out = []
+    for txn in root.findall("{*}TransactionArray/{*}Transaction"):
+        out.append({
+            "transaction_id": _text(txn, "TransactionID"),
+            "price":          _num(_text(txn, "TransactionPrice"), float, None),
+            "fee":            _num(_text(txn, "FinalValueFee"), float, None),
+            "quantity":       _num(_text(txn, "QuantityPurchased"), int, 1),
+            "created":        _text(txn, "CreatedDate"),
+        })
+    return out
+
+
+def actual_net_per_unit(txn: dict, cost_basis) -> float | None:
+    """Actual net per unit for one transaction: (price - fee/qty) - cost_basis*(1+tax).
+    None when price/fee/cost are unknown."""
+    if txn.get("price") is None or txn.get("fee") is None or cost_basis is None:
+        return None
+    qty = max(txn.get("quantity") or 1, 1)
+    payout = txn["price"] - txn["fee"] / qty
+    return round(payout - cost_basis * (1 + COSTCO_TAX_RATE), 2)
+
+
+def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=False) -> dict:
+    """Reconcile TRUE sale net: for each matched listing that has sold, pull its
+    transactions and write the most recent sale's actual net/unit into col 'actual_net'.
+    Returns {written, skipped, failed: [(item_id, msg)]}. Never raises."""
+    stats = {"written": 0, "skipped": 0, "failed": []}
+    actual_col = col_map.get("actual_net") if isinstance(col_map, dict) else None
+    if not actual_col:
+        return stats
+    sold_ids = {l["item_id"] for l in listings if (l.get("quantity_sold") or 0) > 0}
+    for row in rows:
+        iid = extract_item_id(row.get("ebay_listing_url"))
+        if not iid or iid not in sold_ids:
+            continue
+        cost = _cost_basis(row.get("buy_cost"), row.get("costco_cost"))
+        if cost is None:
+            stats["skipped"] += 1
+            continue
+        try:
+            txns = fetch_item_transactions(iid)
+        except Exception as e:
+            stats["failed"].append((iid, f"fetch: {e}"))
+            continue
+        if not txns:
+            stats["skipped"] += 1
+            continue
+        latest = max(txns, key=lambda t: t.get("created") or "")
+        net = actual_net_per_unit(latest, cost)
+        if net is None:
+            stats["skipped"] += 1
+            continue
+        if not dry_run:
+            safe_write_row(service, sheet_name, row["row_num"], [(actual_col, net)])
+        stats["written"] += 1
+    return stats
+
+
 # ── Orchestration (called by agents/scheduler.py --mode ebay_sync) ────────────
 
 def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
@@ -1217,6 +1329,14 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         auto_summary = format_auto_reprice_summary(auto_results)
     except Exception as e:  # never let auto-reprice break the units_sold sync
         logger.exception(f"ebay_sync: auto-reprice failed: {e}")
+
+    # True-sale reconciliation: write actual net/unit into col 'actual_net' for sold items.
+    try:
+        actual = sync_actual_sales(service, sheet_name, COL, rows, listings, dry_run=dry_run)
+        if actual["written"]:
+            logger.info(f"ebay_sync: actual net written for {actual['written']} sold listing(s)")
+    except Exception as e:  # never break the sync over reconciliation
+        logger.exception(f"ebay_sync: actual-sale reconciliation failed: {e}")
 
     base_alert = alert_message(report)
     if base_alert and auto_summary:
