@@ -653,15 +653,13 @@ def margin_flag(ebay_price, cost_basis, fee_rate, ship, ad, sold_90d):
     return None
 
 
-def _break_even(cost_basis, fee_rate, ship, ad, margin=0.0):
-    """Price at which net == margin (matches compute_net: Costco tax + $0.30 + buyer-tax
-    factor). margin=0 is true break-even; margin=MARGIN_TARGET is the target-profit price.
-    Solving net = margin for H: H = (G*(1+tax) + 0.30 + ship + ad + margin) / (1 - AB*1.08)."""
+def _break_even(cost_basis, fee_rate, ship, ad):
+    """Lowest price at which net >= 0 (matches compute_net: Costco tax + $0.30 + buyer-tax
+    factor). Solving net = 0 for H gives H = (G*(1+tax) + 0.30 + ship + ad) / (1 - AB*1.08)."""
     denom = 1 - fee_rate * EBAY_FEE_TAX_FACTOR
     if fee_rate >= 1 or denom <= 0:
         return None
-    return (cost_basis * (1 + COSTCO_TAX_RATE) + EBAY_FEE_FLAT + (ship or 0.0)
-            + (ad or 0.0) + (margin or 0.0)) / denom
+    return (cost_basis * (1 + COSTCO_TAX_RATE) + EBAY_FEE_FLAT + (ship or 0.0) + (ad or 0.0)) / denom
 
 
 MARGIN_COLS = ("buy_cost", "costco_cost", "fee_rate", "ship_cost", "ad_cost", "sold_90d")
@@ -774,7 +772,6 @@ def _check_margin(row, listing, report):
     elif severity:
         report["margin_breach"].append({
             **base, "severity": severity, "ebay_price": price, "cost_basis": cost,
-            "fee_rate": fee, "ship": ship, "ad": ad,
             "net": round(compute_net(price, cost, fee, ship, ad), 2),
             "break_even": _break_even(cost, fee, ship, ad)})
 
@@ -1064,7 +1061,7 @@ def _dedupe_alert(alert, dry_run=False, now=None):
     return alert
 
 
-# ── Auto-reprice hard breaches to the target margin ───────────────────────────
+# ── Auto-reprice hard breaches to break-even ──────────────────────────────────
 #
 # The ONE eBay write that runs without a tap (Jay's call, 2026-10-05). Guards: ACTIVE rows
 # only (PAUSED_* = Jay is on it), never lower, a raise above AUTO_MAX_JUMP_PCT is held for a
@@ -1073,23 +1070,19 @@ def _dedupe_alert(alert, dry_run=False, now=None):
 # title (the auditor may have shifted rows).
 
 AUTO_MAX_JUMP_PCT = 0.50   # same threshold as tools/reprice.BIG_JUMP_PCT (circular import)
-MARGIN_TARGET = 20.0       # Jay's per-sale net target: a hard breach is repriced to this,
-                           # not to $0 break-even. Configurable via ebay_sync.margin_target.
 
 
 def auto_reprice_breaches(report: dict, service, COL, sheet_name: str, *, title_reader=None,
                           dry_run: bool = False, enabled: bool = True,
-                          max_jump_pct: float = AUTO_MAX_JUMP_PCT,
-                          margin_target: float = MARGIN_TARGET) -> list[dict]:
+                          max_jump_pct: float = AUTO_MAX_JUMP_PCT) -> list[dict]:
     """
-    Push every HARD breach (net < 0) on an ACTIVE row to round_up_99(target-margin price)
-    via revise_fixed_price, then write the new price to col H. Marks each handled breach
+    Push every HARD breach (net < 0) on an ACTIVE row to round_up_99(break_even) via
+    revise_fixed_price, then write the new price to col H. Marks each handled breach
     m["auto"] = "repriced" | "held" | "failed" | "dry_run" (alert_message drops "repriced").
-    The target price clears `margin_target` net (default MARGIN_TARGET = $20), not $0.
 
     Returns [{item_id, title, row_num, old_price, new_price, ok, outcome, error, sheet_note}].
-    Skipped silently: soft breaches, non-ACTIVE rows, missing item id / price / target,
-    target already <= the live price. Never raises for eBay errors; an auth error stops
+    Skipped silently: soft breaches, non-ACTIVE rows, missing item id / price / break-even,
+    break-even already <= the live price. Never raises for eBay errors; an auth error stops
     the loop (every later call would fail the same way).
     """
     from tools.reprice import log_revise, round_up_99   # reprice imports this module
@@ -1100,16 +1093,11 @@ def auto_reprice_breaches(report: dict, service, COL, sheet_name: str, *, title_
     for m in report.get("margin_breach", []):
         if m.get("severity") != "hard" or m.get("status") != "ACTIVE":
             continue
-        item_id, old_price = m.get("item_id"), m.get("ebay_price")
+        item_id, be, old_price = m.get("item_id"), m.get("break_even"), m.get("ebay_price")
         title, row_num = m.get("title", ""), m.get("row_num")
-        cost, fee = m.get("cost_basis"), m.get("fee_rate")
-        ship, ad = m.get("ship"), m.get("ad")
-        be = _break_even(cost, fee, ship, ad) if cost is not None and fee is not None else None
-        target = (_break_even(cost, fee, ship, ad, margin_target)
-                  if cost is not None and fee is not None else None)
-        if not item_id or not be or not target or not old_price:
+        if not item_id or not be or not old_price:
             continue
-        new_price = round_up_99(target)
+        new_price = round_up_99(be)
         if new_price <= old_price + 0.005:
             continue
 
@@ -1118,10 +1106,7 @@ def auto_reprice_breaches(report: dict, service, COL, sheet_name: str, *, title_
                  "ok": False, "outcome": None, "error": None, "sheet_note": None}
         results.append(entry)
 
-        # Bad-cost guard: a BREAK-EVEN far above the live price usually means the cost
-        # data in col G/BB is wrong (variant mismatch), not a real loss — hold for a look.
-        # (The $20 margin is applied on top of break-even, so it isn't what trips this.)
-        if be > old_price * (1 + max_jump_pct):
+        if new_price > old_price * (1 + max_jump_pct):
             entry["outcome"] = m["auto"] = "held"
             entry["error"] = f"raise >{max_jump_pct:.0%} — check cost (col G/BB) before repricing"
             logger.warning(f"auto_reprice: HELD item {item_id} ${old_price:.2f}→${new_price:.2f} "
@@ -1168,7 +1153,7 @@ def format_auto_reprice_summary(results: list[dict]) -> str | None:
     """Telegram HTML block for the eBay sync alert, or None when nothing was attempted."""
     if not results:
         return None
-    lines = ["🔧 <b>Auto-repriced to target margin</b>"]
+    lines = ["🔧 <b>Auto-repriced to break-even</b>"]
     for r in results:
         t = html.escape(_truncate(r.get("title", "")))
         op = f"${r['old_price']:.2f}" if r.get("old_price") else "?"
@@ -1340,8 +1325,7 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
             report, service, COL, sheet_name,
             title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
             dry_run=dry_run, enabled=bool(auto_cfg.get("auto_reprice", True)),
-            max_jump_pct=float(auto_cfg.get("auto_reprice_max_jump_pct", AUTO_MAX_JUMP_PCT)),
-            margin_target=float(auto_cfg.get("margin_target", MARGIN_TARGET)))
+            max_jump_pct=float(auto_cfg.get("auto_reprice_max_jump_pct", AUTO_MAX_JUMP_PCT)))
         auto_summary = format_auto_reprice_summary(auto_results)
     except Exception as e:  # never let auto-reprice break the units_sold sync
         logger.exception(f"ebay_sync: auto-reprice failed: {e}")
