@@ -15,8 +15,11 @@ Root cause (verified against a real Oct 2026 sale, SKU X0bac7f5423):
 
 Corrected formulas (category-agnostic — uses each row's own AB fee rate):
   AC (eBay fee)   = H*AB*1.08 + 0.30    (FVF on item + ~8% avg buyer tax + $0.30/order)
-  AF (Costco tax) = G*0.08              (8% sales tax on Jay's Costco purchase)
+  AF (Costco tax) = G*0.0825             (8.25% sales tax on Jay's Costco purchase)
   I  (net profit) = H - G - AC - AD - AE - AF
+
+Note: AF was G*0.08 in the original Oct-7 fix; re-verified 2026-10-08 against a real
+sale ($24.75 tax on $299.99 = 8.25%) — the "8%" was a misread of the air-fryer numbers.
 
 Also fixes AB (eBay fee rate) 0.1255 -> 0.1325 for Small Appliances rows.
 
@@ -76,7 +79,7 @@ def main() -> None:
         for col_letter, formula in (
             ("I", f"=H{r}-G{r}-AC{r}-AD{r}-AE{r}-AF{r}"),
             ("AC", f"=H{r}*AB{r}*1.08+0.30"),
-            ("AF", f"=G{r}*0.08"),
+            ("AF", f"=G{r}*0.0825"),
         ):
             requests.append({
                 "updateCells": {

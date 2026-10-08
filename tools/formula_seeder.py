@@ -46,13 +46,15 @@ def seed_formula_row(service, sheet_name: str, row_num: int, ad_rate: float = 0.
         # AC (eBay fee) = FVF on item + ~8% avg buyer tax (eBay charges FVF on the
         #   order total incl. sales tax) + $0.30 per-order fee.  Verified Oct 2026
         #   against a real sale: old formula overstated net ~$19/sale.
-        # AF (Costco tax) = 8% sales tax on Jay's own Costco purchase (was 0.0825).
+        # AF (Costco tax) = 8.25% sales tax on Jay's own Costco purchase.
+        #   Re-verified 2026-10-08 against a real sale ($24.75 tax on $299.99 =
+        #   8.25%) — the earlier "8%" was a misread of the air-fryer numbers.
         "I":  f"=H{r}-G{r}-AC{r}-AD{r}-AE{r}-AF{r}",
         "J":  f"=IF(H{r}>0,I{r}/H{r},0)",
         "Z":  f"=IFERROR(G{r}+AD{r},G{r})",
         "AC": f"=H{r}*AB{r}*1.08+0.30",
         "AE": f"=H{r}*{ad_rate}",
-        "AF": f"=G{r}*0.08",
+        "AF": f"=G{r}*0.0825",
         "AG": f"=H{r}*0.9-G{r}",
         "AH": f"=I{r}*0.15",
     }

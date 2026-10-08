@@ -95,11 +95,11 @@ def _write_formula_columns(service, spreadsheet_id, tab_id, data_start_row, num_
     _NUM  = {"type": "NUMBER",  "pattern": "0.0"}
 
     formulas = {
-        "I":  (lambda r: f'=IF(H{r}<>"",H{r}-G{r}-AC{r}-AD{r}-AE{r},"")', _USD),
+        "I":  (lambda r: f'=IF(H{r}<>"",H{r}-G{r}-AC{r}-AD{r}-AE{r}-AF{r},"")', _USD),
         "J":  (lambda r: f'=IF(H{r}>0,I{r}/H{r},"")',                       _PCT),
         "N":  (lambda r: f'=IFERROR(M{r}/MAX(K{r},1),"")',                   _NUM),
         "Z":  (lambda r: f'=IFERROR(G{r}+AD{r},G{r})',                       _USD),
-        "AC": (lambda r: f'=IF(H{r}<>"",H{r}*AB{r},"")',                     _USD),
+        "AC": (lambda r: f'=IF(H{r}<>"",H{r}*AB{r}*1.08+0.30,"")',           _USD),
         "AF": (lambda r: f'=IF(G{r}<>"",G{r}*0.0825,"")',                    _USD),
         "AG": (lambda r: f'=IF(H{r}<>"",H{r}*0.90-G{r},"")',                 _USD),
         "AH": (lambda r: f'=IF(I{r}<>"",I{r}*0.15,"")',                      _USD),
