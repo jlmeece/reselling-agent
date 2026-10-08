@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 
 from loguru import logger
 
-from tools.ebay_sync import compute_net
+from tools.ebay_sync import COSTCO_TAX_RATE, EBAY_FEE_FLAT, EBAY_FEE_TAX_FACTOR, compute_net
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PENDING_PATH = os.path.join(_BASE_DIR, "data", ".reprice_pending.json")
@@ -47,7 +47,7 @@ def restore_margin_price(old_cost, new_cost, ebay_price, fee_rate, ship=0.0, ad_
     eBay price that restores the net profit the listing made BEFORE the cost rise.
 
     prev_net = compute_net(ebay_price, old_cost, fee_rate, ship, ebay_price * ad_rate)
-    target   = (max(prev_net, 0) + new_cost + ship) / (1 - fee_rate - ad_rate), rounded UP to .99
+    target   = (max(prev_net, 0) + new_cost*(1+tax) + 0.30 + ship) / (1 - fee_rate*1.08 - ad_rate), rounded UP to .99
 
     Returns None when: any input is unknown, the cost did NOT rise (sale start / drop / flat —
     never reprice those), fee + ad >= 100%, or the target would not be above the current eBay
@@ -63,11 +63,11 @@ def restore_margin_price(old_cost, new_cost, ebay_price, fee_rate, ship=0.0, ad_
         return None
     if ebay_price <= 0 or new_cost <= old_cost:
         return None
-    denom = 1 - fee_rate - ad_rate
+    denom = 1 - fee_rate * EBAY_FEE_TAX_FACTOR - ad_rate
     if denom <= 0:
         return None
     prev_net = compute_net(ebay_price, old_cost, fee_rate, ship, ebay_price * ad_rate)
-    target = round_up_99((max(prev_net, 0.0) + new_cost + ship) / denom)
+    target = round_up_99((max(prev_net, 0.0) + new_cost * (1 + COSTCO_TAX_RATE) + EBAY_FEE_FLAT + ship) / denom)
     if target <= ebay_price + 0.005:
         return None
     return target

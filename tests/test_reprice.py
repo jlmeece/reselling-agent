@@ -28,10 +28,10 @@ def test_round_up_99(raw, expected):
 # ── restore_margin_price ─────────────────────────────────────────────────────
 
 def test_energy_shot_sale_end_restores_previous_net():
-    # Hand calc: prev net = 41.48 - 31.99 - 41.48*0.1325 = 3.9939
-    #            raw = (3.9939 + 39.99) / 0.8675 = 50.7019 -> 50.99
+    # Hand calc: prev net = 41.48 - 31.99 - (41.48*0.1325*1.08 + 0.30) - 31.99*0.0825 = 0.615
+    #            raw = (0.615 + 39.99*1.0825 + 0.30) / (1 - 0.1325*1.08) = 51.586 -> 51.99
     target = restore_margin_price(31.99, 39.99, 41.48, 0.1325, 0.0)
-    assert target == 50.99
+    assert target == 51.99
     prev = compute_net(41.48, 31.99, 0.1325)
     assert compute_net(target, 39.99, 0.1325) >= prev                  # margin restored
     assert compute_net(target - 1.00, 39.99, 0.1325) < prev            # and not overshot by $1+
@@ -40,7 +40,7 @@ def test_energy_shot_sale_end_restores_previous_net():
 def test_exact_raw_price_restores_net_to_the_cent():
     old, new, h, fee, ship = 20.00, 25.00, 40.00, 0.13, 5.00
     prev = compute_net(h, old, fee, ship)
-    raw = (prev + new + ship) / (1 - fee)
+    raw = (prev + new * 1.0825 + 0.30 + ship) / (1 - fee * 1.08)
     assert compute_net(raw, new, fee, ship) == pytest.approx(prev)
     assert restore_margin_price(old, new, h, fee, ship) == round_up_99(raw)
 
@@ -75,9 +75,9 @@ def test_never_lowers_when_target_not_above_current(monkeypatch):
 
 
 def test_underwater_listing_is_restored_to_break_even_not_to_its_loss():
-    # prev net = 40 - 45 - 4 = -9 (losing money). Restore floors at $0 net.
+    # prev net is negative (losing money). Restore floors at $0 net.
     target = restore_margin_price(45.0, 50.0, 40.0, 0.10, 0.0)
-    assert target == round_up_99(50.0 / 0.9)                          # 55.56 -> 55.99
+    assert target == round_up_99((50.0 * 1.0825 + 0.30) / (1 - 0.10 * 1.08))   # 61.01 -> 61.99
     assert compute_net(target, 50.0, 0.10) >= 0
 
 
@@ -93,7 +93,7 @@ def test_unknown_or_impossible_inputs_give_none(args):
 # ── prompt / keyboard ────────────────────────────────────────────────────────
 
 ITEM = {"item_id": "123456789012", "title": "Energy Shot <48 ct> & more", "row": 9, "sku": "1711796",
-        "old_cost": 31.99, "new_cost": 39.99, "ebay_price": 41.48, "target": 50.99,
+        "old_cost": 31.99, "new_cost": 39.99, "ebay_price": 41.48, "target": 51.99,
         "fee_rate": 0.1325, "ship": 0.0, "ad_rate": 0.0}
 
 
@@ -111,9 +111,9 @@ def test_prompt_shows_numbers_and_escapes_title():
     text = format_reprice_prompt(ITEM)
     assert "&lt;48 ct&gt; &amp; more" in text and "<48 ct>" not in text
     assert "$31.99 → $39.99" in text
-    assert "$41.48" in text and "<b>$50.99</b>" in text
-    assert "net was $3.99" in text                    # previous net
-    assert "net $4.24" in text                        # net at target
+    assert "$41.48" in text and "<b>$51.99</b>" in text
+    assert "net was $0.62" in text                    # previous net
+    assert "net $0.96" in text                        # net at target
     assert "#1711796" in text and "row 9" in text
     assert "⚠️" not in text                           # 23% raise — no big-jump warning
 

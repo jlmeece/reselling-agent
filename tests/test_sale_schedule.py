@@ -106,7 +106,7 @@ def test_inside_24h_window_gets_one_prompt_with_target():
     assert c["item_id"] == "123456789012" and c["row"] == 4 and c["costco_pid"] == "4000099948"
     assert c["sale_end_ts"] == END
     assert (c["old_cost"], c["new_cost"], c["ebay_price"]) == (31.99, 39.99, 41.48)
-    assert c["target"] == restore_margin_price(31.99, 39.99, 41.48, 0.1325, 0.0) == 50.99
+    assert c["target"] == restore_margin_price(31.99, 39.99, 41.48, 0.1325, 0.0) == 51.99
 
 
 def test_more_than_24h_out_is_not_yet():

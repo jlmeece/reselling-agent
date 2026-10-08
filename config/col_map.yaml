@@ -6,10 +6,10 @@
 # monitoring data next (E–Z visible), everything else hidden (AA–AV).
 #
 # Formula columns — never overwrite these with agent writes:
-#   I  (net_profit):      =H-G-AC-AD-AE  (ebay_price - eBay_fees - ship - ad_cost - cost)
+#   I  (net_profit):      =H-G-AC-AD-AE-AF  (price - fees - ship - ad - Costco tax)
 #   J  (net_margin):      =IF(H>0,I/H,0)
 #   N  (comp_saturation): =IFERROR(M/MAX(K,1),"")
-#   AC (ebay_fees):       =H*AB       (ebay_price * fee_rate)
+#   AC (ebay_fees):       =H*AB*1.08+0.30   (FVF on item + ~8% buyer tax + $0.30/order)
 #   AF (tax_est):         =G*0.0825
 #   AG (site_profit):     =H*0.90-G
 #   AH (profit_reserve):  =I*0.15  (15% of net held as reserve — NOT a real ad spend)

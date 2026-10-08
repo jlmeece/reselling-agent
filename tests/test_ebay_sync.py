@@ -346,8 +346,8 @@ _flag = ebay_sync.margin_flag
 
 
 @pytest.mark.parametrize("price,cost,fee,ship,ad,sold,expected", [
-    (100.0, 80.0, 0.10, 0, 0, 5, None),        # net 10 -> healthy
-    (100.0, 95.0, 0.10, 0, 0, 5, "hard"),      # net -5
+    (100.0, 80.0, 0.10, 0, 0, 5, None),        # net 2.30 -> healthy
+    (100.0, 95.0, 0.10, 0, 0, 5, "hard"),      # net -13.94
     (100.0, 95.0, 0.10, 0, 0, 0, "hard"),      # negative is hard regardless of velocity
 ])
 def test_margin_flag_hard_and_healthy(price, cost, fee, ship, ad, sold, expected):
@@ -355,16 +355,17 @@ def test_margin_flag_hard_and_healthy(price, cost, fee, ship, ad, sold, expected
 
 
 def test_margin_flag_soft_needs_zero_sales():
-    # net = 100 - 86.01 - 10 = 3.99
-    assert _flag(100.0, 86.01, 0.10, 0, 0, 0) == "soft"
-    assert _flag(100.0, 86.01, 0.10, 0, 0, 3) is None          # high velocity rides silently
-    assert _flag(100.0, 86.01, 0.10, 0, 0, None) is None       # blank sold_90d = unknown, not 0
+    # net = 100 - 80 - (100*0.10*1.08 + 0.30) - 80*0.0825 = 2.30
+    assert _flag(100.0, 80.0, 0.10, 0, 0, 0) == "soft"
+    assert _flag(100.0, 80.0, 0.10, 0, 0, 3) is None          # high velocity rides silently
+    assert _flag(100.0, 80.0, 0.10, 0, 0, None) is None       # blank sold_90d = unknown, not 0
 
 
 def test_margin_flag_boundaries():
-    assert _flag(100.0, 86.0, 0.10, 0, 0, 0) is None           # net exactly 4.00 -> silent
-    assert _flag(100.0, 90.0, 0.10, 0, 0, 0) == "soft"         # net exactly 0.00 -> soft, not hard
-    assert _flag(100.0, 90.01, 0.10, 0, 0, 9) == "hard"        # net -0.01
+    # price 100, fee 0.10: net = 88.90 - 1.0825*cost
+    assert _flag(100.0, 78.0, 0.10, 0, 0, 0) is None           # net 4.47 -> silent
+    assert _flag(100.0, 80.0, 0.10, 0, 0, 0) == "soft"         # net 2.30 -> soft, not hard
+    assert _flag(100.0, 83.0, 0.10, 0, 0, 9) == "hard"         # net -0.95 -> hard
 
 
 def test_margin_flag_subtracts_ship_and_ad():
@@ -400,11 +401,11 @@ def test_to_rate(raw, expected):
 
 def test_margin_breach_hard_uses_live_price_and_is_never_written(writes):
     rows = [_row(4, "111111111111", price="$29.99", costco_cost="$30.00", fee_rate="0.10", sold_90d="4")]
-    rep = _sync(rows, [_listing("111111111111", price=29.0)])   # net 29 - 30 - 2.9 = -3.90
+    rep = _sync(rows, [_listing("111111111111", price=29.0)])   # net 29 - 30 - 3.43 - 2.48 = -6.91
     (b,) = rep["margin_breach"]
-    assert b["severity"] == "hard" and b["net"] == -3.90 and b["cost_basis"] == 30.0
+    assert b["severity"] == "hard" and b["net"] == -6.91 and b["cost_basis"] == 30.0
     assert b["row_num"] == 4 and b["item_id"] == "111111111111"
-    assert b["break_even"] == pytest.approx(30.0 / 0.9)
+    assert b["break_even"] == pytest.approx(32.775 / 0.892)
     assert "price_mismatch" not in rep
     assert writes == []                                          # flag-only
 
@@ -453,8 +454,8 @@ def test_summary_and_alert_text_for_hard_breach(writes):
     rep = _sync(rows, [_listing("111111111111", price=29.0)])
     assert "margin_breach hard 1 soft 0" in summarize(rep)
     msg = alert_message(rep)
-    assert "losing money on Tom &amp; Jerry &lt;b&gt; — net -$3.90" in msg
-    assert "break-even $33.33" in msg and "row 4" in msg
+    assert "losing money on Tom &amp; Jerry &lt;b&gt; — net -$6.91" in msg
+    assert "break-even $36.74" in msg and "row 4" in msg
 
 
 def test_digest_is_once_per_calendar_day():
@@ -1033,16 +1034,16 @@ def _auto(rep, titles=None, **kw):
                                            title_reader=lambda: titles, **kw)
 
 
-# eBay $29, cost $30, fee 10% -> net -3.90, break-even 33.33 -> 33.99 (+17%)
+# eBay $29, cost $30, fee 10% -> net -6.91, break-even 36.74 -> 36.99 (+28%)
 _HARD = dict(costco_cost="$30", fee_rate="0.10", sold_90d="4")
 
 
 def test_auto_reprice_hard_breach_revises_to_break_even_and_syncs_col_h(ebay, writes):
     rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
     (r,) = _auto(rep)
-    assert ebay["revise"] == [("111111111111", 33.99)]
-    assert r["ok"] and r["outcome"] == "repriced" and r["old_price"] == 29.0 and r["new_price"] == 33.99
-    assert writes == [(4, [("H", 33.99)])]
+    assert ebay["revise"] == [("111111111111", 36.99)]
+    assert r["ok"] and r["outcome"] == "repriced" and r["old_price"] == 29.0 and r["new_price"] == 36.99
+    assert writes == [(4, [("H", 36.99)])]
     (logged,) = ebay["logged"]
     assert logged[1]["source"] == "auto" and logged[1]["old_price"] == 29.0 and logged[1]["row"] == 4
     assert rep["margin_breach"][0]["auto"] == "repriced"
@@ -1057,7 +1058,7 @@ def test_auto_reprice_skips_when_break_even_not_above_price(ebay, writes):
 
 
 def test_auto_reprice_ignores_soft_breach(ebay, writes):
-    rep = _breach_report((_row(4, "111111111111", costco_cost="$26", fee_rate="0.10", sold_90d="0"), 29.0))
+    rep = _breach_report((_row(4, "111111111111", costco_cost="$21", fee_rate="0.10", sold_90d="0"), 29.0))
     assert rep["margin_breach"][0]["severity"] == "soft"
     assert _auto(rep) == [] and ebay["revise"] == []
 
@@ -1142,8 +1143,8 @@ def test_run_auto_reprices_and_alert_says_so(monkeypatch, creds, writes, ebay):
         _row(4, "111111111111", price="$29.00", sold="0", **_HARD)])
     monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget"})
     res = run_ebay_sync(*_cfg_args({}))                       # no config key -> enabled by default
-    assert ebay["revise"] == [("111111111111", 33.99)]
-    assert writes == [(4, [("H", 33.99)])]
+    assert ebay["revise"] == [("111111111111", 36.99)]
+    assert writes == [(4, [("H", 36.99)])]
     assert res["alert"].startswith("🛒 <b>eBay sync</b>") and "Auto-repriced to break-even" in res["alert"]
     assert "Losing money" not in res["alert"]
     assert "auto_repriced 1" in res["notes"]

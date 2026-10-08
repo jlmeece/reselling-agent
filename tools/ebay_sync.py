@@ -11,8 +11,9 @@ them to Product Tracker rows by the item ID in col Q (ebay_listing_url), and:
     movement; Jay undercuts by a cent himself), eBay listings missing from the sheet,
     and ACTIVE sheet rows that eBay no longer lists.
 
-Margin check: net = live price - cost_basis - price*fee_rate - ship - ad, where
-cost_basis = buy_cost (col BB, manual) if present else costco_cost (col G).
+Margin check: net = live price - cost_basis - (price*fee_rate*1.08 + 0.30) - ship - ad
+- cost_basis*0.0825 (Costco sales tax), where cost_basis = buy_cost (col BB, manual) if
+present else costco_cost (col G). Matches the sheet's col I formula (H-G-AC-AD-AE-AF).
 HARD (Telegram per run): net < 0. SOFT (once-a-day digest): 0 <= net < $4 AND
 sold_90d == 0. Everything else is silent.
 
@@ -65,6 +66,12 @@ ENTRIES_PER_PAGE  = 200
 MAX_PAGES         = 50          # runaway guard (10,000 listings)
 REQUEST_TIMEOUT   = 30
 MARGIN_SOFT_FLOOR = 4.00        # net below this AND sold_90d == 0 → SOFT (daily digest)
+# Costco tax + eBay fee constants — keep in sync with the sheet formula
+# (formula_seeder.py / reseed_formulas.py / setup_sheet.py):
+#   AC (eBay fee) = H*AB*1.08 + 0.30;   AF (Costco tax) = G*0.0825
+COSTCO_TAX_RATE     = 0.0825
+EBAY_FEE_FLAT       = 0.30
+EBAY_FEE_TAX_FACTOR = 1.08
 WRITE_DELAY      = 1.1         # s between sheet writes — Sheets caps writes at 60/min
 MAX_REPORT_LINES  = 15          # per section in the Telegram message
 CLOSE_MATCH_JACCARD = 0.8       # token overlap for a "close" title match (link suggestions)
@@ -620,9 +627,12 @@ def _cost_basis(buy_cost, costco_cost):
 
 
 def compute_net(ebay_price, cost_basis, fee_rate, ship=0.0, ad=0.0) -> float:
-    """Mirrors the sheet's net_profit (I = H - G - AC - AD - AE) with the live eBay price
-    for H and cost_basis for G."""
-    return ebay_price - cost_basis - ebay_price * fee_rate - (ship or 0.0) - (ad or 0.0)
+    """Mirrors the sheet's net_profit (I = H - G - AC - AD - AE - AF) with the live eBay
+    price for H and cost_basis for G. AC = H*AB*1.08 + 0.30 (FVF on item + ~8% avg buyer
+    tax + $0.30/order); AF = G*0.0825 (Jay's Costco sales tax)."""
+    fee = ebay_price * fee_rate * EBAY_FEE_TAX_FACTOR + EBAY_FEE_FLAT
+    tax = cost_basis * COSTCO_TAX_RATE
+    return ebay_price - cost_basis - fee - (ship or 0.0) - (ad or 0.0) - tax
 
 
 def margin_flag(ebay_price, cost_basis, fee_rate, ship, ad, sold_90d):
@@ -643,10 +653,12 @@ def margin_flag(ebay_price, cost_basis, fee_rate, ship, ad, sold_90d):
 
 
 def _break_even(cost_basis, fee_rate, ship, ad):
-    """Lowest price at which net >= 0 (ad treated as a fixed amount)."""
-    if fee_rate >= 1:
+    """Lowest price at which net >= 0 (matches compute_net: Costco tax + $0.30 + buyer-tax
+    factor). Solving net = 0 for H gives H = (G*(1+tax) + 0.30 + ship + ad) / (1 - AB*1.08)."""
+    denom = 1 - fee_rate * EBAY_FEE_TAX_FACTOR
+    if fee_rate >= 1 or denom <= 0:
         return None
-    return (cost_basis + (ship or 0.0) + (ad or 0.0)) / (1 - fee_rate)
+    return (cost_basis * (1 + COSTCO_TAX_RATE) + EBAY_FEE_FLAT + (ship or 0.0) + (ad or 0.0)) / denom
 
 
 MARGIN_COLS = ("buy_cost", "costco_cost", "fee_rate", "ship_cost", "ad_cost", "sold_90d")
