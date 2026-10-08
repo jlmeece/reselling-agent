@@ -216,3 +216,54 @@ def test_hosted_url_for():
     assert up.hosted_url_for("X1", {}) is None
     assert up.hosted_url_for("", {"": {"url": "https://x"}}) is None
     assert up.hosted_url_for("X1", {"X1": {"url": "not a url"}}) is None
+
+
+# ── Gallery (col AT → EPS) ────────────────────────────────────────────────────
+
+def test_safe_sku_matches_photo_compositor():
+    assert up._safe_sku("A/B C") == "A_B_C"
+    assert up._safe_sku("X0bac7f5423") == "X0bac7f5423"
+
+
+def test_upload_gallery_hosts_col_at_shots(env, monkeypatch):
+    photos, hosted, calls = env
+    monkeypatch.setattr(up, "HOSTED_PATH", hosted)
+    up.save_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg", "sha256": "abc"}}, hosted)
+    monkeypatch.setattr(up, "_download_as_jpeg", lambda url: b"\xff\xd8gallery")
+    jobs = [{"sku": "X1", "urls": ["https://a.com/1.jpg", "https://a.com/2.jpg"]}]
+
+    stats = up.upload_gallery(jobs)
+    assert stats["uploaded"] == 2 and not stats["failed"]
+    data = json.loads(hosted.read_text())
+    gallery = data["X1"]["gallery"]
+    assert len(gallery) == 2 and all(u.startswith("https://i.ebayimg.com/") for u in gallery)
+    assert [_sku_of(c[0]) for c in calls] == ["X1_g0", "X1_g1"]
+
+
+def test_upload_gallery_skips_when_cached(env, monkeypatch):
+    photos, hosted, calls = env
+    monkeypatch.setattr(up, "HOSTED_PATH", hosted)
+    up.save_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg",
+                           "gallery": ["https://i.ebayimg.com/g0.jpg"]}}, hosted)
+    monkeypatch.setattr(up, "_download_as_jpeg", lambda url: b"\xff\xd8")
+    stats = up.upload_gallery([{"sku": "X1", "urls": ["https://a.com/1.jpg"]}])
+    assert calls == [] and stats["skipped"] == 1 and stats["uploaded"] == 0
+
+
+def test_upload_gallery_ignores_sku_without_branded_photo(env, monkeypatch):
+    photos, hosted, calls = env
+    monkeypatch.setattr(up, "HOSTED_PATH", hosted)
+    up.save_hosted({"OTHER": {"url": "https://i.ebayimg.com/other.jpg"}}, hosted)
+    monkeypatch.setattr(up, "_download_as_jpeg", lambda url: b"\xff\xd8")
+    stats = up.upload_gallery([{"sku": "X1", "urls": ["https://a.com/1.jpg"]}])
+    assert calls == [] and stats["uploaded"] == 0 and stats["skipped"] == 0
+
+
+def test_upload_gallery_dry_run_makes_no_calls(env, monkeypatch):
+    photos, hosted, calls = env
+    monkeypatch.setattr(up, "HOSTED_PATH", hosted)
+    up.save_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg"}}, hosted)
+    monkeypatch.setattr(up, "_download_as_jpeg", lambda url: b"\xff\xd8")
+    stats = up.upload_gallery([{"sku": "X1", "urls": ["https://a.com/1.jpg"]}], dry_run=True)
+    assert calls == [] and stats["skipped"] == 1
+    assert "gallery" not in json.loads(hosted.read_text())["X1"]

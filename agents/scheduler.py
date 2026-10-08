@@ -1817,6 +1817,7 @@ def run_export(config, COL, service, sheet_name, start_row, end_row, dry_run=Fal
     rows = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
 
     # 1. Photos
+    jobs = []
     try:
         tpl = None if dry_run else photo_compositor.load_template()
         jobs = photo_compositor.build_jobs(rows, start_row, photo_compositor._load_columns())
@@ -1842,6 +1843,18 @@ def run_export(config, COL, service, sheet_name, start_row, end_row, dry_run=Fal
     except Exception as e:
         errors.append(f"upload step crashed: {e}")
         logger.exception("export: upload step failed — continuing")
+
+    # 2b. Gallery — host the Costco gallery shots on eBay too, so a listing whose main
+    # photo is EPS stays EPS-only (eBay error 20004 rejects mixing EPS + self-hosted URLs).
+    try:
+        gs = upload_photos.upload_gallery(jobs, dry_run=dry_run)
+        notes.append(f"gallery {'would host' if dry_run else 'hosted'} {gs['uploaded']}, "
+                     f"unchanged {gs['skipped']}"
+                     + (f", failed {len(gs['failed'])}" if gs["failed"] else ""))
+        errors += [f"gallery {s}: {m}" for s, m in gs["failed"]]
+    except Exception as e:
+        errors.append(f"gallery step crashed: {e}")
+        logger.exception("export: gallery step failed — continuing")
 
     # 3. CSV
     eligible = ebay_export.select_eligible(rows, start_row)

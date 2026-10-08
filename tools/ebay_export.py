@@ -661,14 +661,19 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             pic_url = "|".join(parts) if parts else PLACEHOLDER_IMAGE
         else:
             pic_url = PLACEHOLDER_IMAGE
-        # Branded photo hosted on eBay (tools/upload_photos.py) goes FIRST = main image;
-        # the raw Costco shots from col AT follow as extra photos.
+        # Branded photo hosted on eBay (tools/upload_photos.py) is the main image.
+        # eBay REJECTS a listing that mixes eBay-hosted (EPS) pictures with self-hosted
+        # (external) URLs in PicURL — error 20004 "A mixture of Self Hosted and EPS
+        # pictures are not allowed." So when the branded photo is EPS-hosted, PicURL must
+        # be EPS-only: the branded photo + any EPS-hosted gallery shots (upload_photos.py
+        # caches them under `gallery`), never the raw self-hosted col AT URLs.
         photo_key = _photo_key(sku) if sku else ""
         hosted_url = hosted_url_for(photo_key, hosted)
         if hosted_url:
-            extra = [] if pic_url == PLACEHOLDER_IMAGE else [
-                u for u in pic_url.split("|") if u != hosted_url]
-            pic_url = "|".join([hosted_url] + extra[:MAX_PICTURES - 1])
+            entry = hosted.get(photo_key) or {}
+            gallery = [u for u in (entry.get("gallery") or [])
+                       if isinstance(u, str) and u.startswith("https://")]
+            pic_url = "|".join([hosted_url] + gallery[:MAX_PICTURES - 1])
         elif photo_key and (LISTING_PHOTOS_DIR / f"{photo_key}.jpg").exists():
             logger.warning(f"  {title[:40]} — branded photo {photo_key}.jpg exists but isn't hosted; "
                            "run `python tools/upload_photos.py` and re-export to use it as the main image.")

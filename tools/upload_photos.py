@@ -29,6 +29,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import sys
 import socket
 import urllib.error
@@ -52,6 +53,13 @@ PHOTOS_DIR  = ROOT / "data" / "listing_photos"
 HOSTED_PATH = ROOT / "data" / "hosted_photos.json"
 REUPLOAD_AFTER_DAYS = 25     # refresh hosted URLs older than this (unlisted pictures get purged)
 MAX_PHOTO_BYTES = 12 * 1024 * 1024   # eBay's per-picture upload limit
+MAX_GALLERY = 23             # eBay allows 24 pictures/listing: 1 main + up to 23 gallery shots
+
+_GALLERY_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/129.0 Safari/537.36"),
+    "Accept": "image/jpeg,image/png,image/webp,image/*;q=0.8",
+}
 
 
 # ── Map file ──────────────────────────────────────────────────────────────────
@@ -262,6 +270,94 @@ def run(*, dry_run=False, force=False, sku=None, photos_dir=None, hosted_path=No
                 stats["failed"] += [(r, "skipped — eBay token rejected") for r in rest]
                 logger.critical("upload_photos: eBay token rejected — stopping. Renew EBAY_AUTH_TOKEN.")
                 break
+    return stats
+
+
+def _safe_sku(sku: str) -> str:
+    """Sanitize a SKU to the hosted_photos.json key (matches photo_compositor.safe_sku
+    and ebay_export._photo_key)."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", sku.strip())
+
+
+def _download_as_jpeg(url: str, timeout: int = 30) -> bytes:
+    """Download an image URL and return JPEG bytes. Costco's CDN serves .avif-named files
+    as image/jpeg, but re-encoding through PIL guarantees a valid JPEG regardless of source
+    format, so eBay's EPS upload accepts it."""
+    import requests
+    from PIL import Image
+    from io import BytesIO
+    resp = requests.get(url, headers=_GALLERY_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    img = Image.open(BytesIO(resp.content)).convert("RGB")
+    buf = BytesIO()
+    img.save(buf, "JPEG", quality=90, optimize=True)
+    return buf.getvalue()
+
+
+def upload_gallery(jobs, *, dry_run=False, force=False) -> dict:
+    """Host the Costco gallery shots (col AT) on eBay EPS for every SKU that already has a
+    hosted branded photo. eBay error 20004 forbids mixing EPS and self-hosted pictures in a
+    single listing, so once the main photo is EPS the gallery must be EPS too — otherwise
+    ebay_export falls back to the branded photo alone. Each SKU's gallery is uploaded once
+    and cached under hosted_photos.json[sku]["gallery"].
+
+    jobs: [{sku, urls, ...}] from photo_compositor.build_jobs (urls = col AT, sanitized).
+    Returns {uploaded, skipped, failed: [(sku, msg)]}. Never raises."""
+    stats = {"uploaded": 0, "skipped": 0, "failed": []}
+    if not jobs:
+        return stats
+    hosted = load_hosted()
+    targets = []
+    for job in jobs:
+        sku = (job.get("sku") or "").strip()
+        urls = [u for u in (job.get("urls") or [])
+                if isinstance(u, str) and u.startswith(("http://", "https://"))]
+        if not sku or not urls:
+            continue
+        key = _safe_sku(sku)
+        entry = hosted.get(key)
+        if not isinstance(entry, dict) or not entry.get("url"):
+            continue                                   # no branded photo → no EPS gallery
+        if entry.get("gallery") and not force:
+            stats["skipped"] += 1
+            continue
+        targets.append((key, urls))
+    if not targets:
+        return stats
+    if dry_run:
+        stats["skipped"] = len(targets)
+        return stats
+
+    token, app_id, dev_id, cert_id, err_kind, err_msg = _load_credentials()
+    if err_kind:
+        stats["failed"] = [(k, err_msg) for k, _ in targets]
+        return stats
+    creds = (token, app_id, dev_id, cert_id)
+
+    for key, urls in targets:
+        gallery = []
+        for i, url in enumerate(urls[:MAX_GALLERY]):
+            try:
+                jpeg = _download_as_jpeg(url)
+            except Exception as e:
+                stats["failed"].append((key, f"download {url[-60:]}: {e}"))
+                continue
+            if len(jpeg) > MAX_PHOTO_BYTES:
+                stats["failed"].append((key, f"{len(jpeg) // 1024} KB exceeds 12 MB limit"))
+                continue
+            res = upload_picture(f"{key}_g{i}", jpeg, creds)
+            if res["ok"]:
+                gallery.append(res["url"])
+                logger.info(f"✓ {key} gallery #{i + 1} -> {res['url']}")
+            else:
+                stats["failed"].append((key, res["message"]))
+                if res["error_kind"] == "auth":
+                    break
+        if gallery:
+            entry = hosted.setdefault(key, {})
+            entry["gallery"] = gallery
+            save_hosted(hosted)
+            stats["uploaded"] += len(gallery)
     return stats
 
 
