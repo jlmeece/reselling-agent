@@ -17,11 +17,11 @@
   },
   "Outdoor Furniture": {
     "tier1_count": 0,
-    "tier2_count": 37,
-    "tier3_count": 47,
-    "total_researched": 84,
-    "last_updated": "2026-09-29",
-    "performance_score": 0.132
+    "tier2_count": 40,
+    "tier3_count": 48,
+    "total_researched": 88,
+    "last_updated": "2026-10-06",
+    "performance_score": 0.136
   },
   "Pharmacy": {
     "tier1_count": 14,

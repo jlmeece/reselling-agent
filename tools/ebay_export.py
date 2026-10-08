@@ -35,6 +35,7 @@ from loguru import logger
 load_dotenv(encoding="utf-8", override=True)
 
 from tools import ebay_taxonomy
+from tools.upload_photos import hosted_url_for, load_hosted
 from tools.sheet_writer import get_sheets_service, read_sheet
 
 # Listing quantity when the product has no Costco purchase limit (col W).
@@ -101,6 +102,17 @@ _COL = {
 
 _EXPORT_STATUSES = {"READY"}
 PLACEHOLDER_IMAGE = "https://placehold.co/1600x1600/ffffff/cccccc/png"
+# Branded main photos hosted on eBay by tools/upload_photos.py (sku -> {url, sha256, ...})
+# and the local renders from tools/photo_compositor.py (<safe sku>.jpg).
+_ROOT = Path(__file__).resolve().parent.parent
+HOSTED_PHOTOS_PATH = _ROOT / "data" / "hosted_photos.json"
+LISTING_PHOTOS_DIR = _ROOT / "data" / "listing_photos"
+MAX_PICTURES = 24          # eBay's per-listing picture cap
+
+
+def _photo_key(sku: str) -> str:
+    """File stem photo_compositor uses for a SKU (= the hosted_photos.json key)."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", sku.strip())
 
 
 def _sanitize_pic_url(url: str) -> str:
@@ -599,6 +611,7 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
     records = []          # built first: Taxonomy-required aspects can add CSV columns
     extra_columns = []    # C:<Aspect> columns beyond _EBAY_COLUMNS, in first-seen order
     skipped  = 0
+    hosted   = load_hosted(HOSTED_PHOTOS_PATH)
 
     for sheet_row, row in rows_with_idx:
         seo_title   = _safe(row, _COL["seo_title"])
@@ -648,6 +661,17 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             pic_url = "|".join(parts) if parts else PLACEHOLDER_IMAGE
         else:
             pic_url = PLACEHOLDER_IMAGE
+        # Branded photo hosted on eBay (tools/upload_photos.py) goes FIRST = main image;
+        # the raw Costco shots from col AT follow as extra photos.
+        photo_key = _photo_key(sku) if sku else ""
+        hosted_url = hosted_url_for(photo_key, hosted)
+        if hosted_url:
+            extra = [] if pic_url == PLACEHOLDER_IMAGE else [
+                u for u in pic_url.split("|") if u != hosted_url]
+            pic_url = "|".join([hosted_url] + extra[:MAX_PICTURES - 1])
+        elif photo_key and (LISTING_PHOTOS_DIR / f"{photo_key}.jpg").exists():
+            logger.warning(f"  {title[:40]} — branded photo {photo_key}.jpg exists but isn't hosted; "
+                           "run `python tools/upload_photos.py` and re-export to use it as the main image.")
         if pic_url == PLACEHOLDER_IMAGE:
             logger.info(f"  {title[:40]} — no images scraped, using placeholder. Replace in Seller Hub before publishing.")
 

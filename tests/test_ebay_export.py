@@ -149,6 +149,56 @@ def test_generate_ebay_csv_normalizes_pipe_with_spaces():
     assert rows[0]["PicURL"] == "https://example.com/a.jpg|https://example.com/b.jpg"
 
 
+# ── Hosted branded photo (tools/upload_photos.py) ────────────────────────────
+
+def _pic_url(row):
+    from tools.ebay_export import generate_ebay_csv
+    csv_text = generate_ebay_csv([(4, row)], _config_with_id())
+    return list(csv.DictReader(io.StringIO(csv_text)))[0]["PicURL"]
+
+
+def _write_hosted(data):
+    import json
+    from tools import ebay_export
+    ebay_export.HOSTED_PHOTOS_PATH.write_text(json.dumps(data))
+
+
+def test_hosted_photo_is_main_image_and_col_at_follows():
+    _write_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg", "sha256": "abc"}})
+    row = _make_row(sku="X1", image_urls="https://a.com/1.jpg, https://a.com/2.jpg")
+    assert _pic_url(row) == "https://i.ebayimg.com/branded.jpg|https://a.com/1.jpg|https://a.com/2.jpg"
+
+
+def test_hosted_photo_alone_replaces_placeholder():
+    _write_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg", "sha256": "abc"}})
+    assert _pic_url(_make_row(sku="X1")) == "https://i.ebayimg.com/branded.jpg"
+
+
+def test_hosted_lookup_uses_compositor_safe_sku():
+    _write_hosted({"A_B": {"url": "https://i.ebayimg.com/ab.jpg"}})
+    row = _make_row(sku="A/B", image_urls="https://a.com/1.jpg")
+    assert _pic_url(row) == "https://i.ebayimg.com/ab.jpg|https://a.com/1.jpg"
+
+
+def test_no_hosted_photo_keeps_col_at_behavior():
+    _write_hosted({"OTHER": {"url": "https://i.ebayimg.com/other.jpg"}})
+    row = _make_row(sku="X1", image_urls="https://a.com/1.jpg,https://a.com/2.jpg")
+    assert _pic_url(row) == "https://a.com/1.jpg|https://a.com/2.jpg"
+
+
+def test_no_hosted_map_file_keeps_col_at_behavior():
+    row = _make_row(sku="X1", image_urls="https://a.com/1.jpg")
+    assert _pic_url(row) == "https://a.com/1.jpg"
+
+
+def test_hosted_photo_respects_picture_cap():
+    from tools.ebay_export import MAX_PICTURES
+    _write_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg"}})
+    many = ",".join(f"https://a.com/{i}.jpg" for i in range(40))
+    parts = _pic_url(_make_row(sku="X1", image_urls=many)).split("|")
+    assert len(parts) == MAX_PICTURES and parts[0] == "https://i.ebayimg.com/branded.jpg"
+
+
 # ── Quantity: purchase limit (col W) or DEFAULT_QUANTITY ──────────────────────
 
 @pytest.mark.parametrize("cell,expected", [

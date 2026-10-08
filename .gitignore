@@ -58,3 +58,5 @@ data/CostcoAgentProfile/
 
 # Generated listing photos (tools/photo_compositor.py) — regenerable
 data/listing_photos/
+# eBay-hosted URLs for those photos (tools/upload_photos.py) — per-account, rebuilt by re-upload
+data/hosted_photos.json

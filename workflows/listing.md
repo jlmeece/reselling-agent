@@ -90,6 +90,20 @@ The agent never overwrites copy that already exists. To force a re-generate:
 
 ---
 
+## Listing Photos (branded main image)
+
+Run in order before `python tools/ebay_export.py`, locally (the jpgs and the URL map are not synced to the VPS):
+1. `python tools/photo_compositor.py --mode sheet` → `data/listing_photos/<sku>.jpg` (rows need a SKU in col AA)
+2. `python tools/upload_photos.py` → uploads new/changed jpgs to eBay Picture Services, URL map in `data/hosted_photos.json`
+3. `python tools/ebay_export.py` → PicURL = hosted branded photo first, then the col AT Costco shots
+
+- `upload_photos.py --dry-run` lists what would upload; `--force` re-uploads all; `--sku X` one photo
+- An unchanged photo (same sha256) is skipped; one uploaded >25 days ago is re-uploaded, since eBay purges hosted pictures that never got attached to a listing
+- eBay rejects the picture inline as base64 `<PictureData>` (error 21916550 "corrupt image data"). It has to be sent as a multipart binary attachment, which is what the tool does
+- Export logs a warning when a row has a local jpg but no hosted URL. Run step 2, then export again
+
+---
+
 ## Self-Improvement Notes
 
 *Update this section when you encounter prompt quality issues or new requirements.*

@@ -50,3 +50,16 @@ def _isolated_reprice_state(monkeypatch, tmp_path):
     monkeypatch.setattr(sale_schedule, "OOS_HIDDEN_PATH", str(tmp_path / "oos_hidden.json"))
     monkeypatch.setattr(reprice, "PENDING_PATH", str(tmp_path / "reprice_pending.json"))
     monkeypatch.setattr(reprice, "EBAY_SYNC_LOG", str(tmp_path / "ebay_sync.log"))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_hosted_photos(monkeypatch, tmp_path):
+    """No test may read/write the real data/hosted_photos.json or data/listing_photos/."""
+    from tools import ebay_export, upload_photos
+
+    hosted = tmp_path / "hosted_photos.json"
+    photos = tmp_path / "listing_photos"
+    monkeypatch.setattr(upload_photos, "HOSTED_PATH", hosted)
+    monkeypatch.setattr(upload_photos, "PHOTOS_DIR", photos)
+    monkeypatch.setattr(ebay_export, "HOSTED_PHOTOS_PATH", hosted)
+    monkeypatch.setattr(ebay_export, "LISTING_PHOTOS_DIR", photos)
