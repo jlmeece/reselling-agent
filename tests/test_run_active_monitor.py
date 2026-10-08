@@ -188,7 +188,8 @@ def test_existing_p_flag_survives_a_quiet_run_until_repriced(harness):
     calls = harness([_energy_row(39.99, flag="YES — update listing", ebay_price="41.48")],
                     _scrape(39.99, False))
     _r, w = _written(calls)
-    assert COL["price_change"] not in w                       # untouched, no longer blanked
+    # still losing at eBay $41.48 -> flag kept (never blanked); the losing-money path re-asserts it
+    assert w.get(COL["price_change"], "YES — update listing") == "YES — update listing"
     calls = harness([_energy_row(39.99, flag="YES — update listing", ebay_price="79.99")],
                     _scrape(39.99, False))
     _r, w2 = _written(calls)
@@ -220,13 +221,18 @@ def test_only_rows_limits_scrape_and_alerts(harness):
     assert [r for r, _w in calls["writes"]] == [START_ROW + 1]
 
 
-def test_low_margin_active_row_is_not_paused_and_raises_no_monitor_alert(harness):
-    # cost 31.99 vs eBay 33.99 at a 13.25% fee -> margin ~ -8%: far below the 10% threshold
+def test_negative_margin_active_row_is_not_paused_and_alerts_losing_money(harness):
+    # cost 31.99 vs eBay 33.99 at a 13.25% fee -> net -2.50, cost UNCHANGED (no sale ended)
     calls = harness([_energy_row(31.99, ebay_price="33.99")], _scrape(31.99, False))
     _r, w = _written(calls)
     assert COL["status"] not in w                                   # stays ACTIVE — no PAUSED_MARGIN write
     assert "losing money" in w[COL["tier_summary"]]                 # negative margin -> col T note
-    assert calls["urgent"] == []                                    # ebay_sync owns margin alerts
+    assert w[COL["price_change"]] == "YES — update listing"
+    assert len(calls["urgent"]) == 1                                # 1976458: losing listing = urgent
+    item = calls["urgent"][0][1][0]
+    assert item["reason"].startswith("losing money — net $-2.50 at $33.99")
+    assert "sale ended" not in item["reason"] and "→" not in item["reason"]   # no fake cost move
+    assert item["target"] and "Reprice eBay to" in item["reprice_note"]
 
 
 def test_oos_active_row_still_pauses_and_alerts(harness):

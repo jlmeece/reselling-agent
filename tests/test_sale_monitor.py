@@ -60,6 +60,23 @@ def test_sale_end_alert_without_profitable_price_says_end_listing():
     assert "end" in item["reason"].lower() and item["target"] is None
 
 
+def test_losing_alert_flat_cost_says_losing_not_sale_ended():
+    item = sale_end_alert("x", 31.99, 31.99, 0.1325, 0.0, 33.99, kind="losing", target=47.99)
+    assert item["reason"].startswith("losing money — net $-2.50 at $33.99, reprice eBay to $47.99")
+    assert "sale ended" not in item["reason"] and "cost $" not in item["reason"]
+    assert item["target"] == 47.99 and "net is now $-2.50" in item["reprice_note"]
+
+
+def test_losing_alert_mentions_cost_drift_when_cost_moved():
+    item = sale_end_alert("x", 31.99, 32.49, 0.1325, 0.0, 33.99, kind="losing")
+    assert "(cost $31.99→$32.49)" in item["reason"] and "sale ended" not in item["reason"]
+
+
+def test_losing_alert_unknown_fee_has_no_net():
+    item = sale_end_alert("x", 31.99, 31.99, None, 0.0, 33.99, kind="losing")
+    assert item["reason"].startswith("losing money at the current eBay price")
+
+
 def test_sale_end_alert_unknown_fee_never_guesses_a_price():
     item = sale_end_alert("x", 10.0, 20.0, None, 0.0, 30.0)
     assert item["target"] is None

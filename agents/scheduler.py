@@ -509,7 +509,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                     reprice_prompts.append(prompt)
                 sale_item = sale_end_alert(title, old, new_price, fee_f, ship_f, ebay_f,
                                            row=sheet_row, category=category,
-                                           target=prompt["target"] if prompt else None)
+                                           target=prompt["target"] if prompt else None,
+                                           kind="losing")
                 notes = (f"losing money (margin {margin:.1%})"
                          if notes in ("", "All clear") else f"{notes} | losing money (margin {margin:.1%})")
 

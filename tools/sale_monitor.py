@@ -115,18 +115,28 @@ def margin_note_sale_start(old, new):
 
 
 def sale_end_alert(title, old, new, fee_rate, ship_cost, ebay_price, row=None, category="",
-                   target=None):
+                   target=None, kind="sale_end"):
     """
     Urgent-alert item (send_urgent_alert shape) for a sale end / cost rise.
     fee_rate: fraction (0.1325) or None; ship_cost / ebay_price: floats or None.
     target: override (the one-tap reprice price, so the alert and the Telegram prompt agree);
     default = suggest_reprice's 20%-margin price.
+    kind: "sale_end" (cost event) or "losing" (an ACTIVE listing found at negative margin with
+    no sale-end event — often no cost change at all, so "sale ended" would be false).
     """
     fee = fee_rate if fee_rate is not None else 0.0
     one_tap = target is not None
     if target is None:
         target = suggest_reprice(new, fee, ship_cost or 0) if fee_rate is not None else None
-    head = f"sale ended — cost ${old:.2f}→${new:.2f}"
+    net = (ebay_price - new - ebay_price * fee - (ship_cost or 0)
+           if ebay_price and fee_rate is not None else None)
+    if kind == "losing":
+        head = (f"losing money — net ${net:.2f} at ${ebay_price:.2f}" if net is not None
+                else "losing money at the current eBay price")
+        if abs(new - old) >= 0.005:
+            head += f" (cost ${old:.2f}→${new:.2f})"
+    else:
+        head = f"sale ended — cost ${old:.2f}→${new:.2f}"
     if target:
         how = "restore margin (tap ✓ Reprice in Telegram)" if one_tap else "keep margin"
         reprice_note = f"Reprice eBay to ${target:.2f} to {how}"
@@ -134,8 +144,7 @@ def sale_end_alert(title, old, new, fee_rate, ship_cost, ebay_price, row=None, c
     else:
         reprice_note = "No profitable eBay price at this cost — consider ending the listing"
         reason = f"{head}, no profitable price — consider ending listing"
-    if ebay_price and fee_rate is not None:
-        net = ebay_price - new - ebay_price * fee - (ship_cost or 0)
+    if net is not None:
         reprice_note += f" (at your ${ebay_price:.2f} net is now ${net:.2f})"
     return {"title": title, "row": row, "category": category,
             "reason": reason, "reprice_note": reprice_note, "target": target}
