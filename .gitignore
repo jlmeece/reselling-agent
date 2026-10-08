@@ -50,6 +50,9 @@ data/.telegram_bot.alive
 data/run_history.json
 data/spot_history.json
 data/rotation_log.json
+data/category_performance.json
+data/tier2_watchlist.json
+data/tier3_skipped.json
 data/.cookie_warn_ts
 data/.cookie_expiry_alert_ts
 data/.cookie_autorefresh_ts
@@ -60,3 +63,8 @@ data/CostcoAgentProfile/
 data/listing_photos/
 # eBay-hosted URLs for those photos (tools/upload_photos.py) — per-account, rebuilt by re-upload
 data/hosted_photos.json
+# Photo template binaries — local Photoshop exports, iterated constantly. The VPS never runs
+# the compositor (no sheet creds); keep layout.json + .gitkeep tracked, drop the big PNGs/JPGs.
+data/photo_template/*.png
+data/photo_template/*.jpg
+data/photo_template/*.jpeg
