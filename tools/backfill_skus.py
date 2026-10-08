@@ -31,10 +31,20 @@ _BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BASE))
 
 _PRODUCT_ID_RE = re.compile(r"\.product\.(\d+)")
+# Modern Costco URLs: https://www.costco.com/p/-/<slug>/<9-10 digit id>. The old
+# backfill only parsed the `.product.<id>.html` form, so rows with the `/p/` form
+# got placeholder "X…" SKUs instead of their real Costco product ID.
+_TRAILING_ID_RE = re.compile(r"(\d{7,12})(?:[/?#].*)?$")
 
 
 def extract_product_id(url):
-    m = _PRODUCT_ID_RE.search(url or "")
+    url = (url or "").strip()
+    if not url:
+        return None
+    m = _PRODUCT_ID_RE.search(url)
+    if m:
+        return m.group(1)
+    m = _TRAILING_ID_RE.search(url)
     return m.group(1) if m else None
 
 
