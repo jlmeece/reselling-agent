@@ -76,6 +76,7 @@ LOG_FILES = {
     "sale-digest":   os.path.join(_BASE_DIR, "data", "logs", "sale_digest.log"),
     "savings":       os.path.join(_BASE_DIR, "data", "logs", "savings.log"),
     "apply_scheduled": os.path.join(_BASE_DIR, "data", "logs", "apply_scheduled.log"),
+    "export":        os.path.join(_BASE_DIR, "data", "logs", "export.log"),
     "telegram_bot":  os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),
 }
 

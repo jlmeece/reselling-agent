@@ -734,28 +734,29 @@ def export_approved_products() -> Path | None:
 
     all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
 
-    eligible = []
-    for idx, row in enumerate(all_data):
-        if not row:
-            continue
-        status = _safe(row, _COL["status"])
-        if status in _EXPORT_STATUSES:
-            eligible.append((idx + start_row, row))
-
+    eligible = select_eligible(all_data, start_row)
     if not eligible:
         logger.warning("No READY products found — nothing to export.")
         return None
 
     logger.info(f"Found {len(eligible)} eligible product(s) for export.")
+    return write_csv(generate_ebay_csv(eligible, config))
 
-    csv_text = generate_ebay_csv(eligible, config)
 
-    export_dir = Path(__file__).parent.parent / "data" / "exports"
+EXPORT_DIR = Path(__file__).parent.parent / "data" / "exports"
+
+
+def select_eligible(all_data: list[list], start_row: int) -> list[tuple[int, list]]:
+    """(sheet_row, row) for every READY row of a sheet read starting at start_row."""
+    return [(idx + start_row, row) for idx, row in enumerate(all_data)
+            if row and _safe(row, _COL["status"]) in _EXPORT_STATUSES]
+
+
+def write_csv(csv_text: str, export_dir: Path | None = None) -> Path:
+    """Save the CSV to data/exports/ebay_upload_<timestamp>.csv and return the path."""
+    export_dir = Path(export_dir or EXPORT_DIR)
     export_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path  = export_dir / f"ebay_upload_{timestamp}.csv"
-
+    out_path = export_dir / f"ebay_upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     out_path.write_text(csv_text, encoding="utf-8-sig")  # utf-8-sig = BOM for Excel compat
     logger.info(f"Saved: {out_path}")
     return out_path

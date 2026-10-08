@@ -92,7 +92,9 @@ The agent never overwrites copy that already exists. To force a re-generate:
 
 ## Listing Photos (branded main image)
 
-Run in order before `python tools/ebay_export.py`, locally (the jpgs and the URL map are not synced to the VPS):
+**Automated:** `python agents/scheduler.py --mode export` chains all three (Task `WAT-Export`, daily 10:30 CT, `tools/register_export_task.ps1`, log `data/logs/export.log`). It sends ONE Telegram message with the CSV attached, and only when the CSV differs from the last one sent (`data/.export_state.json`). It stays silent with 0 READY rows. A photo or upload failure never blocks the CSV. `--dry-run` only counts. Delete `data/.export_state.json` to force a re-send of an unchanged export.
+
+The steps by hand, in order, locally (the jpgs and the URL map are not synced to the VPS):
 1. `python tools/photo_compositor.py --mode sheet` → `data/listing_photos/<sku>.jpg` (rows need a SKU in col AA)
 2. `python tools/upload_photos.py` → uploads new/changed jpgs to eBay Picture Services, URL map in `data/hosted_photos.json`
 3. `python tools/ebay_export.py` → PicURL = hosted branded photo first, then the col AT Costco shots

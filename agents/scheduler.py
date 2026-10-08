@@ -16,6 +16,7 @@ Twelve run modes (--mode flag):
   sale-digest   1x/day     "Sale Radar" Telegram digest of items really on sale (read-only, --dry-run prints)
   sale-refresh  on demand  Re-scrape non-ACTIVE rows with unverified sale badges (writes G/X/AW only)
   savings       1x/day     Costco Member-Only Savings page -> update tracked sales, alert, add in-category PENDING rows
+  export        1x/day     Branded photos -> eBay picture hosting -> Seller Hub CSV (Telegram only when it changed)
 
 Run locally: python agents/scheduler.py --mode active
 Scheduled via Windows Task Scheduler.
@@ -1747,6 +1748,147 @@ def run_sale_digest(config, COL, service, sheet_name, start_row, end_row, dry_ru
     return result
 
 
+EXPORT_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "data", ".export_state.json")
+
+
+def _send_telegram_document(token: str, chat_id: str, path, caption: str) -> bool:
+    """sendDocument (multipart) with an HTML caption. Never raises. True iff it was sent."""
+    import uuid
+    boundary = f"wat{uuid.uuid4().hex}"
+    crlf = b"\r\n"
+    parts = []
+    for name, value in (("chat_id", chat_id), ("caption", caption), ("parse_mode", "HTML")):
+        parts += [b"--" + boundary.encode(), f'Content-Disposition: form-data; name="{name}"'.encode(),
+                  b"", value.encode("utf-8")]
+    try:
+        data = open(path, "rb").read()
+    except OSError as e:
+        logger.warning(f"Telegram document not sent — can't read {path}: {e}")
+        return False
+    parts += [b"--" + boundary.encode(),
+              f'Content-Disposition: form-data; name="document"; filename="{os.path.basename(path)}"'.encode(),
+              b"Content-Type: text/csv", b"", data, b"--" + boundary.encode() + b"--", b""]
+    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendDocument",
+                                 data=crlf.join(parts),
+                                 headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    try:
+        urllib.request.urlopen(req, timeout=30)
+        logger.info("Telegram document sent.")
+        return True
+    except Exception as e:
+        logger.warning(f"Telegram document failed (non-fatal): {e}")
+        return False
+
+
+def _load_export_state() -> dict:
+    try:
+        with open(EXPORT_STATE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_export_state(state: dict) -> None:
+    tmp = EXPORT_STATE_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+    os.replace(tmp, EXPORT_STATE_PATH)
+
+
+def run_export(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
+    """
+    export mode: the three listing steps chained, so Jay never runs them by hand.
+      1. photo_compositor — branded main photo for APPROVED/READY rows with image + SKU
+      2. upload_photos    — host new/changed photos on eBay (data/hosted_photos.json)
+      3. ebay_export      — Seller Hub CSV of READY rows to data/exports/
+    A failure in 1 or 2 never blocks the CSV (export falls back to the col AT images).
+    Silent with 0 READY rows. The CSV is written + sent (Telegram document) only when its
+    content differs from the last export (data/.export_state.json), so READY rows waiting to be
+    listed don't produce a new file and alert every day. dry_run: no writes, no eBay calls,
+    no CSV, no Telegram — only counts. Returns Run Log keys (status/notes/errors).
+    """
+    import hashlib
+    from tools import ebay_export, photo_compositor, upload_photos
+
+    tag = "[dry-run] " if dry_run else ""
+    notes, errors = [], []
+    rows = read_sheet(service, f"'{sheet_name}'!A{start_row}:AZ{end_row}")
+
+    # 1. Photos
+    try:
+        tpl = None if dry_run else photo_compositor.load_template()
+        jobs = photo_compositor.build_jobs(rows, start_row, photo_compositor._load_columns())
+        ps = photo_compositor.run(jobs, tpl, dry_run=dry_run)
+        notes.append(f"photos {'would make' if dry_run else 'made'} {ps['processed']}, "
+                     f"have {ps['done']}, no SKU {ps['no_sku']}, no image {ps['no_image']}"
+                     + (f", failed {len(ps['failed'])}" if ps["failed"] else ""))
+        errors += [f"photo {s}: {e}" for s, e in ps["failed"]]
+    except FileNotFoundError as e:
+        notes.append("photos skipped — template missing")
+        logger.warning(f"export: {e}")
+    except Exception as e:
+        errors.append(f"photo step crashed: {e}")
+        logger.exception("export: photo step failed — continuing")
+
+    # 2. Upload
+    try:
+        us = upload_photos.run(dry_run=dry_run)
+        n_up = us["planned"] if dry_run else us["uploaded"]
+        notes.append(f"upload {'would host' if dry_run else 'hosted'} {n_up}, unchanged {us['skipped']}"
+                     + (f", failed {len(us['failed'])}" if us["failed"] else ""))
+        errors += [f"upload {s}: {m}" for s, m in us["failed"]]
+    except Exception as e:
+        errors.append(f"upload step crashed: {e}")
+        logger.exception("export: upload step failed — continuing")
+
+    # 3. CSV
+    eligible = ebay_export.select_eligible(rows, start_row)
+    result = {"status": "ok"}
+    if not eligible:
+        notes.append("0 READY — nothing to export")
+    elif dry_run:
+        notes.append(f"would export {len(eligible)} READY row(s)")
+    else:
+        csv_text = ebay_export.generate_ebay_csv(eligible, ebay_export._load_config())
+        n = max(len(csv_text.strip().splitlines()) - 1, 0)    # rows that survived the export's skips
+        digest = hashlib.sha256(csv_text.encode("utf-8")).hexdigest()
+        state = _load_export_state()
+        if n == 0:
+            notes.append(f"{len(eligible)} READY but all skipped by export (no price/category/already listed)")
+        elif state.get("sha256") == digest:
+            notes.append(f"{n} listing(s) unchanged since {state.get('file', 'last export')} — not re-sent")
+        else:
+            path = ebay_export.write_csv(csv_text)
+            hosted = upload_photos.load_hosted()
+            branded = sum(1 for _r, row in eligible
+                          if upload_photos.hosted_url_for(
+                              ebay_export._photo_key(ebay_export._safe(row, ebay_export._COL["sku"])), hosted))
+            notes.append(f"exported {n} listing(s) -> {path.name} ({branded} with branded photo)")
+            caption = (f"📦 Export ready — {n} listing(s). CSV: {html.escape(path.name)}. "
+                       f"Upload to Seller Hub.\nBranded main photo: {branded}/{len(eligible)}")
+            if errors:
+                caption += f"\n⚠️ {len(errors)} photo/upload problem(s) — see Run Log"
+            token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+            sent = bool(token and chat_id) and (_send_telegram_document(token, chat_id, path, caption)
+                                                or _send_telegram(token, chat_id, caption))
+            if sent:
+                _save_export_state({"sha256": digest, "file": path.name, "rows": n,
+                                    "at": datetime.now().isoformat(timespec="seconds")})
+            else:
+                result["status"] = "error"
+                errors.append("export alert not delivered: Telegram not configured or send failed")
+
+    result["notes"] = tag + "; ".join(notes)
+    if errors:
+        result["errors"] = "; ".join(errors)[:600]
+        if result["status"] == "ok" and any("crashed" in e or "not delivered" in e for e in errors):
+            result["status"] = "error"
+    logger.info(f"export: {result['notes']}")
+    return result
+
+
 SALE_REFRESH_STATUSES = {"SCORED", "WATCH", "READY", "APPROVED", "PAUSED_MARGIN", "PAUSED_OOS"}
 
 
@@ -2226,7 +2368,7 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
-                 "sale-digest", "sale-refresh", "savings", "apply_scheduled"],
+                 "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -2242,7 +2384,8 @@ def main():
             "sale-digest:    ONE Telegram message of tracked items really on sale (read-only)\n"
             "sale-refresh:   Re-scrape non-ACTIVE rows with unverified sale badges (G/X/AW only)\n"
             "savings:        Scrape Costco Member-Only Savings -> update tracked sales, alert, add new PENDING rows\n"
-            "apply_scheduled: every 10 min — pre-stage sale-end prompts; apply approved reprice/Hide at sale end"
+            "apply_scheduled: every 10 min — pre-stage sale-end prompts; apply approved reprice/Hide at sale end\n"
+            "export:         branded photos -> host on eBay -> Seller Hub CSV of READY rows (Telegram on change)"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -2256,7 +2399,7 @@ def main():
     parser.add_argument("--row", type=int, default=None,
                         help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
-                        help="(ebay_sync / sale-digest / savings) Report without writing / print instead of sending")
+                        help="(ebay_sync / sale-digest / savings / export) Report without writing / print instead of sending")
     parser.add_argument("--queue", action="store_true",
                         help="(sale-refresh only) Scrape SCORED + AUDIT_REVIEW rows, including blank sale badges")
     args = parser.parse_args()
@@ -2270,7 +2413,7 @@ def main():
     if not _acquire_lock(args.mode):
         return
 
-    if args.mode != "sale-digest":     # Chrome-free mode: a cookie refresh/alert is irrelevant to it
+    if args.mode not in ("sale-digest", "export"):   # Chrome-free: a cookie refresh/alert is irrelevant
         _check_cookie_age()
 
     config     = load_config()
@@ -2328,6 +2471,9 @@ def main():
             _run_results.update(run_savings(config, COL, service, sheet_name, start_row, end_row,
                                             dry_run=args.dry_run, limit=args.limit,
                                             add_limit=args.add_limit))
+        elif args.mode == "export":
+            _run_results.update(run_export(config, COL, service, sheet_name, start_row, end_row,
+                                           dry_run=args.dry_run))
         elif args.mode == "rescore":
             _run_results.update(run_rescore(config, COL, service, sheet_name, start_row, end_row))
         # One alert per run if the Costco price API stopped returning prices (col G would

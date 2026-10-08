@@ -63,6 +63,7 @@ data/CostcoAgentProfile/
 data/listing_photos/
 # eBay-hosted URLs for those photos (tools/upload_photos.py) — per-account, rebuilt by re-upload
 data/hosted_photos.json
+data/.export_state.json
 # Photo template binaries — local Photoshop exports, iterated constantly. The VPS never runs
 # the compositor (no sheet creds); keep layout.json + .gitkeep tracked, drop the big PNGs/JPGs.
 data/photo_template/*.png
