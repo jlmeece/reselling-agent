@@ -2376,12 +2376,122 @@ def _main_apply_scheduled():
         logger.debug("apply_scheduled: nothing due")
 
 
+def run_graveyard_sweep(config, COL, service, sheet_name, start_row, end_row,
+                        dry_run=False, limit=None) -> dict:
+    """graveyard-sweep mode: re-check a handful of Graveyard items' Costco pages to confirm
+    they are really dead (delisted) or flag ones that came back to life / back on sale.
+    Needs Chrome (Windows only). `limit` caps pages opened per run (default 10)."""
+    biz = ((config or {}).get("business") or {}).get("graveyard_sweep") or {}
+    limit = limit or int(biz.get("daily_limit", 10))
+    tag = "[dry-run] " if dry_run else ""
+    if sys.platform != "win32":
+        return {"status": "ok", "notes": "graveyard-sweep: skipped (non-Windows — needs Chrome)"}
+
+    from tools.costco_scraper import refresh_session
+    from tools.graveyard_writer import read_graveyard, write_graveyard_verdict, setup_graveyard_tab
+
+    if not dry_run:
+        setup_graveyard_tab(service)   # ensures the header row (incl. P/Q) exists
+
+    entries = read_graveyard(service)
+    cands = [e for e in entries if e["costco_url"] and not e["last_checked"]]
+    _econ = ("negative", "below floor", "zero velocity", "review floor")
+
+    def _rank(e):
+        econ = 0 if any(k in e["reason"].lower() for k in _econ) else 1
+        return (econ, e["date_removed"] or "9999")
+
+    cands.sort(key=_rank)
+    queue = cands[:limit]
+    if not queue:
+        return {"status": "ok", "notes": "graveyard-sweep: nothing to check (all checked or no URLs)"}
+
+    n = {"checked": 0, "dead": 0, "alive": 0, "revive": 0, "error": 0}
+    revives, errors = [], []
+    now_str = datetime.now().strftime("%Y-%m-%d")
+
+    with make_browser() as page:
+        for pos, e in enumerate(queue):
+            if pos and pos % 10 == 0:
+                refresh_session(page)
+            logger.info(f"  [graveyard] {e['title'][:60]}")
+            data = scrape_costco(e["costco_url"], page=page)
+            time.sleep(2)
+
+            if data.get("removed"):
+                verdict = "DEAD"
+            elif data.get("stock_status") == "CHECK FAILED" or (
+                    data.get("error") and ("blocked" in data["error"].lower()
+                                           or "captcha" in data["error"].lower())):
+                n["error"] += 1
+                errors.append(e["title"])
+                continue   # transient — leave unchecked so it retries next run
+            else:
+                # page is alive — is it a better deal than when it was killed?
+                price = to_float(data.get("price"))
+                cost = to_float(e["cost"])
+                on_sale = bool(data.get("on_sale"))
+                if on_sale or (price is not None and cost is not None and price < cost - 0.005):
+                    verdict = "REVIVE"
+                    revives.append((e, data))
+                else:
+                    verdict = "ALIVE"
+
+            n["checked"] += 1
+            if verdict == "DEAD":
+                n["dead"] += 1
+            elif verdict == "ALIVE":
+                n["alive"] += 1
+            else:
+                n["revive"] += 1
+            if not dry_run:
+                write_graveyard_verdict(service, e["row_num"], now_str, verdict)
+
+    counts = (f"{n['dead']} dead · {n['alive']} alive · {n['revive']} revived · "
+              f"{n['error']} error")
+    notes = f"{tag}graveyard-sweep: checked {n['checked']} ({counts})"
+    logger.info(notes)
+
+    message = None
+    if revives or errors:
+        lines = [f"🪦 <b>Graveyard sweep</b> — checked {n['checked']}: {counts}"]
+        if revives:
+            lines.append(f"\n♻️ <b>{len(revives)} worth a look:</b>")
+            for e, d in revives:
+                cost = to_float(e["cost"])
+                price = to_float(d.get("price"))
+                sale = " · on sale" if d.get("on_sale") else ""
+                was = f"was ${cost:.2f}" if cost is not None else "was ?"
+                now = f"now ${price:.2f}" if price is not None else "now ?"
+                lines.append(f"• {html.escape(e['title'][:50])} — {was}, {now}{sale}")
+        if errors:
+            lines.append(f"\n⚠️ {len(errors)} errored (bot-block?) — retry next run:")
+            for t in errors[:5]:
+                lines.append(f"• {html.escape(t[:50])}")
+        message = "\n".join(lines)
+
+    result = {"status": "ok", "notes": notes}
+    if message and not dry_run:
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if token and chat_id and not _send_telegram(token, chat_id, message):
+            result["status"] = "error"
+            result["errors"] = "graveyard sweep digest not delivered"
+    elif message and dry_run:
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        print(message)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Costco -> eBay Monitoring Agent")
     parser.add_argument(
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
-                 "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export"],
+                 "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export", "graveyard-sweep"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -2398,13 +2508,14 @@ def main():
             "sale-refresh:   Re-scrape non-ACTIVE rows with unverified sale badges (G/X/AW only)\n"
             "savings:        Scrape Costco Member-Only Savings -> update tracked sales, alert, add new PENDING rows\n"
             "apply_scheduled: every 10 min — pre-stage sale-end prompts; apply approved reprice/Hide at sale end\n"
-            "export:         branded photos -> host on eBay -> Seller Hub CSV of READY rows (Telegram on change)"
+            "export:         branded photos -> host on eBay -> Seller Hub CSV of READY rows (Telegram on change)\n"
+            "graveyard-sweep: re-check ~10 un-checked Graveyard items' Costco pages (dead / revive / alive)\n"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
                         help="Limit research/discovery to one category (e.g. 'Jewelry')")
     parser.add_argument("--limit", type=int, default=None,
-                        help="Limit research to N products (for testing); savings: max product pages opened")
+                        help="Limit research to N products (for testing); savings/graveyard-sweep: max pages opened")
     parser.add_argument("--force", action="store_true",
                         help="(recheck only) Re-run Costco + eBay on ALL products, not just missing-data rows")
     parser.add_argument("--add-limit", type=int, default=None,
@@ -2412,7 +2523,7 @@ def main():
     parser.add_argument("--row", type=int, default=None,
                         help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
-                        help="(ebay_sync / sale-digest / savings / export) Report without writing / print instead of sending")
+                        help="(ebay_sync / sale-digest / savings / export / graveyard-sweep) Report without writing / print instead of sending")
     parser.add_argument("--queue", action="store_true",
                         help="(sale-refresh only) Scrape SCORED + AUDIT_REVIEW rows, including blank sale badges")
     args = parser.parse_args()
@@ -2487,6 +2598,10 @@ def main():
         elif args.mode == "export":
             _run_results.update(run_export(config, COL, service, sheet_name, start_row, end_row,
                                            dry_run=args.dry_run))
+        elif args.mode == "graveyard-sweep":
+            _run_results.update(run_graveyard_sweep(config, COL, service, sheet_name,
+                                                    start_row, end_row,
+                                                    dry_run=args.dry_run, limit=args.limit))
         elif args.mode == "rescore":
             _run_results.update(run_rescore(config, COL, service, sheet_name, start_row, end_row))
         # One alert per run if the Costco price API stopped returning prices (col G would

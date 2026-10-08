@@ -78,6 +78,7 @@ LOG_FILES = {
     "ebay_sync":     os.path.join(_BASE_DIR, "data", "logs", "ebay_sync.log"),
     "sale-digest":   os.path.join(_BASE_DIR, "data", "logs", "sale_digest.log"),
     "savings":       os.path.join(_BASE_DIR, "data", "logs", "savings.log"),
+    "graveyard_sweep": os.path.join(_BASE_DIR, "data", "logs", "graveyard_sweep.log"),
     "apply_scheduled": os.path.join(_BASE_DIR, "data", "logs", "apply_scheduled.log"),
     "export":        os.path.join(_BASE_DIR, "data", "logs", "export.log"),
     "telegram_bot":  os.path.join(_BASE_DIR, "data", "logs", "telegram_bot.log"),

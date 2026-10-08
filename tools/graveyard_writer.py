@@ -16,6 +16,17 @@ from tools.sheet_writer import get_sheets_service, execute_with_retry
 
 SHEET_ID = None  # resolved lazily from env
 
+# Single source of truth for the Graveyard tab's header row. Columns N:Q are the
+# re-check extensions (2026-10-08): COSTCO_URL + SKU captured at removal time, and
+# LAST_CHECKED + VERDICT written later by the graveyard sweep (--mode graveyard-sweep).
+GRAVEYARD_HEADERS = [
+    "DATE_REMOVED", "REASON", "CATEGORY", "TITLE",
+    "COST", "EBAY_PRICE", "NET_PROFIT", "SOLD_90D",
+    "SCORE", "STATUS_AT_REMOVAL", "DAYS_ON_SHEET",
+    "SUBSTITUTE_QUEUED", "ORIGINAL_ROW",
+    "COSTCO_URL", "SKU", "LAST_CHECKED", "VERDICT",
+]
+
 
 def _get_sheet_id():
     sid = os.getenv("GOOGLE_SHEET_ID")
@@ -31,27 +42,24 @@ def _get_tab_names(service) -> set:
 
 
 def setup_graveyard_tab(service) -> None:
-    """Create Graveyard tab if it doesn't exist. Idempotent."""
-    if "Graveyard" in _get_tab_names(service):
-        return
-    header = [[
-        "DATE_REMOVED", "REASON", "CATEGORY", "TITLE",
-        "COST", "EBAY_PRICE", "NET_PROFIT", "SOLD_90D",
-        "SCORE", "STATUS_AT_REMOVAL", "DAYS_ON_SHEET",
-        "SUBSTITUTE_QUEUED", "ORIGINAL_ROW",
-    ]]
-    body = {"requests": [{"addSheet": {"properties": {"title": "Graveyard"}}}]}
-    execute_with_retry(
-        service.spreadsheets().batchUpdate(spreadsheetId=_get_sheet_id(), body=body),
-        "graveyard addSheet", retry_statuses=(429,), retry_timeouts=False,
-    )
+    """Create the Graveyard tab if missing, and (re)write the header row. Idempotent.
+
+    Always (re)writing the header row is what migrates a pre-2026-10-08 tab to the
+    extended N:Q columns — it overwrites only row 1, never the data rows below.
+    """
+    if "Graveyard" not in _get_tab_names(service):
+        body = {"requests": [{"addSheet": {"properties": {"title": "Graveyard"}}}]}
+        execute_with_retry(
+            service.spreadsheets().batchUpdate(spreadsheetId=_get_sheet_id(), body=body),
+            "graveyard addSheet", retry_statuses=(429,), retry_timeouts=False,
+        )
     execute_with_retry(service.spreadsheets().values().update(
         spreadsheetId=_get_sheet_id(),
         range="Graveyard!A1",
         valueInputOption="RAW",
-        body={"values": header},
+        body={"values": [GRAVEYARD_HEADERS]},
     ), "graveyard headers")
-    logger.info("Graveyard tab created.")
+    logger.info("Graveyard tab ready (headers refreshed).")
 
 
 def setup_audit_log_tab(service) -> None:
@@ -89,6 +97,60 @@ def get_graveyard_titles(service) -> set:
         return set()
 
 
+# Column positions in GRAVEYARD_HEADERS (0-based) — used by the graveyard sweep.
+GY_DATE_REMOVED, GY_REASON, GY_CATEGORY, GY_TITLE, GY_COST, GY_EBAY_PRICE, GY_NET, GY_SOLD = range(8)
+GY_SCORE, GY_STATUS, GY_DAYS, GY_SUB, GY_ORIGINAL_ROW = range(8, 13)
+GY_COSTCO_URL, GY_SKU, GY_LAST_CHECKED, GY_VERDICT = 13, 14, 15, 16
+
+
+def read_graveyard(service, max_rows=5000) -> list[dict]:
+    """Read Graveyard rows (A2:Q{max_rows}) into dicts with the absolute `row_num`.
+    Never raises — returns [] on a missing tab / read error."""
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=_get_sheet_id(), range=f"Graveyard!A2:Q{max_rows + 1}"
+        ).execute()
+    except Exception as e:
+        logger.warning(f"Graveyard read failed: {e}")
+        return []
+
+    def cell(r, j):
+        return str(r[j]).strip() if j < len(r) else ""
+
+    out = []
+    for i, r in enumerate(result.get("values", [])):
+        if not r or not any(str(x).strip() for x in r):
+            continue
+        out.append({
+            "row_num": 2 + i,
+            "date_removed": cell(r, GY_DATE_REMOVED), "reason": cell(r, GY_REASON),
+            "category": cell(r, GY_CATEGORY), "title": cell(r, GY_TITLE),
+            "cost": cell(r, GY_COST), "ebay_price": cell(r, GY_EBAY_PRICE),
+            "net_profit": cell(r, GY_NET), "sold_90d": cell(r, GY_SOLD),
+            "score": cell(r, GY_SCORE), "status": cell(r, GY_STATUS),
+            "days_on_sheet": cell(r, GY_DAYS), "substitute_queued": cell(r, GY_SUB),
+            "original_row": cell(r, GY_ORIGINAL_ROW), "costco_url": cell(r, GY_COSTCO_URL),
+            "sku": cell(r, GY_SKU), "last_checked": cell(r, GY_LAST_CHECKED),
+            "verdict": cell(r, GY_VERDICT),
+        })
+    return out
+
+
+def write_graveyard_verdict(service, row_num, last_checked, verdict) -> bool:
+    """Write LAST_CHECKED (P) + VERDICT (Q) for one Graveyard row. Never raises."""
+    try:
+        execute_with_retry(service.spreadsheets().values().update(
+            spreadsheetId=_get_sheet_id(),
+            range=f"Graveyard!P{row_num}:Q{row_num}",
+            valueInputOption="RAW",
+            body={"values": [[last_checked, verdict]]},
+        ), "graveyard verdict")
+        return True
+    except Exception as e:
+        logger.warning(f"Graveyard verdict write failed (row {row_num}): {e}")
+        return False
+
+
 def write_to_graveyard(service, removed_rows: list) -> None:
     """Append rows to Graveyard tab. Never overwrites existing rows."""
     if not removed_rows:
@@ -109,6 +171,8 @@ def write_to_graveyard(service, removed_rows: list) -> None:
             str(r.get("days_on_sheet", "")),
             str(r.get("substitute_queued", "NO")),
             str(r.get("original_row", "")),
+            str(r.get("costco_url", "")),      # N — for the graveyard sweep re-check
+            str(r.get("sku", "")),             # O — stable product handle
         ])
     execute_with_retry(service.spreadsheets().values().append(
         spreadsheetId=_get_sheet_id(),

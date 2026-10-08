@@ -31,6 +31,12 @@ business:
     # (Key name kept from the first version, which ended the listing.)
     auto_end_oos: true
 
+  # Graveyard re-check (--mode graveyard-sweep, Windows only — needs Chrome). Re-checks a small
+  # batch of Graveyard items' Costco pages each run to confirm they're really dead (delisted) or
+  # flag ones that came back to life / back on sale. Verdicts are written to Graveyard cols P/Q.
+  graveyard_sweep:
+    daily_limit: 10
+
   # Member-Only Savings discovery (--mode savings). scrape_limit = max product pages opened per run
   # (~7s each; Costco blocks after ~14 so the session refreshes every 10); add_limit = max NEW rows.
   # keywords: which savings-page items are "ours". Regex fragments (word-bounded, case-insensitive);

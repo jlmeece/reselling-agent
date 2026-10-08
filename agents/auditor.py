@@ -223,6 +223,8 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         last_checked = _safe(row, _col_to_idx(COL["last_checked"]))
         costco_cost  = _safe_float(_safe(row, _col_to_idx(COL["costco_cost"])))
         ebay_price   = _safe_float(_safe(row, _col_to_idx(COL["ebay_price"])))
+        costco_url   = _safe(row, _col_to_idx(COL["costco_url"]))
+        sku          = _safe(row, _col_to_idx(COL["sku"]))
         full_notes   = _safe(row, 47)  # AV index
 
         if not status or not title:
@@ -255,6 +257,8 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
             "ebay_price":       ebay_price,
             "days_on_sheet":    days_since_checked,
             "original_row":     sheet_row,
+            "costco_url":       costco_url,
+            "sku":              sku,
         }
 
         # ── Auto-remove rules ─────────────────────────────────────────────────
@@ -310,6 +314,8 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
             "days_on_sheet":     product_dict["days_on_sheet"],
             "substitute_queued": "YES" if is_economics else "NO",
             "original_row":      product_dict["original_row"],
+            "costco_url":        product_dict["costco_url"],
+            "sku":               product_dict["sku"],
         })
         if is_economics:
             sub_categories.append(product_dict["category"])
