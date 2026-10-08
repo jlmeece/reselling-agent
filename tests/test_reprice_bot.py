@@ -187,8 +187,20 @@ def test_active_card_shows_reprice_button_only_when_pending():
     assert kb.inline_keyboard[0][0].callback_data == f"reprice:offer:{ITEM_ID}"
 
 
+def test_active_card_offers_manual_set_price():
+    kb = tb._active_action_kb(7, item_id=ITEM_ID)
+    assert kb.inline_keyboard[0][0].callback_data == f"reprice:set:{ITEM_ID}"
+    # without an item_id there is no "Set Price" button
+    assert "reprice:set:" not in [b.callback_data for r in tb._active_action_kb(7).inline_keyboard for b in r]
+
+
 def test_routes_registered():
     for action in ("go", "ignore", "offer"):
+        assert ("reprice", action) in tb._CALLBACK_ROUTES
+
+
+def test_manual_reprice_routes_registered():
+    for action in ("set", "setcancel"):
         assert ("reprice", action) in tb._CALLBACK_ROUTES
 
 

@@ -20,6 +20,11 @@ business:
   ebay_sync:
     auto_reprice: true
     auto_reprice_max_jump_pct: 0.50
+    # Margin-floor alert (ALERT ONLY, never auto-reprice): flag a live listing whose eBay
+    # price is >= floor_price AND whose net margin is below floor_margin_pct. Jay reprices
+    # these up himself. Percent scales with price — $8 on a $70 item is 11%, on a $200 item 4%.
+    floor_price: 70.0
+    floor_margin_pct: 0.09
     # Costco OOS on a live listing -> set its eBay quantity to 0 (ReviseInventoryStatus). With the
     # account's Out of Stock setting + GTC listings eBay HIDES it (watchers/rank kept); the daily
     # sweep restores the quantity on restock if still profitable. false = alert only.

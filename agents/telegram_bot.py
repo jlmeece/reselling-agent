@@ -50,7 +50,10 @@ from tools.sheet_writer import (
     write_row_partial,
 )
 from tools.spot_price import get_spot_price, parse_gold_weight
-from tools.ebay_sync import extract_item_id, fetch_item_price, revise_fixed_price
+from tools.ebay_sync import (
+    _cost_basis, _to_float, _to_rate, compute_net, extract_item_id, fetch_item_price,
+    revise_fixed_price,
+)
 from tools.reprice import (
     cancel_keyboard, format_reprice_prompt, get_pending, log_ignore, log_revise, pop_pending,
     reprice_keyboard,
@@ -1830,6 +1833,7 @@ _EBAY_URL_RE = re.compile(r"^https?://([\w-]+\.)*ebay\.[a-z.]+(/\S*)?$", re.IGNO
 def _clear_listing_state(context):
     context.user_data.pop("awaiting_listing", None)
     context.user_data.pop("pending_listed", None)
+    context.user_data.pop("awaiting_price", None)
 
 
 def _parse_listing_input(text):
@@ -1993,8 +1997,10 @@ def _format_active_line(p):
     return f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
-def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None):
+def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None):
     rows = []
+    if item_id:   # always offer a manual reprice on an ACTIVE listing with a live item ID
+        rows.append([InlineKeyboardButton("💲 Set Price", callback_data=f"reprice:set:{item_id}")])
     if reprice_item_id:   # a one-tap reprice prompt is pending for this listing
         rows.append([InlineKeyboardButton("💲 Reprice", callback_data=f"reprice:offer:{reprice_item_id}")])
     if cancel_item_id:    # a scheduled reprice / End is waiting for the sale end
@@ -2102,7 +2108,8 @@ async def cb_activelist_pick(update, context, arg):
         lines.append(f"⏰ Scheduled: {what} at sale end ({sched.format_end(scheduled['apply_at'])})")
     await _send_screen(update, "\n".join(lines),
                        reply_markup=_active_action_kb(row_num, pending,
-                                                      cancel_item_id=item_id if scheduled else None))
+                                                      cancel_item_id=item_id if scheduled else None,
+                                                      item_id=item_id))
 
 
 async def cb_ended_start(update, context, arg):
@@ -2410,6 +2417,144 @@ async def cb_reprice_offer(update, context, arg):
         format_reprice_prompt(pending), parse_mode="HTML",
         reply_markup=_tg_kb(reprice_keyboard(item_id, pending["target"])),
     )
+
+
+# ── Manual reprice (Jay types his own price) ─────────────────────────────────
+#
+# Flow: "💲 Set Price" (reprice:set:<item_id>) -> bot prompts "reply with a price"
+# -> typed number -> margin preview + "✓ Reprice" (reprice:go:<item_id>:<cents>, the
+# existing one-tap executor) / "❌ Cancel". The target can't ride in callback_data
+# (64-byte cap + free text), so the pending item_id is stashed in user_data and the
+# typed price is re-read against the sheet (row numbers shift when the auditor deletes).
+
+_PRICE_FIELDS = ("status", "title", "costco_cost", "ebay_price", "fee_rate",
+                 "ship_cost", "ad_cost", "buy_cost", "ebay_listing_url")
+
+
+def _price_row_for_item(item_id, rows, col_map, start):
+    """(row_dict, None) for the unique ACTIVE row owning item_id in col Q, else (None, msg)."""
+    items = _extract_rows_by_field(rows, col_map, _PRICE_FIELDS, data_start_row=start)
+    matches = [p for p in items if extract_item_id(p.get("ebay_listing_url")) == item_id]
+    if len(matches) != 1:
+        why = ("is not in col Q of any sheet row" if not matches
+               else f"is in col Q of {len(matches)} rows — fix the duplicate first")
+        return None, f"eBay item {item_id} {why}."
+    p = matches[0]
+    if (p.get("status") or "").strip() != "ACTIVE":
+        return None, f"this listing is no longer ACTIVE ({p.get('status') or 'blank'})."
+    return p, None
+
+
+def _price_metrics(p, target):
+    """(net, margin%) at `target` for row p, or (None, None) if cost/fee are unknown."""
+    cost = _cost_basis(p.get("buy_cost"), p.get("costco_cost"))
+    fee = _to_rate(p.get("fee_rate"))
+    if cost is None or fee is None:
+        return None, None
+    ship = _to_float(p.get("ship_cost")) or 0.0
+    ad = _to_float(p.get("ad_cost")) or 0.0
+    net = compute_net(target, cost, fee, ship, ad)
+    margin = net / target * 100 if target > 0 else None
+    return round(net, 2), round(margin, 1)
+
+
+def _price_confirm_kb(item_id, target):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"✓ Reprice to ${target:.2f}",
+                              callback_data=f"reprice:go:{item_id}:{int(round(target * 100))}")],
+        [InlineKeyboardButton("❌ Cancel", callback_data=f"reprice:setcancel:{item_id}")],
+    ])
+
+
+def _price_cancel_kb(item_id):
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("❌ Cancel", callback_data=f"reprice:setcancel:{item_id}")]])
+
+
+async def cb_reprice_set(update, context, arg):
+    """Start the manual-reprice flow: validate the item, then ask for a price."""
+    item_id = (arg or "").strip()
+    if extract_item_id(item_id) != item_id:
+        await _send_screen(update, "Button data was malformed — nothing changed.",
+                           reply_markup=_home_inline_kb())
+        return
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"reprice:set sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    p, err = _price_row_for_item(item_id, rows, col_map, start)
+    if err:
+        await _send_screen(update, html.escape(err), reply_markup=_home_inline_kb())
+        return
+    context.user_data["awaiting_price"] = {
+        "item_id": item_id, "row_num": p["row_num"],
+        "title": p.get("title") or "(untitled)",
+    }
+    title = html.escape((p.get("title") or "(untitled)")[:80])
+    cur = _parse_currency(p.get("ebay_price"))
+    cur_line = f" (currently ${cur:.2f})" if cur else ""
+    await _send_screen(
+        update,
+        f"💲 <b>Set a new price</b>\n<b>{title}</b>{cur_line}\n\n"
+        "Reply with the price you want — e.g. <code>49.99</code>.",
+        parse_mode="HTML",
+        reply_markup=_price_cancel_kb(item_id),
+    )
+
+
+async def cb_reprice_setcancel(update, context, arg):
+    context.user_data.pop("awaiting_price", None)
+    await _send_screen(update, "Cancelled — price unchanged.", reply_markup=_home_inline_kb())
+
+
+async def _handle_price_input(update, context, text):
+    """A typed price while awaiting_price is set -> margin preview + confirm buttons."""
+    pending = context.user_data.get("awaiting_price")
+    if not pending:
+        return
+    item_id = pending["item_id"]
+    raw = (text or "").strip().replace("$", "").replace(",", "")
+    try:
+        target = float(raw)
+    except ValueError:
+        await update.message.reply_text(
+            "That doesn't look like a price. Reply with a number like <code>49.99</code> — "
+            "or tap Cancel.",
+            parse_mode="HTML", reply_markup=_price_cancel_kb(item_id),
+        )
+        return
+    if target <= 0 or target > 100000:
+        await update.message.reply_text("Price must be a positive number. Try again, or tap Cancel.",
+                                        reply_markup=_price_cancel_kb(item_id))
+        return
+    target = round(target, 2)
+    context.user_data.pop("awaiting_price", None)  # consumed; re-read the row fresh below
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"reprice:set confirm sheet read failed: {e}")
+        await update.message.reply_text(_SHEET_UNREACHABLE_MSG + " Nothing was changed.")
+        return
+    p, err = _price_row_for_item(item_id, rows, col_map, start)
+    if err:
+        await update.message.reply_text(html.escape(err))
+        return
+    net, margin = _price_metrics(p, target)
+    title = html.escape((p.get("title") or "(untitled)")[:80])
+    cur = _parse_currency(p.get("ebay_price"))
+    lines = ["💲 <b>Reprice?</b>", f"<b>{title}</b>"]
+    if cur:
+        lines.append(f"eBay now: ${cur:.2f}")
+    lines.append(f"New price: <b>${target:.2f}</b>")
+    if net is not None:
+        margin_txt = f" · <b>{margin:.1f}%</b> margin" if margin is not None else ""
+        lines.append(f"Net: ${net:.2f}{margin_txt}")
+    else:
+        lines.append("⚠️ Cost or fee rate missing — margin unknown.")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML",
+                                    reply_markup=_price_confirm_kb(item_id, target))
 
 
 # ── Review queue (spec Part 5) ───────────────────────────────────────────────
@@ -3192,6 +3337,10 @@ async def on_text(update, context):
         await _process_ebayimport(update, context, text)
         return
 
+    if context.user_data.get("awaiting_price"):
+        await _handle_price_input(update, context, text)
+        return
+
     if context.user_data.get("awaiting_search"):
         context.user_data["awaiting_search"] = False
         await _handle_search_term(update, context, text)
@@ -3243,6 +3392,8 @@ _CALLBACK_ROUTES.update({
     ("reprice", "go"): cb_reprice_go,
     ("reprice", "ignore"): cb_reprice_ignore,
     ("reprice", "offer"): cb_reprice_offer,
+    ("reprice", "set"): cb_reprice_set,
+    ("reprice", "setcancel"): cb_reprice_setcancel,
     ("reprice", "sched"): cb_reprice_sched,
     ("reprice", "schedend"): cb_reprice_schedend,
     ("reprice", "cancel"): cb_reprice_cancel,

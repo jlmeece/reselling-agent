@@ -346,7 +346,7 @@ _flag = ebay_sync.margin_flag
 
 
 @pytest.mark.parametrize("price,cost,fee,ship,ad,sold,expected", [
-    (100.0, 80.0, 0.10, 0, 0, 5, None),        # net 2.30 -> healthy
+    (100.0, 70.0, 0.10, 0, 0, 5, None),        # net 13.13 -> 13.1% margin -> healthy
     (100.0, 95.0, 0.10, 0, 0, 5, "hard"),      # net -13.94
     (100.0, 95.0, 0.10, 0, 0, 0, "hard"),      # negative is hard regardless of velocity
 ])
@@ -354,25 +354,36 @@ def test_margin_flag_hard_and_healthy(price, cost, fee, ship, ad, sold, expected
     assert _flag(price, cost, fee, ship, ad, sold) == expected
 
 
+def test_margin_flag_floor():
+    # price >= 70 and margin < 9% -> "floor" (beats soft/silent; velocity doesn't matter)
+    assert _flag(100.0, 80.0, 0.10, 0, 0, 0) == "floor"      # net 2.30 -> 2.3% margin
+    assert _flag(100.0, 80.0, 0.10, 0, 0, 3) == "floor"
+    assert _flag(100.0, 80.0, 0.10, 0, 0, None) == "floor"    # blank sold_90d still floor
+    assert _flag(100.0, 70.0, 0.10, 0, 0, 0) is None          # net 13.13 -> 13.1% margin, no floor
+    assert _flag(60.0, 48.0, 0.10, 0, 0, 0) == "soft"         # below $70 -> soft, not floor
+
+
 def test_margin_flag_soft_needs_zero_sales():
-    # net = 100 - 80 - (100*0.10*1.08 + 0.30) - 80*0.0825 = 2.30
-    assert _flag(100.0, 80.0, 0.10, 0, 0, 0) == "soft"
-    assert _flag(100.0, 80.0, 0.10, 0, 0, 3) is None          # high velocity rides silently
-    assert _flag(100.0, 80.0, 0.10, 0, 0, None) is None       # blank sold_90d = unknown, not 0
+    # net = 60 - 48 - (60*0.10*1.08 + 0.30) - 48*0.0825 = 1.26  (price 60 < 70, no floor)
+    assert _flag(60.0, 48.0, 0.10, 0, 0, 0) == "soft"
+    assert _flag(60.0, 48.0, 0.10, 0, 0, 3) is None          # high velocity rides silently
+    assert _flag(60.0, 48.0, 0.10, 0, 0, None) is None       # blank sold_90d = unknown, not 0
 
 
 def test_margin_flag_boundaries():
-    # price 100, fee 0.10: net = 88.90 - 1.0825*cost
-    assert _flag(100.0, 78.0, 0.10, 0, 0, 0) is None           # net 4.47 -> silent
-    assert _flag(100.0, 80.0, 0.10, 0, 0, 0) == "soft"         # net 2.30 -> soft, not hard
-    assert _flag(100.0, 83.0, 0.10, 0, 0, 9) == "hard"         # net -0.95 -> hard
+    # below $70 (no floor applies) — boundary between silent / soft / hard.
+    # price 60, fee 0.10: net = 53.22 - 1.0825*cost
+    assert _flag(60.0, 45.0, 0.10, 0, 0, 0) is None           # net 4.51 -> silent (>= soft floor)
+    assert _flag(60.0, 48.0, 0.10, 0, 0, 0) == "soft"         # net 1.26 -> soft, not hard
+    assert _flag(60.0, 50.0, 0.10, 0, 0, 9) == "hard"         # net -0.91 -> hard
 
 
 def test_margin_flag_subtracts_ship_and_ad():
-    assert _flag(100.0, 80.0, 0.10, 0, 0, 5) is None           # net 10
-    assert _flag(100.0, 80.0, 0.10, 12.0, 0, 5) == "hard"      # ship pushes net to -2
-    assert _flag(100.0, 80.0, 0.10, 0, 11.0, 5) == "hard"      # ad pushes net to -1
-    assert _flag(100.0, 80.0, 0.10, None, None, 5) is None     # missing ship/ad count as 0
+    # price 60 < 70 (no floor); net = 53.22 - 0.30 - 1.0825*cost - ship - ad
+    assert _flag(60.0, 45.0, 0.10, 0, 0, 5) is None           # net 4.51 -> healthy
+    assert _flag(60.0, 45.0, 0.10, 6.0, 0, 5) == "hard"       # ship pushes net to -1.49
+    assert _flag(60.0, 45.0, 0.10, 0, 5.0, 5) == "hard"       # ad pushes net to -0.49
+    assert _flag(60.0, 45.0, 0.10, None, None, 5) is None     # missing ship/ad count as 0
 
 
 @pytest.mark.parametrize("price,cost,fee", [(None, 5.0, 0.1), (10.0, None, 0.1), (10.0, 5.0, None)])
@@ -427,16 +438,16 @@ def test_raw_price_delta_no_longer_alerts(writes):
 
 
 def test_soft_breach_in_report_but_not_in_alert(writes):
-    rows = [_row(4, "111111111111", costco_cost="$26", fee_rate="0.10", sold_90d="0")]
-    rep = _sync(rows, [_listing("111111111111", price=29.0)])   # net 29 - 26 - 2.9 = 0.10
+    rows = [_row(4, "111111111111", costco_cost="$23", fee_rate="0.10", sold_90d="0")]
+    rep = _sync(rows, [_listing("111111111111", price=29.0)])   # net 29 - 23 - 3.43 - 1.90 = 0.67
     assert [b["severity"] for b in rep["margin_breach"]] == ["soft"]
     assert alert_message(rep) is None                            # digest only, never per-run
     d = ebay_sync.digest_message(rep)
-    assert d and "Widget" in d and "$0.10" in d
+    assert d and "Widget" in d and "$0.67" in d
 
 
 def test_high_velocity_thin_margin_is_silent(writes):
-    rows = [_row(4, "111111111111", costco_cost="$26", fee_rate="0.10", sold_90d="12")]
+    rows = [_row(4, "111111111111", costco_cost="$23", fee_rate="0.10", sold_90d="12")]
     rep = _sync(rows, [_listing("111111111111", price=29.0)])
     assert rep["margin_breach"] == [] and ebay_sync.digest_message(rep) is None
 
@@ -456,6 +467,17 @@ def test_summary_and_alert_text_for_hard_breach(writes):
     msg = alert_message(rep)
     assert "losing money on Tom &amp; Jerry &lt;b&gt; — net -$6.91" in msg
     assert "break-even $36.74" in msg and "row 4" in msg
+
+
+def test_floor_breach_reported_in_alert_not_digest(writes):
+    rows = [_row(4, "111111111111", title="Big Ticket", costco_cost="$80", fee_rate="0.10", sold_90d="5")]
+    rep = _sync(rows, [_listing("111111111111", price=100.0)])   # net 2.30 → 2.3% margin → floor
+    (b,) = rep["margin_breach"]
+    assert b["severity"] == "floor" and b["margin"] == pytest.approx(2.3)
+    assert "margin_breach hard 0 soft 0 floor 1" in summarize(rep)
+    msg = alert_message(rep)
+    assert "margin floor" in msg and "Big Ticket" in msg and "2.3% margin" in msg
+    assert ebay_sync.digest_message(rep) is None                  # floor is an alert, not a digest
 
 
 def test_digest_is_once_per_calendar_day():
@@ -644,7 +666,7 @@ def test_run_soft_digest_sent_once_per_day_and_never_in_dry_run(monkeypatch, cre
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
                         lambda *a, **k: FakeResp(_page([_item("111111111111", price="29.00", sold=0)])))
     monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
-        _row(4, "111111111111", sold="0", costco_cost="$26", fee_rate="0.10", sold_90d="0")])
+        _row(4, "111111111111", sold="0", costco_cost="$23", fee_rate="0.10", sold_90d="0")])
     dry = run_ebay_sync(*_cfg_args(), dry_run=True)
     assert dry["alert"] is None and dry["digest"]                # dry run shows it, records nothing
     first = run_ebay_sync(*_cfg_args())

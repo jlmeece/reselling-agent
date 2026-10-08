@@ -67,6 +67,12 @@ ENTRIES_PER_PAGE  = 200
 MAX_PAGES         = 50          # runaway guard (10,000 listings)
 REQUEST_TIMEOUT   = 30
 MARGIN_SOFT_FLOOR = 4.00        # net below this AND sold_90d == 0 → SOFT (daily digest)
+# Margin-floor alert (alert only, never auto-reprice): a live listing whose eBay price is
+# >= FLOOR_PRICE and whose net margin is below FLOOR_MARGIN_PCT is flagged "floor" so Jay can
+# reprice it up competitively himself. Tuned via business.ebay_sync.floor_price /
+# floor_margin_pct in config/categories.yaml (these are the defaults).
+FLOOR_PRICE      = 70.0         # eBay price at/above which the floor applies
+FLOOR_MARGIN_PCT = 0.09         # flag when net margin falls below this (9%)
 # Costco tax + eBay fee constants — keep in sync with the sheet formula
 # (formula_seeder.py / reseed_formulas.py / setup_sheet.py):
 #   AC (eBay fee) = H*AB*1.08 + 0.30;   AF (Costco tax) = G*0.0825
@@ -636,10 +642,15 @@ def compute_net(ebay_price, cost_basis, fee_rate, ship=0.0, ad=0.0) -> float:
     return ebay_price - cost_basis - fee - (ship or 0.0) - (ad or 0.0) - tax
 
 
-def margin_flag(ebay_price, cost_basis, fee_rate, ship, ad, sold_90d):
+def margin_flag(ebay_price, cost_basis, fee_rate, ship, ad, sold_90d, *,
+                floor_price=FLOOR_PRICE, floor_margin_pct=FLOOR_MARGIN_PCT):
     """
-    "hard" (net < 0) | "soft" (0 <= net < MARGIN_SOFT_FLOOR and sold_90d == 0) | None.
-    Unknown price / cost / fee rate -> None (can't judge; never assume $0). Missing ship/ad
+    "hard" (net < 0) | "floor" (price >= floor_price AND margin < floor_margin_pct) |
+    "soft" (0 <= net < MARGIN_SOFT_FLOOR and sold_90d == 0) | None.
+
+    Priority is hard > floor > soft, so an expensive item running thin flags as "floor"
+    (Jay reprices it up) rather than disappearing into the soft digest. Unknown
+    price / cost / fee rate -> None (can't judge; never assume $0). Missing ship/ad
     count as 0. sold_90d None (blank) is unknown, NOT 0, so a thin-margin row with no
     velocity data stays silent; high-velocity items ride at $3.99 silently.
     """
@@ -648,6 +659,8 @@ def margin_flag(ebay_price, cost_basis, fee_rate, ship, ad, sold_90d):
     net = round(compute_net(ebay_price, cost_basis, fee_rate, ship, ad), 2)
     if net < 0:
         return "hard"
+    if ebay_price >= floor_price and ebay_price > 0 and net / ebay_price < floor_margin_pct:
+        return "floor"
     if net < MARGIN_SOFT_FLOOR and sold_90d == 0:
         return "soft"
     return None
@@ -752,9 +765,9 @@ def _suggest_links(entries, pool) -> dict:
     return {r: v for r, v in picks.items() if len(wanted[v[0]["item_id"]]) == 1}
 
 
-def _check_margin(row, listing, report):
+def _check_margin(row, listing, report, floor_price=FLOOR_PRICE, floor_margin_pct=FLOOR_MARGIN_PCT):
     """Evaluate one matched row's margin at the LIVE eBay price; append to
-    report["margin_breach"] (hard/soft) or report["margin_unchecked"] (inputs unknown)."""
+    report["margin_breach"] (hard/floor/soft) or report["margin_unchecked"] (inputs unknown)."""
     price = listing["price"]
     cost = _cost_basis(row.get("buy_cost"), row.get("costco_cost"))
     fee = _to_rate(row.get("fee_rate", ""))
@@ -766,18 +779,21 @@ def _check_margin(row, listing, report):
             "item_id": listing["item_id"],
             "status": str(row.get("status", "")).strip().upper()}
 
-    severity = margin_flag(price, cost, fee, ship, ad, sold)
+    severity = margin_flag(price, cost, fee, ship, ad, sold,
+                           floor_price=floor_price, floor_margin_pct=floor_margin_pct)
     if price is None or cost is None or fee is None:
         report["margin_unchecked"].append(base)
     elif severity:
+        net = round(compute_net(price, cost, fee, ship, ad), 2)
         report["margin_breach"].append({
             **base, "severity": severity, "ebay_price": price, "cost_basis": cost,
-            "net": round(compute_net(price, cost, fee, ship, ad), 2),
+            "net": net, "margin": round(net / price * 100, 1) if price else None,
             "break_even": _break_even(cost, fee, ship, ad)})
 
 
 def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
-         col_map=None, title_reader=None) -> dict:
+         col_map=None, title_reader=None, floor_price=FLOOR_PRICE,
+         floor_margin_pct=FLOOR_MARGIN_PCT) -> dict:
     """
     Match listings to sheet rows by the item ID in col Q. Flag-only except two writes:
     units_sold (col U) when QuantitySold differs, and buy_cost (col BB) snapshotted
@@ -806,7 +822,8 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
     report = {"matched": [], "updated": [], "margin_breach": [], "margin_unchecked": [],
               "on_ebay_not_in_sheet": [], "active_not_on_ebay": [],
               "duplicate_url": [], "stale_rows": [], "write_errors": [],
-              "buy_cost_snapshots": [], "dry_run": dry_run}
+              "buy_cost_snapshots": [], "dry_run": dry_run,
+              "floor_price": floor_price, "floor_margin_pct": floor_margin_pct}
 
     by_id = {l["item_id"]: l for l in listings}
     claimed = set()
@@ -852,7 +869,7 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                             {"row_num": row["row_num"], "title": title,
                              "buy_cost": row.get("costco_cost")})
 
-            _check_margin(row, listing, report)
+            _check_margin(row, listing, report, floor_price, floor_margin_pct)
         elif (str(row.get("status", "")).strip().upper() == "ACTIVE"
               and str(row.get("platform", "")).strip().lower() in ("", "ebay", "both")):
             blank_url = False
@@ -927,8 +944,9 @@ def summarize(report: dict) -> str:
     """One-line summary for the Run Log notes column."""
     hard = sum(1 for m in report["margin_breach"] if m["severity"] == "hard")
     soft = sum(1 for m in report["margin_breach"] if m["severity"] == "soft")
+    floor = sum(1 for m in report["margin_breach"] if m["severity"] == "floor")
     s = (f"matched {len(report['matched'])}, updated {len(report['updated'])}, "
-         f"margin_breach hard {hard} soft {soft}, "
+         f"margin_breach hard {hard} soft {soft} floor {floor}, "
          f"active_not_on_ebay {len(report['active_not_on_ebay'])}, "
          f"not_in_sheet {len(report['on_ebay_not_in_sheet'])}")
     if report.get("buy_cost_snapshots"):
@@ -964,17 +982,19 @@ def _section(header, lines):
 
 def alert_message(report: dict) -> str | None:
     """
-    Telegram HTML message, or None when there is nothing to flag. Only HARD margin
-    breaches (net < 0) and ACTIVE-but-not-on-eBay rows warrant a message; SOFT breaches
-    go to digest_message(), everything else stays in the Run Log. Raw price movement is
-    never alerted. Sheet-derived titles are truncated THEN html-escaped.
+    Telegram HTML message, or None when there is nothing to flag. HARD margin breaches
+    (net < 0), FLOOR breaches (expensive item below the margin floor) and
+    ACTIVE-but-not-on-eBay rows warrant a message; SOFT breaches go to digest_message(),
+    everything else stays in the Run Log. Raw price movement is never alerted.
+    Sheet-derived titles are truncated THEN html-escaped.
     """
     # Breaches auto-repriced to break-even this run are fixed — they show in the
     # auto-reprice summary instead. Failed / held ones still need Jay.
     losing = [m for m in report["margin_breach"]
               if m["severity"] == "hard" and m.get("auto") != "repriced"]
+    floor = [m for m in report["margin_breach"] if m["severity"] == "floor"]
     gone = report["active_not_on_ebay"]
-    if not losing and not gone:
+    if not losing and not floor and not gone:
         return None
     msg = ["🛒 <b>eBay sync</b>" + (" (dry run)" if report.get("dry_run") else "")]
     if losing:
@@ -983,6 +1003,15 @@ def alert_message(report: dict) -> str | None:
             return (f"• losing money on {html.escape(_truncate(m['title']))} — net "
                     f"-${abs(m['net']):.2f} (eBay ${m['ebay_price']:.2f}{be}) (row {m['row_num']})")
         msg += _section(f"\n💸 <b>Losing money ({len(losing)})</b>", [_line(m) for m in losing])
+    if floor:
+        floor_pct = report.get("floor_margin_pct", FLOOR_MARGIN_PCT)
+        floor_price = report.get("floor_price", FLOOR_PRICE)
+        def _fline(m):
+            mgn = f"{m['margin']:.1f}% margin" if m.get("margin") is not None else "?% margin"
+            return (f"• {html.escape(_truncate(m['title']))} — ${m['ebay_price']:.2f} at "
+                    f"{mgn} (net ${m['net']:.2f}) (row {m['row_num']})")
+        msg += _section(f"\n📉 <b>Below {floor_pct:.0%} margin floor — ≥ ${floor_price:.0f} "
+                        f"({len(floor)})</b>", [_fline(m) for m in floor])
     if gone:
         msg += _section(f"\n⚠️ <b>ACTIVE but not on eBay ({len(gone)})</b>", [
             f"• {html.escape(_truncate(g['title']))} — {html.escape(g['reason'])} (row {g['row_num']})"
@@ -1313,12 +1342,14 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         logger.warning(f"ebay_sync: grid-size check failed (continuing): {e}")
 
     rows = load_sheet_rows(service, COL, sheet_name, start_row, end_row)
+    auto_cfg = ((config or {}).get("business") or {}).get("ebay_sync") or {}
     report = sync(
         service, rows, listings, dry_run=dry_run, sheet_name=sheet_name, col_map=COL,
         title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
+        floor_price=float(auto_cfg.get("floor_price", FLOOR_PRICE)),
+        floor_margin_pct=float(auto_cfg.get("floor_margin_pct", FLOOR_MARGIN_PCT)),
     )
     # Auto-reprice hard breaches BEFORE building the alert (repriced ones leave "Losing money").
-    auto_cfg = ((config or {}).get("business") or {}).get("ebay_sync") or {}
     auto_summary = None
     try:
         auto_results = auto_reprice_breaches(
