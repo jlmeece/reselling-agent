@@ -63,3 +63,12 @@ def _isolated_hosted_photos(monkeypatch, tmp_path):
     monkeypatch.setattr(upload_photos, "PHOTOS_DIR", photos)
     monkeypatch.setattr(ebay_export, "HOSTED_PHOTOS_PATH", hosted)
     monkeypatch.setattr(ebay_export, "LISTING_PHOTOS_DIR", photos)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_discovery_cadence(monkeypatch, tmp_path):
+    """No test may write the real data/discovery_seen.json or data/discovery_cadence.json."""
+    from tools import discovery_cadence
+
+    monkeypatch.setattr(discovery_cadence, "SEEN_PATH", str(tmp_path / "discovery_seen.json"))
+    monkeypatch.setattr(discovery_cadence, "CADENCE_PATH", str(tmp_path / "discovery_cadence.json"))

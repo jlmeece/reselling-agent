@@ -1242,9 +1242,23 @@ def run_discovery(config, COL, service, sheet_name, start_row, end_row, category
         cmd += ["--category", category]
     if add_limit is not None:
         cmd += ["--add-limit", str(add_limit)]
+    started = time.time()
     result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
         logger.error(f"researcher.py --discover-only exited with code {result.returncode}")
+    # The subprocess wrote the catalog-exhaustion cadence log; surface this run's numbers.
+    from tools.discovery_cadence import CADENCE_PATH, load_cadence
+    try:
+        fresh = os.path.getmtime(CADENCE_PATH) >= started - 1
+    except OSError:
+        fresh = False
+    cadence = load_cadence() if fresh else []
+    if not cadence:
+        return {}
+    last = cadence[-1]
+    summary = f"new this run: {last.get('last_run_new', 0)}, total seen: {last.get('total_seen', 0)}"
+    logger.info(f"Discovery complete — {summary}")
+    return {"notes": summary}
 
 
 # ── Mode: ROTATION digest (weekly) ───────────────────────────────────────────
@@ -2491,7 +2505,8 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
-                 "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export", "graveyard-sweep"],
+                 "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export", "graveyard-sweep",
+                 "discovery-stats"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -2510,6 +2525,7 @@ def main():
             "apply_scheduled: every 10 min — pre-stage sale-end prompts; apply approved reprice/Hide at sale end\n"
             "export:         branded photos -> host on eBay -> Seller Hub CSV of READY rows (Telegram on change)\n"
             "graveyard-sweep: re-check ~10 un-checked Graveyard items' Costco pages (dead / revive / alive)\n"
+            "discovery-stats: print per-category discovery cadence + EXHAUSTED? flag (read-only)\n"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -2532,6 +2548,16 @@ def main():
         # Runs every 10 min: takes the scheduler lock itself, and only when an action is due;
         # no cookie check, and no Run Log row for a quiet tick.
         _main_apply_scheduled()
+        return
+
+    if args.mode == "discovery-stats":
+        # Read-only, local files only: no lock, no cookie check, no Sheets, no Run Log row.
+        from tools.discovery_cadence import category_stats, format_stats_table, load_cadence
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        print(format_stats_table(category_stats(load_cadence())))
         return
 
     if not _acquire_lock(args.mode):
@@ -2565,8 +2591,8 @@ def main():
         elif args.mode == "audit":
             run_audit(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "discovery":
-            run_discovery(config, COL, service, sheet_name, start_row, end_row,
-                          category=args.category, add_limit=args.add_limit)
+            _run_results.update(run_discovery(config, COL, service, sheet_name, start_row, end_row,
+                                              category=args.category, add_limit=args.add_limit) or {})
         elif args.mode == "rotation":
             run_rotation(config, COL, service, sheet_name, start_row, end_row)
         elif args.mode == "refresh-notes":

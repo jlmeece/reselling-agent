@@ -23,6 +23,8 @@ import random
 from loguru import logger
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
+from tools.discovery_cadence import track_discovery
+
 PERFORMANCE_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "category_performance.json"
@@ -165,6 +167,7 @@ def discover_all(page, categories_config, category_filter=None):
     """
     all_products = []
     seen_urls = set()
+    capped = set()      # categories that hit max_discovery (tracked for the exhaustion signal)
 
     performance = _load_performance()
 
@@ -204,6 +207,12 @@ def discover_all(page, categories_config, category_filter=None):
                     all_products.append(p)
                     cat_count += 1
             time.sleep(2 + random.uniform(0.5, 1.5))
+        if cat_count >= max_per_category:
+            capped.add(category_name)
 
-    logger.info(f"Discovery complete — {len(all_products)} unique products across all categories.")
+    # Side-effect only: first-seen store + cadence log for the catalog-exhaustion signal.
+    stats = track_discovery(all_products, capped=capped)
+    tail = (f" — new this run: {stats['last_run_new']}, total seen: {stats['total_seen']}"
+            if stats else "")
+    logger.info(f"Discovery complete — {len(all_products)} unique products across all categories{tail}.")
     return all_products

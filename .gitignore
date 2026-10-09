@@ -44,6 +44,8 @@ data/.reprice_pending.json
 data/.sale_end_times.json
 data/.scheduled_actions.json
 data/.oos_hidden.json
+data/discovery_seen.json
+data/discovery_cadence.json
 data/ebay_taxonomy_cache.json
 data/.telegram_bot.pid
 data/.telegram_bot.alive
