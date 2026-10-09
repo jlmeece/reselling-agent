@@ -114,6 +114,7 @@ HEADER_LABELS = [
     "MPT Vol (σ)",     # AZ 51
     "MPT Rank",        # BA 52
     "BUY COST (PAID)", # BB 53 — MANUAL: what Jay actually paid; margin alerts prefer it over G
+    "ACTUAL NET",      # BC 54 — true net/unit on the last sale (ebay_sync, eBay's real fee)
 ]
 
 COLUMN_WIDTHS = {
@@ -152,7 +153,7 @@ COLUMN_WIDTHS = {
 }
 
 VISIBLE_COLS  = 26    # A–Z
-TOTAL_COLS    = 54    # A–BB (must equal len(HEADER_LABELS) and required_grid_columns())
+TOTAL_COLS    = 55    # A–BC (must equal len(HEADER_LABELS) and required_grid_columns())
 HIDDEN_START  = 26    # AA onwards (index 26 = col AA)
 HIDDEN_END    = 48    # AA–AV hidden; AW–BA stay visible
 FROZEN_COLS   = 4     # A–D always visible
