@@ -49,6 +49,7 @@ from tools.sheet_writer import (
     safe_write_row,
     write_row_partial,
 )
+from tools.sale_priority import sale_end_sort_key
 from tools.spot_price import get_spot_price, parse_gold_weight
 from tools.ebay_sync import (
     _cost_basis, _to_float, _to_rate, compute_net, extract_item_id, fetch_item_price,
@@ -330,10 +331,10 @@ def search_products(rows, col_map, term, data_start_row=_DEFAULT_DATA_START_ROW)
     )
 
 
-def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
+def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW, today=None):
     """
-    SCORED rows sorted by demand_score descending (unparseable scores sort
-    last) — feeds the Telegram bot's swipe-style Review queue. Same field set
+    SCORED rows, on-sale first (soonest sale end), then by expected monthly
+    profit desc — feeds the Telegram bot's swipe-style Review queue. Same field set
     as search_products, so a Review card renders via the same
     format_product_detail() body as a /lookup card.
 
@@ -358,13 +359,16 @@ def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
     items = [p for p in items if meets_profit_floor(p)]
 
     def sort_key(p):
-        # Primary: expected monthly profit (net × velocity) desc — biggest money-makers
+        # First: on-sale items (live col X badge), soonest sale end first — they miss
+        # their margin if not approved before the Costco sale ends; dated before undated.
+        # Then: expected monthly profit (net × velocity) desc — biggest money-makers
         # first. Tiebreak: net/unit desc — a $50×1 flip sorts above a $1×50 grind
-        # (equal money, far less listing/shipping work).
+        # (equal money, far less listing/shipping work). Stable: full ties keep sheet order.
+        priority, end = sale_end_sort_key(p.get("sale_info"), today=today)
         net = _parse_currency(p.get("net_profit")) or 0.0
         sold = _parse_currency(p.get("sold_90d")) or 0.0
         monthly = net * (sold / 3.0)
-        return (-monthly, -net)
+        return (priority, end, -monthly, -net)
 
     items.sort(key=sort_key)
     return items

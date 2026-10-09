@@ -54,7 +54,8 @@ from tools.sheet_writer import (
     ensure_grid_columns, required_grid_columns,
 )
 from tools.formula_seeder import seed_formula_row
-from tools.sale_history import log_sale, parse_sale_end
+from tools.sale_history import log_sale
+from tools.sale_priority import sale_end_sort_key
 from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
 from tools.ebay_research import get_ebay_comps
@@ -446,26 +447,15 @@ _SALE_INFO_IDX = 23   # col X sale badge ("🔥 -$8 ends 10/18/26")
 
 def _sale_end_sort_key(row, today=None):
     """
-    Research-queue sort key (stable sort, so ties keep sheet order):
-      (0, 'YYYY-MM-DD')  sale badge with an end date today or later — soonest first
-      (1, '')            sale badge with no parseable end date
-      (2, '')            no badge, an already-expired badge, or anything unreadable
+    Research-queue sort key — tools.sale_priority.sale_end_sort_key on the row's col X.
     New PENDING rows land at the bottom of the sheet; without this an on-sale item waits
     behind the whole backlog and misses its sale window. Ordering only.
     """
     try:
-        badge = str((row[_SALE_INFO_IDX] if len(row) > _SALE_INFO_IDX else "") or "").strip()
-        if not badge:
-            return (2, "")
-        today = today or date.today()
-        end = parse_sale_end(badge, today=today)
-        if not end:
-            return (1, "")
-        if end < today.isoformat():
-            return (2, "")    # sale already over (col X can hold stale badges)
-        return (0, end)
+        badge = row[_SALE_INFO_IDX] if len(row) > _SALE_INFO_IDX else ""
     except Exception:
-        return (2, "")
+        badge = ""
+    return sale_end_sort_key(badge, today=today)
 
 
 # ── Main research loop ────────────────────────────────────────────
