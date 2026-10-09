@@ -274,13 +274,13 @@ def test_sale_end_on_live_listing_sends_one_reprice_prompt(harness):
     (prompt,) = calls["prompts"]
     assert prompt["item_id"] == "123456789012" and prompt["row"] == START_ROW
     assert (prompt["old_cost"], prompt["new_cost"], prompt["ebay_price"]) == (31.99, 39.99, 41.48)
-    assert prompt["target"] == sch.restore_margin_price(31.99, 39.99, 41.48, 0.1325, 0.0) == 50.99
+    assert prompt["target"] == sch.restore_margin_price(31.99, 39.99, 41.48, 0.1325, 0.0) == 51.99
     assert calls["pending"] == [prompt]                       # saved for a re-send
     _, w = _written(calls)
     assert w[COL["price_change"]] == "YES — update listing"   # flag still set until the tap
     assert COL["ebay_price"] not in w                         # monitor NEVER changes col H
     (_, items), = calls["urgent"]
-    assert "$50.99" in items[0]["reason"]                     # alert quotes the same price
+    assert "$51.99" in items[0]["reason"]                     # alert quotes the same price
 
 
 def test_no_prompt_without_ebay_item_id(harness):

@@ -132,7 +132,7 @@ def test_send_prompt_uses_the_bot_token_and_buttons(monkeypatch):
     assert req.full_url == "https://api.telegram.org/botBOT123/sendMessage"   # same token the bot polls
     body = json.loads(req.data)
     assert body["chat_id"] == "42" and body["parse_mode"] == "HTML"
-    assert body["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "reprice:go:123456789012:5099"
+    assert body["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "reprice:go:123456789012:5199"
 
 
 def test_send_prompt_never_raises(monkeypatch):
@@ -152,7 +152,7 @@ def test_pending_save_get_pop_and_prune(tmp_path):
     reprice.save_pending({**ITEM, "item_id": "111111111111"}, path=path, now=datetime(2026, 8, 1))
     reprice.save_pending(ITEM, path=path, now=datetime(2026, 10, 4))
     assert reprice.get_pending("111111111111", path=path) is None           # >30 days, pruned
-    assert reprice.get_pending("123456789012", path=path)["target"] == 50.99
+    assert reprice.get_pending("123456789012", path=path)["target"] == 51.99
     reprice.pop_pending("123456789012", path=path)
     assert reprice.get_pending("123456789012", path=path) is None
 

@@ -184,7 +184,7 @@ def test_format_alert_none_and_cap():
 
 
 def test_net_profit_needs_ebay_price_and_fee():
-    assert cs.net_profit(_r(4, "x", ebay_price="60", fee_rate="0.1325", ship_cost="5"), 40.0) == round(60 - 40 - 60 * 0.1325 - 5, 2)
+    assert cs.net_profit(_r(4, "x", ebay_price="60", fee_rate="0.1325", ship_cost="5"), 40.0) == round(60 - 40 - (60 * 0.1325 * 1.08 + 0.30) - 5 - 40 * 0.0825, 2)
     assert cs.net_profit(_r(4, "x", ebay_price="", fee_rate="0.1325"), 40.0) is None
     assert cs.net_profit(_r(4, "x", ebay_price="60", fee_rate=""), 40.0) is None
 

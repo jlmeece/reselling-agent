@@ -43,10 +43,11 @@ def test_spec_example_line_and_net_math():
     items, skipped = _pick([_sale()])
     assert skipped == {}
     (it,) = items
-    assert it["net"] == 3.99                                       # 41.48 - 31.99 - 41.48 * 0.1325
+    # net = price - cost - (price*fee*1.08 + 0.30) - ship - cost*0.0825
+    assert it["net"] == round(41.48 - 31.99 - (41.48 * 0.1325 * 1.08 + 0.30) - 0 - 31.99 * 0.0825, 2) == 0.62
     msg = format_digest(items, now=NOW)
     assert msg == ("🛒 <b>Sale Radar — 1 item on sale</b>\n"
-                   "• Kirkland Signature Energy Shot — $31.99 (was $39.99, ends 10/18) | eBay $41.48 | net +$3.99")
+                   "• Kirkland Signature Energy Shot — $31.99 (was $39.99, ends 10/18) | eBay $41.48 | net +$0.62")
 
 
 @pytest.mark.parametrize("row,reason", [
@@ -92,15 +93,15 @@ def test_negative_net_is_signed():
 
 def test_ship_cost_reduces_net():
     items, _ = _pick([_sale(ship="2")])
-    assert items[0]["net"] == 1.99
+    assert items[0]["net"] == round(41.48 - 31.99 - (41.48 * 0.1325 * 1.08 + 0.30) - 2 - 31.99 * 0.0825, 2) == -1.38
 
 
 def test_sort_net_desc_then_soonest_end_then_unknown_last():
     rows = [
-        _sale(title="low", ebay="41.48"),                                        # net +3.99
+        _sale(title="low", ebay="41.48"),                                        # net +0.62
         _sale(title="high", ebay="60.00"),                                       # net bigger
-        _sale(title="tie-late", ebay="41.48", badge="🔥 -$8 ends 11/30/26"),     # net +3.99, later end
-        _sale(title="tie-early", ebay="41.48", badge="🔥 -$8 ends 9/30/26"),     # net +3.99, sooner end
+        _sale(title="tie-late", ebay="41.48", badge="🔥 -$8 ends 11/30/26"),     # net +0.62, later end
+        _sale(title="tie-early", ebay="41.48", badge="🔥 -$8 ends 9/30/26"),     # net +0.62, sooner end
         _sale(title="unknown", ebay=""),
     ]
     items, _ = _pick(rows)

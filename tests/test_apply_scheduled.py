@@ -112,9 +112,9 @@ def test_prestage_sends_schedule_prompt_once(env):
     sched.record_sale_end("4000099948", END.isoformat(), regular_price=39.99)
     res = env["run"](now=END - timedelta(hours=20))
     (item, kb), = env["prompts"]
-    assert item["target"] == 50.99 and item["sale_end_ts"] == END.isoformat()
+    assert item["target"] == sched.restore_margin_price(31.99, 39.99, 41.48, 0.1325, 0.0) == 51.99 and item["sale_end_ts"] == END.isoformat()
     datas = [b["callback_data"] for r in kb["inline_keyboard"] for b in r]
-    assert datas == [f"reprice:sched:{ITEM}:5099", f"reprice:schedend:{ITEM}", f"reprice:ignore:{ITEM}"]
+    assert datas == [f"reprice:sched:{ITEM}:5199", f"reprice:schedend:{ITEM}", f"reprice:ignore:{ITEM}"]
     labels = [b["text"] for r in kb["inline_keyboard"] for b in r]
     assert "⛔ Hide listing at sale end" in labels
     assert "prompted" in res["notes"] and sched.get_prompt(ITEM)
