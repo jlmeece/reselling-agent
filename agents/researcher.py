@@ -54,7 +54,7 @@ from tools.sheet_writer import (
     ensure_grid_columns, required_grid_columns,
 )
 from tools.formula_seeder import seed_formula_row
-from tools.sale_history import log_sale
+from tools.sale_history import log_sale, parse_sale_end
 from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
 from tools.ebay_research import get_ebay_comps
@@ -439,6 +439,35 @@ def _build_niche_key(title):
     return "-".join(key_words)
 
 
+# ── Research queue order ──────────────────────────────────────────
+
+_SALE_INFO_IDX = 23   # col X sale badge ("🔥 -$8 ends 10/18/26")
+
+
+def _sale_end_sort_key(row, today=None):
+    """
+    Research-queue sort key (stable sort, so ties keep sheet order):
+      (0, 'YYYY-MM-DD')  sale badge with an end date today or later — soonest first
+      (1, '')            sale badge with no parseable end date
+      (2, '')            no badge, an already-expired badge, or anything unreadable
+    New PENDING rows land at the bottom of the sheet; without this an on-sale item waits
+    behind the whole backlog and misses its sale window. Ordering only.
+    """
+    try:
+        badge = str((row[_SALE_INFO_IDX] if len(row) > _SALE_INFO_IDX else "") or "").strip()
+        if not badge:
+            return (2, "")
+        today = today or date.today()
+        end = parse_sale_end(badge, today=today)
+        if not end:
+            return (1, "")
+        if end < today.isoformat():
+            return (2, "")    # sale already over (col X can hold stale badges)
+        return (0, end)
+    except Exception:
+        return (2, "")
+
+
 # ── Main research loop ────────────────────────────────────────────
 
 def run_researcher(limit=None, add_limit=None, category_filter=None, discover_only=False, skip_discovery=False):
@@ -557,7 +586,12 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
         if needs_research:
             to_research.append((idx + start_row, row))
 
-    # Apply run limit — prioritize gold bars and precious metals
+    # On-sale rows first (soonest sale end first) so they're listed inside the sale window.
+    to_research.sort(key=lambda t: _sale_end_sort_key(t[1]))
+    prioritized = sum(1 for _, r in to_research if _sale_end_sort_key(r)[0] < 2)
+    logger.info(f"  prioritized {prioritized} on-sale rows")
+
+    # Apply run limit
     if limit and len(to_research) > limit:
         logger.info(f"  Limiting to {limit} products (queue has {len(to_research)}).")
         to_research = to_research[:limit]
@@ -1384,7 +1418,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
         "spot_gold":    _spot_prices.get("gold", ""),
         "spot_silver":  _spot_prices.get("silver", ""),
         "errors":       ebay_fail_note.strip(" |") if _ebay_fail_log else "",
-        "notes":        f"Queued: {queued}" + (f" | Halted early: {skipped} skipped" if skipped else ""),
+        "notes":        f"Queued: {queued} | prioritized {prioritized} on-sale rows"
+                        + (f" | Halted early: {skipped} skipped" if skipped else ""),
     }, service)
 
 
