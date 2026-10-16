@@ -825,12 +825,16 @@ def _parse_currency(raw):
         return None
 
 
+_MAX_REALISTIC_UNITS_SOLD = 10000
+
+
 def _parse_sold(raw):
     """Parse a units_sold cell to a non-negative integer count.
 
     Rejects fractional or negative values (e.g. a dollar amount like '2599.99'
-    that leaked into col U) and returns 0, so one bad cell can't inflate the
-    realized-net or sold totals.
+    that leaked into col U) and anything above _MAX_REALISTIC_UNITS_SOLD (an item /
+    SKU number pasted into col U — rows 73/74 held 100407064 on 2026-10-16) and
+    returns 0, so one bad cell can't inflate the realized-net or sold totals.
     """
     raw = (raw or "").strip()
     if not raw:
@@ -839,7 +843,7 @@ def _parse_sold(raw):
         v = float(raw.replace(",", "").replace("$", ""))
     except ValueError:
         return 0
-    if v < 0 or v != int(v):
+    if v < 0 or v != int(v) or v > _MAX_REALISTIC_UNITS_SOLD:
         return 0
     return int(v)
 
@@ -1971,8 +1975,61 @@ async def cb_listed_confirm(update, context, arg):
 
 _ACTIVE_LISTING_FIELDS = (
     "status", "title", "category", "costco_cost", "ebay_price",
-    "net_profit", "net_margin", "units_sold", "sku",
+    "net_profit", "net_margin", "units_sold", "sku", "actual_net",
 )
+
+
+def _money(v):
+    """-12.5 -> '-$12.50'; 1234.5 -> '$1,234.50'."""
+    return f"-${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"
+
+
+def _load_sales_summary():
+    """Lifetime + 15/30/60/90-day net from data/sales_log.json (written by ebay_sync)."""
+    from tools import sales_log
+    return sales_log.summary(sales_log.load())
+
+
+def _active_summary_text(items, log_summary):
+    """
+    The Active Listings header — a summary, not an itemized list:
+      Made     = net of every logged eBay sale (sales log). Empty log -> fallback over the ACTIVE
+                 rows: units sold (col U) x per-unit net, using col BC actual_net (real eBay fee)
+                 when present else col I's formula net.
+      Potential = sum of col I net over ACTIVE rows with a real eBay price (blank/0 col H makes
+                 col I a meaningless large negative, so those rows are left out).
+      Net 15/30/60/90d = from the sales log's sale timestamps.
+    """
+    def price_ok(p):
+        h = _parse_currency(p.get("ebay_price"))
+        return h is not None and h > 0
+
+    potential = sum(_parse_currency(p.get("net_profit")) or 0.0 for p in items if price_ok(p))
+    if log_summary.get("sales"):
+        made, sold = log_summary["net"], log_summary["units"]
+        w = log_summary["windows"]
+        trend = "📈 Net — " + " · ".join(f"{d}d: {_money(w.get(d, 0.0))}" for d in (15, 30, 60, 90))
+        if log_summary.get("unknown"):
+            n = log_summary["unknown"]
+            trend += f"\n   ({n} sale{'s' if n != 1 else ''} without a cost — not counted)"
+    else:
+        made, sold = 0.0, 0
+        for p in items:
+            units = _parse_sold(p.get("units_sold"))
+            if not units:
+                continue
+            per_unit = _parse_currency(p.get("actual_net"))
+            if per_unit is None:
+                per_unit = _parse_currency(p.get("net_profit")) or 0.0
+            made += per_unit * units
+            sold += units
+        trend = "📈 Net — no sales history yet (fills from the next eBay sync)"
+    return "\n".join([
+        f"🟢 Active Listings ({len(items)})",
+        f"💰 Made (realized): {_money(made)} · {sold} sold",
+        f"🎯 Potential (if each sells 1): {_money(potential)}",
+        trend,
+    ])
 
 
 def _active_net_key(p):
@@ -2041,8 +2098,9 @@ async def cb_activelist_show(update, context, arg):
     def is_active(row):
         return safe_get(row, status_i) == "ACTIVE"
 
+    fields = tuple(f for f in _ACTIVE_LISTING_FIELDS if f in col_map)
     items = _extract_rows_by_field(
-        rows, col_map, _ACTIVE_LISTING_FIELDS, data_start_row=start, filter_fn=is_active
+        rows, col_map, fields, data_start_row=start, filter_fn=is_active
     )
     items.sort(key=_active_net_key)
 
@@ -2050,25 +2108,12 @@ async def cb_activelist_show(update, context, arg):
         await _send_screen(update, "No active listings right now.", reply_markup=_home_inline_kb())
         return
 
-    potential_net = sum(_parse_currency(p.get("net_profit")) or 0.0 for p in items)
-    sold_total = sum(_parse_sold(p.get("units_sold")) for p in items)
-    realized_net = sum(
-        (_parse_currency(p.get("net_profit")) or 0.0) * _parse_sold(p.get("units_sold"))
-        for p in items
-    )
-    lines = [
-        f"🟢 Active Listings ({len(items)})",
-        f"🎯 Potential net (if each sells 1): ${potential_net:,.2f}",
-        f"💰 Realized net: ${realized_net:,.2f} · 📦 sold {sold_total}",
-    ]
-    _ACTIVE_LIST_MAX = 25
-    for i, p in enumerate(items[:_ACTIVE_LIST_MAX], 1):
-        lines.append(f"{i}. {_format_active_line(p)}")
-    if len(items) > _ACTIVE_LIST_MAX:
-        lines.append(f"…and {len(items) - _ACTIVE_LIST_MAX} more (tap below for the rest)")
-    text = "\n".join(lines)
-    if len(text) > _MAX_MSG - 20:
-        text = text[:_MAX_MSG - 40] + "\n[truncated]"
+    try:
+        log_summary = _load_sales_summary()
+    except Exception as e:   # a broken log must never take the screen down — fall back to the sheet
+        logger.warning(f"activelist: sales log unavailable: {e}")
+        log_summary = {"sales": 0}
+    text = _active_summary_text(items, log_summary)
 
     kb_rows = [
         [InlineKeyboardButton(f"{i}. {(p.get('title') or '(untitled)')[:34]}",

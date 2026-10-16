@@ -1540,3 +1540,86 @@ def test_scheduler_apply_prices_mode_sends_summary_and_flags_failures(monkeypatc
     out = scheduler.run_apply_prices_mode({}, COLT, "svc", "Tab", 4, 500)
     assert len(sent) == 1 and "NOT applied" in sent[0]
     assert out["status"] == "error" and "row 4" in out["errors"] and "targets failed 1" in out["notes"]
+
+
+# ── sales log (data/sales_log.json) — chunked backfill + recording ────────────
+
+def test_fetch_item_transactions_chunks_90_days_into_30_day_windows(monkeypatch):
+    """GetItemTransactions rejects a ModTime window over 30 days — 90 days = 3 calls."""
+    import re
+    from datetime import datetime as _dt
+    bodies = []
+    monkeypatch.setattr(ebay_sync, "_load_credentials", lambda: ("TOKEN", "A", "D", "C", None, ""))
+    monkeypatch.setattr(ebay_sync, "_post", lambda body, headers: bodies.append(body) or _TXN_XML)
+    txns = ebay_sync.fetch_item_transactions("123456789012", days_back=90)
+    assert len(bodies) == 3
+    for b in bodies:
+        fr = _dt.fromisoformat(re.search(r"<ModTimeFrom>(.*?)</ModTimeFrom>", b).group(1).replace("Z", ""))
+        to = _dt.fromisoformat(re.search(r"<ModTimeTo>(.*?)</ModTimeTo>", b).group(1).replace("Z", ""))
+        assert 0 < (to - fr).total_seconds() <= 30 * 86400
+    assert len(txns) == 2                       # same 2 transactions in every window -> deduped
+
+
+def test_fetch_item_transactions_failed_chunk_returns_empty(monkeypatch):
+    """A partial history would look like 'no sales' in those weeks — all or nothing."""
+    calls = []
+
+    def post(body, headers):
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError("boom")
+        return _TXN_XML
+    monkeypatch.setattr(ebay_sync, "_load_credentials", lambda: ("TOKEN", "A", "D", "C", None, ""))
+    monkeypatch.setattr(ebay_sync, "_post", post)
+    assert ebay_sync.fetch_item_transactions("123456789012", days_back=90) == []
+
+
+@pytest.fixture
+def txns(monkeypatch):
+    st = {"calls": [], "txns": [{"transaction_id": "T1", "price": 100.0, "fee": 15.0, "quantity": 1,
+                                 "created": "2026-10-07T10:00:00.000Z"}]}
+
+    def fake(item_id, days_back=30):
+        st["calls"].append((item_id, days_back))
+        return list(st["txns"])
+    monkeypatch.setattr(ebay_sync, "fetch_item_transactions", fake)
+    return st
+
+
+_SALES_COL = {**COL, "actual_net": "BC"}
+
+
+def test_sync_actual_sales_records_log_and_backfills_90_days_first(txns, writes):
+    from tools import sales_log
+    rows = [_row(4, "111111111111", costco_cost="$50")]
+    stats = ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=1)])
+    assert txns["calls"] == [("111111111111", 90)]           # first sight -> 90-day backfill
+    log = sales_log.load()
+    assert log["111111111111"][0]["transaction_id"] == "T1" and log["111111111111"][0]["net"] == 30.88
+    assert stats["logged"] == 1 and writes == [(4, [("BC", 30.88)])]
+
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=1)])
+    assert txns["calls"][-1] == ("111111111111", 30)          # known item -> normal 30-day window
+    assert len(sales_log.load()["111111111111"]) == 1          # deduped
+
+
+def test_sync_actual_sales_logs_sale_even_without_cost(txns, writes):
+    from tools import sales_log
+    rows = [_row(4, "111111111111")]                           # no costco_cost / buy_cost
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=1)])
+    assert sales_log.load()["111111111111"][0]["net"] is None
+    assert writes == []                                         # no actual_net without a cost
+
+
+def test_sync_actual_sales_dry_run_writes_no_log(txns, writes):
+    from tools import sales_log
+    rows = [_row(4, "111111111111", costco_cost="$50")]
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=1)],
+                                dry_run=True)
+    assert sales_log.load() == {} and writes == []
+
+
+def test_sync_actual_sales_skips_unsold_listings(txns, writes):
+    rows = [_row(4, "111111111111", costco_cost="$50")]
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=0)])
+    assert txns["calls"] == []

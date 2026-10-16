@@ -87,6 +87,16 @@ def _parse_float(val, default=None):
         return default
 
 
+MAX_REALISTIC_UNITS_SOLD = 10000   # same cap as the bot's _parse_sold
+
+
+def _parse_units(val) -> float:
+    """col U units sold; 0 for blank, negative or absurd values (an item/SKU number pasted
+    into col U read as 100M units and would max out the velocity score)."""
+    u = _parse_float(val, default=0)
+    return u if 0 <= u <= MAX_REALISTIC_UNITS_SOLD else 0
+
+
 # ── Rotation check ────────────────────────────────────────────────────────────
 
 def find_rotation_candidates(
@@ -122,7 +132,7 @@ def find_rotation_candidates(
         title        = _safe(row, idx["title"])
         demand_raw   = _parse_float(_safe(row, idx["demand_score"]))
         margin_raw   = _parse_float(_safe(row, idx["net_margin"]))  # J = formula col
-        units_raw    = _parse_float(_safe(row, idx["units_sold"]), default=0)
+        units_raw    = _parse_units(_safe(row, idx["units_sold"]))
         score        = compute_perf_score(margin_raw, demand_raw, units_raw,
                                           target_margin=target_margin,
                                           velocity_target=velocity_target)
@@ -218,7 +228,7 @@ def run_rotation_check(
 
         demand_raw  = _parse_float(_safe(row, idx["demand_score"]))
         margin_raw  = _parse_float(_safe(row, idx["net_margin"]))
-        units_raw   = _parse_float(_safe(row, idx["units_sold"]), default=0)
+        units_raw   = _parse_units(_safe(row, idx["units_sold"]))
         score       = compute_perf_score(margin_raw, demand_raw, units_raw,
                                          target_margin=target_margin,
                                          velocity_target=velocity_target)

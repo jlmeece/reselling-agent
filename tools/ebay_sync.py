@@ -1489,10 +1489,17 @@ def format_target_summary(report: dict) -> str | None:
 
 # ── True sale reconciliation (GetItemTransactions) ────────────────────────────
 
-def _build_get_item_transactions_xml(token: str, item_id: str, days_back: int = 30) -> str:
-    now = datetime.now(timezone.utc)
-    fr = (now - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    to = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+TXN_WINDOW_DAYS = 30   # GetItemTransactions rejects a ModTimeFrom..ModTimeTo span over 30 days
+TXN_MAX_DAYS    = 90   # ...and keeps no transactions older than ~90 days
+
+
+def _build_get_item_transactions_xml(token: str, item_id: str, days_back: int = 30, *,
+                                     start=None, end=None) -> str:
+    """Window = [start, end] when given, else the last days_back days (callers keep it <= 30)."""
+    end = end or datetime.now(timezone.utc)
+    start = start or (end - timedelta(days=days_back))
+    fr = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    to = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "TransactionArray.Transaction.TransactionPrice",
         "TransactionArray.Transaction.FinalValueFee",
@@ -1515,8 +1522,11 @@ def _build_get_item_transactions_xml(token: str, item_id: str, days_back: int = 
 def fetch_item_transactions(item_id, days_back: int = 30) -> list[dict]:
     """Actual sales for one listing via GetItemTransactions. Each entry holds the REAL
     price and the REAL FinalValueFee eBay charged — the inputs for reconciling true net.
-    Returns [{transaction_id, price, fee, quantity, created}]; [] on any failure
-    (missing creds / network / Ack=Failure / bad XML). Never raises."""
+    days_back over TXN_WINDOW_DAYS is fetched as consecutive <=30-day windows (eBay rejects a
+    longer span), capped at TXN_MAX_DAYS, merged and de-duplicated by transaction_id.
+    Returns [{transaction_id, price, fee, quantity, created}]; [] on any failure in ANY window
+    (missing creds / network / Ack=Failure / bad XML) — a partial history would read as "no
+    sales" in the missing weeks. Never raises."""
     iid = extract_item_id(item_id)
     if not iid:
         return []
@@ -1524,22 +1534,42 @@ def fetch_item_transactions(item_id, days_back: int = 30) -> list[dict]:
     if err_kind:
         logger.warning(f"fetch_item_transactions: skipped — {err_msg}")
         return []
+    days = max(1, min(int(days_back or 30), TXN_MAX_DAYS))
+    end = datetime.now(timezone.utc)
+    oldest = end - timedelta(days=days)
+    out, seen = [], set()
+    while end > oldest:
+        start = max(oldest, end - timedelta(days=TXN_WINDOW_DAYS))
+        chunk = _fetch_transactions_window(token, app_id, dev_id, cert_id, iid, start, end)
+        if chunk is None:
+            return []
+        for t in chunk:
+            key = t["transaction_id"] or f"{t['created']}|{t['price']}"
+            if key not in seen:
+                seen.add(key)
+                out.append(t)
+        end = start
+    return out
+
+
+def _fetch_transactions_window(token, app_id, dev_id, cert_id, iid, start, end) -> list[dict] | None:
+    """One GetItemTransactions call for [start, end]; None on any failure."""
     try:
-        raw = _post(_build_get_item_transactions_xml(token, iid, days_back),
+        raw = _post(_build_get_item_transactions_xml(token, iid, start=start, end=end),
                     _headers(app_id, dev_id, cert_id, "GetItemTransactions"))
     except OSError as e:
         logger.error(f"fetch_item_transactions: eBay request failed: {e}")
-        return []
+        return None
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as e:
         logger.error(f"fetch_item_transactions: unparseable response: {e}")
-        return []
+        return None
     if _text(root, "Ack") not in ("Success", "Warning"):
         errors = _parse_errors(root)
         logger.error(f"fetch_item_transactions: eBay error — "
                      + ("; ".join(f"{c}: {m}" for c, m in errors) or "Ack not Success"))
-        return []
+        return None
     out = []
     for txn in root.findall("{*}TransactionArray/{*}Transaction"):
         out.append({
@@ -1564,37 +1594,47 @@ def actual_net_per_unit(txn: dict, cost_basis) -> float | None:
 
 def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=False) -> dict:
     """Reconcile TRUE sale net: for each matched listing that has sold, pull its
-    transactions and write the most recent sale's actual net/unit into col 'actual_net'.
-    Returns {written, skipped, failed: [(item_id, msg)]}. Never raises."""
-    stats = {"written": 0, "skipped": 0, "failed": []}
+    transactions, append every new one to the sales log (data/sales_log.json — timestamped,
+    feeds the bot's Made / 15-90-day net), and write the most recent sale's actual net/unit
+    into col 'actual_net'. An item not yet in the log is backfilled with TXN_MAX_DAYS (90) of
+    history; known items fetch the last 30 days. A sale on a row with no cost is still logged
+    (net None). Dry run writes neither the log nor the sheet.
+    Returns {written, skipped, logged, failed: [(item_id, msg)]}. Never raises."""
+    from tools import sales_log
+
+    stats = {"written": 0, "skipped": 0, "logged": 0, "failed": []}
     actual_col = col_map.get("actual_net") if isinstance(col_map, dict) else None
-    if not actual_col:
-        return stats
+    log = sales_log.load()
     sold_ids = {l["item_id"] for l in listings if (l.get("quantity_sold") or 0) > 0}
     for row in rows:
         iid = extract_item_id(row.get("ebay_listing_url"))
         if not iid or iid not in sold_ids:
             continue
         cost = _cost_basis(row.get("buy_cost"), row.get("costco_cost"))
-        if cost is None:
-            stats["skipped"] += 1
-            continue
+        days = 30 if sales_log.has_item(log, iid) else TXN_MAX_DAYS
         try:
-            txns = fetch_item_transactions(iid)
+            txns = fetch_item_transactions(iid, days_back=days)
         except Exception as e:
             stats["failed"].append((iid, f"fetch: {e}"))
             continue
         if not txns:
             stats["skipped"] += 1
             continue
+        stats["logged"] += sales_log.add_transactions(log, iid, txns, cost)
         latest = max(txns, key=lambda t: t.get("created") or "")
         net = actual_net_per_unit(latest, cost)
-        if net is None:
+        if net is None or not actual_col:
             stats["skipped"] += 1
             continue
         if not dry_run:
             safe_write_row(service, sheet_name, row["row_num"], [(actual_col, net)])
         stats["written"] += 1
+    if stats["logged"] and not dry_run:
+        try:
+            sales_log.save(log)
+        except OSError as e:
+            stats["failed"].append(("sales_log", f"save: {e}"))
+            logger.error(f"ebay_sync: sales log save failed: {e}")
     return stats
 
 
@@ -1668,6 +1708,8 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         actual = sync_actual_sales(service, sheet_name, COL, rows, listings, dry_run=dry_run)
         if actual["written"]:
             logger.info(f"ebay_sync: actual net written for {actual['written']} sold listing(s)")
+        if actual["logged"]:
+            logger.info(f"ebay_sync: {actual['logged']} new sale(s) added to the sales log")
     except Exception as e:  # never break the sync over reconciliation
         logger.exception(f"ebay_sync: actual-sale reconciliation failed: {e}")
 

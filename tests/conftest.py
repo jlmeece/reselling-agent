@@ -72,3 +72,11 @@ def _isolated_discovery_cadence(monkeypatch, tmp_path):
 
     monkeypatch.setattr(discovery_cadence, "SEEN_PATH", str(tmp_path / "discovery_seen.json"))
     monkeypatch.setattr(discovery_cadence, "CADENCE_PATH", str(tmp_path / "discovery_cadence.json"))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_sales_log(monkeypatch, tmp_path):
+    """No test may read/write the real data/sales_log.json."""
+    from tools import sales_log
+
+    monkeypatch.setattr(sales_log, "SALES_LOG_PATH", str(tmp_path / "sales_log.json"))

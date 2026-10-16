@@ -1202,3 +1202,88 @@ def test_sale_urgency_includes_sales_ending_soon():
     products = [{"status": "ACTIVE", "sale_info": "🔥 -$5 ends 10/01/26", "title": "Ends Soon"}]
     out = format_sale_urgency_section(products, now=now)
     assert out is not None and "Ends Soon" in out
+
+
+# ── _parse_sold hardening + Active Listings summary (no itemized list) ───────
+
+from agents import telegram_bot as _tb  # noqa: E402
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("6", 6), ("0", 0), ("", 0), (None, 0), ("1,000", 1000), ("10000", 10000),
+    ("10001", 0),                    # above _MAX_REALISTIC_UNITS_SOLD -> garbage
+    ("100407064", 0),                # an item/SKU number pasted into col U (rows 73/74, 2026-10-16)
+    ("2599.99", 0), ("-3", 0), ("abc", 0),
+])
+def test_parse_sold_rejects_garbage(raw, expected):
+    assert _tb._parse_sold(raw) == expected
+    assert _tb._MAX_REALISTIC_UNITS_SOLD == 10000
+
+
+def _ap(title="Widget", net="$10.00", price="49.99", sold="0", actual="", row=4):
+    return {"title": title, "net_profit": net, "ebay_price": price, "units_sold": sold,
+            "actual_net": actual, "row_num": row, "status": "ACTIVE"}
+
+
+_EMPTY_LOG = {"net": 0.0, "units": 0, "unknown": 0, "sales": 0,
+              "windows": {15: 0.0, 30: 0.0, 60: 0.0, 90: 0.0}}
+
+
+def test_active_summary_uses_sales_log_when_present():
+    log = {"net": 125.5, "units": 9, "unknown": 0, "sales": 8,
+           "windows": {15: 10.0, 30: 40.25, 60: 90.0, 90: 125.5}}
+    text = _tb._active_summary_text([_ap(), _ap(net="$5.00")], log)
+    lines = text.splitlines()
+    assert lines[0] == "🟢 Active Listings (2)"
+    assert lines[1] == "💰 Made (realized): $125.50 · 9 sold"
+    assert lines[2] == "🎯 Potential (if each sells 1): $15.00"
+    assert lines[3] == "📈 Net — 15d: $10.00 · 30d: $40.25 · 60d: $90.00 · 90d: $125.50"
+    assert "1." not in text and "tap below" not in text        # no itemized list
+
+
+def test_active_summary_falls_back_to_sheet_and_prefers_actual_net():
+    items = [_ap(net="$10.00", sold="2"),                       # 2 x formula net 10
+             _ap(net="$10.00", sold="1", actual="6.84"),        # 1 x real net 6.84 (col BC)
+             _ap(net="-$981.93", sold="100407064")]             # garbage U -> 0 units
+    text = _tb._active_summary_text(items, _EMPTY_LOG)
+    assert "💰 Made (realized): $26.84 · 3 sold" in text
+    assert "no sales history yet" in text
+
+
+def test_potential_skips_rows_with_blank_or_zero_price():
+    items = [_ap(net="$10.00"), _ap(net="-$50.00", price=""), _ap(net="-$40.00", price="0")]
+    text = _tb._active_summary_text(items, _EMPTY_LOG)
+    assert "🎯 Potential (if each sells 1): $10.00" in text
+
+
+def test_active_summary_notes_sales_without_cost():
+    log = {**_EMPTY_LOG, "net": 30.0, "units": 3, "unknown": 1, "sales": 3,
+           "windows": {15: 30.0, 30: 30.0, 60: 30.0, 90: 30.0}}
+    assert "(1 sale without a cost — not counted)" in _tb._active_summary_text([_ap()], log)
+
+
+def test_negative_money_formats_with_sign_before_dollar():
+    log = {**_EMPTY_LOG, "net": -12.5, "units": 1, "sales": 1,
+           "windows": {15: -12.5, 30: -12.5, 60: -12.5, 90: -12.5}}
+    assert "💰 Made (realized): -$12.50 · 1 sold" in _tb._active_summary_text([_ap()], log)
+
+
+def test_activelist_screen_keeps_buttons_but_no_numbered_list(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    col = {"status": "A", "title": "C", "category": "D", "costco_cost": "G", "ebay_price": "H",
+           "net_profit": "I", "net_margin": "J", "units_sold": "U", "sku": "AA", "actual_net": "BC"}
+    row = [""] * 55
+    row[0], row[2], row[7], row[8], row[20] = "ACTIVE", "Energy Shot", "53.99", "$11.33", "6"
+    monkeypatch.setattr(_tb, "_read_product_rows", lambda: (col, "svc", "Tab", 4, [row]))
+    monkeypatch.setattr(_tb, "_load_sales_summary", lambda: _EMPTY_LOG)
+    q = SimpleNamespace(edit_message_text=AsyncMock())
+    update = SimpleNamespace(callback_query=q, message=None)
+    ctx = SimpleNamespace(user_data={}, bot_data={"chat_id": 1})
+    asyncio.run(_tb.cb_activelist_show(update, ctx, ""))
+    text = q.edit_message_text.call_args.args[0]
+    kb = q.edit_message_text.call_args.kwargs["reply_markup"]
+    assert "💰 Made (realized): $67.98 · 6 sold" in text and "🛒" not in text
+    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
+    assert "activelist:pick:4" in datas and "activelist:show" in datas
