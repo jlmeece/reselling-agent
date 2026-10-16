@@ -133,3 +133,74 @@ def test_needs_backfill_until_every_net_is_known():
     assert sl.needs_backfill(log, "111")                 # old sale with unknown net -> 90 days again
     sl.add_transactions(log, "111", [_txn("A", "2026-08-16T10:00:00Z")], 50.0)
     assert not sl.needs_backfill(log, "111")
+
+
+# ── refunds / cancellations + calendar-month view (2026-10-16 reconciliation) ──
+
+def _rtxn(tid, created, price=100.0, fee=15.0, qty=1, refunded=0.0, shipped=True):
+    return {**_txn(tid, created, price, fee, qty), "refunded": refunded, "shipped": shipped}
+
+
+def test_refunded_unshipped_order_is_cancelled_and_excluded():
+    """GreenPan 10/15: paid $103.99, refunded $88.07 three hours later, never shipped."""
+    log = {}
+    sl.add_transactions(log, "111", [_rtxn("A", "2026-10-10T00:00:00Z"),
+                                     _rtxn("B", "2026-10-15T11:44:35Z", refunded=88.07, shipped=False)], 50.0)
+    assert log["111"][1]["cancelled"] is True and log["111"][1]["refunded"] == 88.07
+    s = sl.summary(log, now=NOW)
+    assert s["units"] == 1 and s["orders"] == 1 and s["cancelled"] == 1
+    assert s["net"] == 30.88
+
+
+def test_partial_refund_on_shipped_order_reduces_net_but_keeps_the_sale():
+    log = {}
+    sl.add_transactions(log, "111", [_rtxn("A", "2026-10-10T00:00:00Z", refunded=10.0)], 50.0)
+    assert not log["111"][0]["cancelled"]
+    s = sl.summary(log, now=NOW)
+    assert s["units"] == 1 and s["net"] == 20.88
+
+
+def test_full_refund_on_shipped_order_is_cancelled():
+    log = {}
+    sl.add_transactions(log, "111", [_rtxn("A", "2026-10-10T00:00:00Z", refunded=100.0)], 50.0)
+    assert log["111"][0]["cancelled"] is True
+
+
+def test_refund_arriving_later_updates_a_logged_sale():
+    log = {}
+    sl.add_transactions(log, "111", [_rtxn("A", "2026-10-15T00:00:00Z", shipped=False)], 50.0)
+    assert not log["111"][0]["cancelled"]
+    sl.add_transactions(log, "111", [_rtxn("A", "2026-10-15T00:00:00Z", refunded=88.07, shipped=False)], 50.0)
+    assert log["111"][0]["cancelled"] is True and len(log["111"]) == 1
+    assert log["111"][0]["net"] == 30.88                     # frozen sale net kept; summary excludes it
+
+
+def test_old_entries_without_refund_fields_still_count():
+    log = {"111": [{"transaction_id": "A", "created": "2026-10-10T00:00:00Z", "quantity": 2,
+                    "price": 10.0, "fee": 1.0, "net": 4.0}]}
+    s = sl.summary(log, now=NOW)
+    assert s["units"] == 2 and s["orders"] == 1 and s["net"] == 4.0
+
+
+def test_months_are_calendar_months_in_central_time_newest_first():
+    log = {}
+    sl.add_transactions(log, "111", [
+        _rtxn("A", "2026-08-16T16:13:41Z"),
+        _rtxn("B", "2026-09-14T18:27:58Z"),
+        _rtxn("C", "2026-10-01T03:00:00Z"),      # 9/30 10 PM Central -> September
+        _rtxn("D", "2026-10-06T22:05:07Z", qty=3, fee=45.0),
+        _rtxn("E", "2026-06-01T00:00:00Z"),      # outside 90 days
+    ], 50.0)
+    s = sl.summary(log, now=NOW)
+    assert [(m["label"], m["units"], m["orders"]) for m in s["months"]] == [
+        ("Oct", 3, 1), ("Sep", 2, 2), ("Aug", 1, 1)]
+    assert s["months"][0]["net"] == round(3 * 30.88, 2)
+    assert s["d90"] == {"units": 6, "orders": 4, "net": round(6 * 30.88, 2)}
+    assert s["units"] == 7                                   # lifetime still includes June
+
+
+def test_month_label_includes_year_when_not_current_year():
+    log = {}
+    sl.add_transactions(log, "111", [_rtxn("A", "2026-12-20T00:00:00Z")], 50.0)
+    s = sl.summary(log, now=datetime(2027, 1, 10, tzinfo=timezone.utc))
+    assert s["months"][0]["label"] == "Dec 2026"

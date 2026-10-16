@@ -1231,13 +1231,16 @@ _EMPTY_LOG = {"net": 0.0, "units": 0, "unknown": 0, "sales": 0,
 
 def test_active_summary_uses_sales_log_when_present():
     log = {"net": 125.5, "units": 9, "unknown": 0, "sales": 8,
-           "windows": {15: 10.0, 30: 40.25, 60: 90.0, 90: 125.5}}
+           "windows": {15: 10.0, 30: 40.25, 60: 90.0, 90: 125.5},
+           "d90": {"units": 9, "orders": 8, "net": 125.5},
+           "months": [{"key": "2026-10", "label": "Oct", "units": 9, "orders": 8, "net": 125.5}]}
     text = _tb._active_summary_text([_ap(), _ap(net="$5.00")], log)
     lines = text.splitlines()
     assert lines[0] == "🟢 Active Listings (2)"
-    assert lines[1] == "💰 Made (realized): $125.50 · 9 sold"
-    assert lines[2] == "🎯 Potential (if each sells 1): $15.00"
-    assert lines[3] == "📈 Net — 15d: $10.00 · 30d: $40.25 · 60d: $90.00 · 90d: $125.50"
+    assert lines[1] == "💰 Made (90d): $125.50"
+    assert lines[2] == "📦 Sold (90d): 9 units · 8 orders"
+    assert lines[3] == "🎯 Potential (if each sells 1): $15.00"
+    assert lines[4:] == ["📈 By month:", "   Oct: 9 units · 8 orders · $125.50"]
     assert "1." not in text and "tap below" not in text        # no itemized list
 
 
@@ -1246,7 +1249,7 @@ def test_active_summary_falls_back_to_sheet_and_prefers_actual_net():
              _ap(net="$10.00", sold="1", actual="6.84"),        # 1 x real net 6.84 (col BC)
              _ap(net="-$981.93", sold="100407064")]             # garbage U -> 0 units
     text = _tb._active_summary_text(items, _EMPTY_LOG)
-    assert "💰 Made (realized): $26.84 · 3 sold" in text
+    assert "💰 Made (sheet estimate): $26.84\n📦 Sold: 3 units" in text
     assert "no sales history yet" in text
 
 
@@ -1264,8 +1267,9 @@ def test_active_summary_notes_sales_without_cost():
 
 def test_negative_money_formats_with_sign_before_dollar():
     log = {**_EMPTY_LOG, "net": -12.5, "units": 1, "sales": 1,
-           "windows": {15: -12.5, 30: -12.5, 60: -12.5, 90: -12.5}}
-    assert "💰 Made (realized): -$12.50 · 1 sold" in _tb._active_summary_text([_ap()], log)
+           "windows": {15: -12.5, 30: -12.5, 60: -12.5, 90: -12.5},
+           "d90": {"units": 1, "orders": 1, "net": -12.5}}
+    assert "💰 Made (90d): -$12.50" in _tb._active_summary_text([_ap()], log)
 
 
 def test_activelist_screen_keeps_buttons_but_no_numbered_list(monkeypatch):
@@ -1284,7 +1288,7 @@ def test_activelist_screen_keeps_buttons_but_no_numbered_list(monkeypatch):
     asyncio.run(_tb.cb_activelist_show(update, ctx, ""))
     text = q.edit_message_text.call_args.args[0]
     kb = q.edit_message_text.call_args.kwargs["reply_markup"]
-    assert "💰 Made (realized): $67.98 · 6 sold" in text and "🛒" not in text
+    assert "💰 Made (sheet estimate): $67.98\n📦 Sold: 6 units" in text and "🛒" not in text
     datas = [b.callback_data for r in kb.inline_keyboard for b in r]
     assert "activelist:pick:4" in datas and "activelist:show" in datas
 
@@ -1294,3 +1298,35 @@ def test_active_summary_flags_estimated_fees():
            "windows": {15: 30.0, 30: 30.0, 60: 30.0, 90: 30.0}}
     assert "fees estimated" in _tb._active_summary_text([_ap()], log)
     assert "fees estimated" not in _tb._active_summary_text([_ap()], {**log, "estimated": 0})
+
+
+# ── monthly summary (2026-10-16 redesign) ────────────────────────────────────
+
+_MONTHLY_LOG = {"net": 123.23, "units": 10, "orders": 8, "sales": 8, "unknown": 0, "estimated": 8,
+                "cancelled": 1, "windows": {15: 0.0, 30: 0.0, 60: 0.0, 90: 0.0},
+                "d90": {"units": 10, "orders": 8, "net": 97.19},
+                "months": [{"key": "2026-10", "label": "Oct", "units": 8, "orders": 6, "net": 74.53},
+                           {"key": "2026-09", "label": "Sep", "units": 1, "orders": 1, "net": 11.33},
+                           {"key": "2026-08", "label": "Aug", "units": 1, "orders": 1, "net": 11.33}]}
+
+
+def test_monthly_summary_layout():
+    lines = _tb._active_summary_text([_ap(), _ap(net="$5.00")], _MONTHLY_LOG).splitlines()
+    assert lines[0] == "🟢 Active Listings (2)"
+    assert lines[1] == "💰 Made (90d): $97.19 (fees estimated)"
+    assert lines[2] == "📦 Sold (90d): 10 units · 8 orders"
+    assert lines[3] == "🎯 Potential (if each sells 1): $15.00"
+    assert lines[4] == "📈 By month:"
+    assert lines[5:8] == ["   Oct: 8 units · 6 orders · $74.53",
+                          "   Sep: 1 unit · 1 order · $11.33",
+                          "   Aug: 1 unit · 1 order · $11.33"]
+    text = "\n".join(lines)
+    assert "15d" not in text                                   # rolling line dropped
+    assert "1 cancelled/refunded order not counted" in text
+
+
+def test_monthly_summary_real_fees_label_and_cost_note():
+    log = {**_MONTHLY_LOG, "estimated": 0, "cancelled": 0, "unknown": 2}
+    text = _tb._active_summary_text([_ap()], log)
+    assert "💰 Made (90d): $97.19\n" in text and "fees estimated" not in text
+    assert "(2 sales without a cost — not counted)" in text

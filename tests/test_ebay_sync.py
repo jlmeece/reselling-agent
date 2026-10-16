@@ -1652,3 +1652,62 @@ def test_missing_fee_and_unknown_fee_rate_stays_unknown(txns, writes):
 def test_estimate_fee_multi_quantity():
     assert ebay_sync.estimate_fee(100.0, 2, 0.10) == round(200 * 0.10 * 1.08 + 0.30, 2)
     assert ebay_sync.estimate_fee(None, 1, 0.10) is None and ebay_sync.estimate_fee(10.0, 1, None) is None
+
+
+_REFUND_TXN_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<GetItemTransactionsResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+  <Ack>Success</Ack>
+  <TransactionArray>
+    <Transaction>
+      <TransactionID>10085581108719</TransactionID>
+      <TransactionPrice currencyID="USD">103.99</TransactionPrice>
+      <QuantityPurchased>1</QuantityPurchased>
+      <CreatedDate>2026-10-15T11:44:35.000Z</CreatedDate>
+      <MonetaryDetails><Payments><Payment><PaymentStatus>Succeeded</PaymentStatus>
+        <PaymentAmount currencyID="USD">103.99</PaymentAmount></Payment></Payments>
+        <Refunds><Refund><RefundStatus>Succeeded</RefundStatus><RefundType>PaymentRefund</RefundType>
+          <RefundAmount currencyID="USD">-88.07</RefundAmount></Refund>
+        <Refund><RefundStatus>Failed</RefundStatus><RefundAmount currencyID="USD">-5.00</RefundAmount></Refund>
+        </Refunds></MonetaryDetails>
+    </Transaction>
+    <Transaction>
+      <TransactionID>10085028185904</TransactionID>
+      <TransactionPrice currencyID="USD">41.48</TransactionPrice>
+      <QuantityPurchased>3</QuantityPurchased>
+      <CreatedDate>2026-10-06T22:05:07.000Z</CreatedDate>
+      <ShippedTime>2026-10-08T15:00:00.000Z</ShippedTime>
+    </Transaction>
+  </TransactionArray>
+</GetItemTransactionsResponse>"""
+
+
+def test_fetch_item_transactions_reads_refunds_and_shipping(monkeypatch):
+    bodies = []
+    monkeypatch.setattr(ebay_sync, "_load_credentials", lambda: ("TOKEN", "A", "D", "C", None, ""))
+    monkeypatch.setattr(ebay_sync, "_post", lambda body, headers: bodies.append(body) or _REFUND_TXN_XML)
+    gp, es = ebay_sync.fetch_item_transactions("123456789012")
+    assert gp["refunded"] == 88.07 and gp["shipped"] is False      # failed refund ignored
+    assert es["refunded"] == 0.0 and es["shipped"] is True and es["quantity"] == 3
+    for sel in ("MonetaryDetails", "ShippedTime"):
+        assert f"<OutputSelector>TransactionArray.Transaction.{sel}</OutputSelector>" in bodies[0]
+    assert "<DetailLevel>ReturnAll</DetailLevel>" in bodies[0]
+
+
+def test_sync_actual_sales_rechecks_logged_items_that_left_the_active_list(txns, writes):
+    """A sold-out listing drops off ActiveList — its logged sales still get refund updates."""
+    from tools import sales_log
+    rows = [_row(4, "111111111111", costco_cost="$50")]
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=1)])
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [])          # listing gone
+    assert len(txns["calls"]) == 2 and len(sales_log.load()["111111111111"]) == 1
+
+
+def test_actual_net_skips_cancelled_latest_sale(txns, writes):
+    txns["txns"] = [
+        {"transaction_id": "T1", "price": 100.0, "fee": 15.0, "quantity": 1,
+         "created": "2026-10-07T10:00:00.000Z", "refunded": 0.0, "shipped": True},
+        {"transaction_id": "T2", "price": 200.0, "fee": 30.0, "quantity": 1,
+         "created": "2026-10-09T10:00:00.000Z", "refunded": 200.0, "shipped": False}]
+    rows = [_row(4, "111111111111", costco_cost="$50")]
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=2)])
+    assert writes == [(4, [("BC", 30.88)])]                  # from T1, not the cancelled T2

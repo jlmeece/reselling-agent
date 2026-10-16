@@ -1506,12 +1506,15 @@ def _build_get_item_transactions_xml(token: str, item_id: str, days_back: int = 
         "TransactionArray.Transaction.QuantityPurchased",
         "TransactionArray.Transaction.CreatedDate",
         "TransactionArray.Transaction.TransactionID",
+        "TransactionArray.Transaction.MonetaryDetails",   # refunds (cancellations / returns)
+        "TransactionArray.Transaction.ShippedTime",
     ))
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<GetItemTransactionsRequest xmlns="{_NS}">'
         f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        "<DetailLevel>ReturnAll</DetailLevel>"
         f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
         f"<ModTimeFrom>{fr}</ModTimeFrom><ModTimeTo>{to}</ModTimeTo>"
         f"{selectors}"
@@ -1572,12 +1575,18 @@ def _fetch_transactions_window(token, app_id, dev_id, cert_id, iid, start, end) 
         return None
     out = []
     for txn in root.findall("{*}TransactionArray/{*}Transaction"):
+        refunded = 0.0
+        for r in txn.findall("{*}MonetaryDetails/{*}Refunds/{*}Refund"):
+            if _text(r, "RefundStatus") == "Succeeded":
+                refunded += abs(_num(_text(r, "RefundAmount"), float, 0.0) or 0.0)
         out.append({
             "transaction_id": _text(txn, "TransactionID"),
             "price":          _num(_text(txn, "TransactionPrice"), float, None),
             "fee":            _num(_text(txn, "FinalValueFee"), float, None),
             "quantity":       _num(_text(txn, "QuantityPurchased"), int, 1),
             "created":        _text(txn, "CreatedDate"),
+            "refunded":       round(refunded, 2),
+            "shipped":        bool(_text(txn, "ShippedTime")),
         })
     return out
 
@@ -1617,6 +1626,9 @@ def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=F
     actual_col = col_map.get("actual_net") if isinstance(col_map, dict) else None
     log = sales_log.load()
     sold_ids = {l["item_id"] for l in listings if (l.get("quantity_sold") or 0) > 0}
+    # plus items already in the log: a sold-out listing drops off ActiveList, but its logged
+    # sales still need refund / cancellation updates
+    sold_ids |= {iid for iid in log if log.get(iid)}
     for row in rows:
         iid = extract_item_id(row.get("ebay_listing_url"))
         if not iid or iid not in sold_ids:
@@ -1637,7 +1649,12 @@ def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=F
                  "fee_estimated": True}
                 for t in txns]
         stats["logged"] += sales_log.add_transactions(log, iid, txns, cost)
-        latest = max(txns, key=lambda t: t.get("created") or "")
+        kept = [t for t in txns if not sales_log._is_cancelled(
+            t.get("price"), t.get("quantity"), t.get("refunded"), t.get("shipped"))]
+        if not kept:
+            stats["skipped"] += 1
+            continue
+        latest = max(kept, key=lambda t: t.get("created") or "")
         net = actual_net_per_unit(latest, cost)
         if net is None or not actual_col:
             stats["skipped"] += 1

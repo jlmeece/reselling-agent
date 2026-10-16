@@ -1990,31 +1990,32 @@ def _load_sales_summary():
     return sales_log.summary(sales_log.load())
 
 
+def _plural(n, word):
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
 def _active_summary_text(items, log_summary):
     """
-    The Active Listings header — a summary, not an itemized list:
-      Made     = net of every logged eBay sale (sales log). Empty log -> fallback over the ACTIVE
-                 rows: units sold (col U) x per-unit net, using col BC actual_net (real eBay fee)
-                 when present else col I's formula net.
-      Potential = sum of col I net over ACTIVE rows with a real eBay price (blank/0 col H makes
-                 col I a meaningless large negative, so those rows are left out).
-      Net 15/30/60/90d = from the sales log's sale timestamps.
+    The Active Listings header — a summary, not an itemized list. With a sales log:
+      🟢 Active Listings (N)
+      💰 Made (90d): $X (fees estimated)     net of every non-cancelled sale in the last 90 days
+      📦 Sold (90d): U units · O orders       units and orders kept apart (one order can be 3 units)
+      🎯 Potential (if each sells 1): $Y      col I over ACTIVE rows with a real eBay price (a
+                                              blank/0 col H makes col I a meaningless negative)
+      📈 By month:                            calendar months (Central), newest first
+         Oct: 8 units · 6 orders · $74.53
+      + notes: sales without a cost, cancelled/refunded orders left out.
+    Empty log -> sheet estimate over the ACTIVE rows: units sold (col U) x per-unit net, using
+    col BC actual_net when present else col I.
     """
     def price_ok(p):
         h = _parse_currency(p.get("ebay_price"))
         return h is not None and h > 0
 
     potential = sum(_parse_currency(p.get("net_profit")) or 0.0 for p in items if price_ok(p))
-    if log_summary.get("sales"):
-        made, sold = log_summary["net"], log_summary["units"]
-        w = log_summary["windows"]
-        trend = "📈 Net — " + " · ".join(f"{d}d: {_money(w.get(d, 0.0))}" for d in (15, 30, 60, 90))
-        if log_summary.get("unknown"):
-            n = log_summary["unknown"]
-            trend += f"\n   ({n} sale{'s' if n != 1 else ''} without a cost — not counted)"
-        if log_summary.get("estimated"):
-            trend += "\n   (eBay fees estimated — eBay doesn't report the real fee via this API)"
-    else:
+    head = f"🟢 Active Listings ({len(items)})"
+    pot = f"🎯 Potential (if each sells 1): {_money(potential)}"
+    if not (log_summary.get("sales") or log_summary.get("cancelled")):
         made, sold = 0.0, 0
         for p in items:
             units = _parse_sold(p.get("units_sold"))
@@ -2025,13 +2026,30 @@ def _active_summary_text(items, log_summary):
                 per_unit = _parse_currency(p.get("net_profit")) or 0.0
             made += per_unit * units
             sold += units
-        trend = "📈 Net — no sales history yet (fills from the next eBay sync)"
-    return "\n".join([
-        f"🟢 Active Listings ({len(items)})",
-        f"💰 Made (realized): {_money(made)} · {sold} sold",
-        f"🎯 Potential (if each sells 1): {_money(potential)}",
-        trend,
-    ])
+        return "\n".join([head, f"💰 Made (sheet estimate): {_money(made)}",
+                          f"📦 Sold: {_plural(sold, 'unit')}", pot,
+                          "📈 By month: no sales history yet (fills from the next eBay sync)"])
+
+    d90 = log_summary.get("d90") or {"units": log_summary.get("units", 0),
+                                     "orders": log_summary.get("sales", 0),
+                                     "net": log_summary.get("net", 0.0)}
+    est = " (fees estimated)" if log_summary.get("estimated") else ""
+    lines = [head, f"💰 Made (90d): {_money(d90['net'])}{est}",
+             f"📦 Sold (90d): {_plural(d90['units'], 'unit')} · {_plural(d90['orders'], 'order')}",
+             pot, "📈 By month:"]
+    months = log_summary.get("months") or []
+    if months:
+        lines += [f"   {m['label']}: {_plural(m['units'], 'unit')} · "
+                  f"{_plural(m['orders'], 'order')} · {_money(m['net'])}" for m in months]
+    else:
+        lines.append("   no sales in the last 90 days")
+    n = log_summary.get("unknown") or 0
+    if n:
+        lines.append(f"   ({_plural(n, 'sale')} without a cost — not counted)")
+    n = log_summary.get("cancelled") or 0
+    if n:
+        lines.append(f"   ({n} cancelled/refunded order{'' if n == 1 else 's'} not counted)")
+    return "\n".join(lines)
 
 
 def _active_net_key(p):
