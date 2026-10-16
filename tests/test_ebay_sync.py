@@ -633,7 +633,7 @@ def test_run_happy_path_writes_and_summarizes(monkeypatch, creds, writes):
     monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget", 5: "Widget"})
     res = run_ebay_sync(*_cfg_args())
 
-    assert writes == [(4, [("U", 2)])]
+    assert writes == [(4, [("U", 2)]), (4, [("H", 40.0)])]       # units, then col H mirrors eBay
     assert res["status"] == "ok"
     assert "matched 1" in res["notes"] and "margin_breach hard 1 soft 0" in res["notes"] \
         and "active_not_on_ebay 1" in res["notes"]
@@ -1711,3 +1711,159 @@ def test_actual_net_skips_cancelled_latest_sale(txns, writes):
     rows = [_row(4, "111111111111", costco_cost="$50")]
     ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=2)])
     assert writes == [(4, [("BC", 30.88)])]                  # from T1, not the cancelled T2
+
+
+# ── col U excludes cancelled / refunded units (sales log) ──────────────────────
+
+def _log_with_cancel(item_id="111111111111"):
+    from tools import sales_log
+    log = {}
+    sales_log.add_transactions(log, item_id, [
+        {"transaction_id": "T1", "price": 100.0, "fee": 15.0, "quantity": 1,
+         "created": "2026-10-07T10:00:00Z", "refunded": 0.0, "shipped": True},
+        {"transaction_id": "T2", "price": 100.0, "fee": 15.0, "quantity": 1,
+         "created": "2026-10-09T10:00:00Z", "refunded": 88.07, "shipped": False},   # cancelled
+    ], 50.0)
+    sales_log.save(log)
+    return log
+
+
+def test_col_u_excludes_cancelled_units_from_the_sales_log(writes):
+    _log_with_cancel()
+    rep = _sync([_row(4, "111111111111", sold="0")], [_listing("111111111111", sold=2)])
+    assert writes == [(4, [("U", 1)])]                           # 2 sold on eBay - 1 cancelled
+    (m,) = rep["matched"]
+    assert m["quantity_sold"] == 1 and m["cancelled_units"] == 1
+
+
+def test_col_u_already_net_of_cancellations_is_not_rewritten(writes):
+    _log_with_cancel()
+    _sync([_row(4, "111111111111", sold="1")], [_listing("111111111111", sold=2)])
+    assert writes == []
+
+
+def test_col_u_without_log_history_uses_raw_quantity_sold(writes):
+    _log_with_cancel(item_id="999999999999")                     # cancellation on another item
+    _sync([_row(4, "111111111111", sold="0")], [_listing("111111111111", sold=2)])
+    assert writes == [(4, [("U", 2)])]
+
+
+def test_cancelled_units_never_push_col_u_below_zero(writes):
+    from tools import sales_log
+    log = {}
+    sales_log.add_transactions(log, "111111111111", [
+        {"transaction_id": "T9", "price": 50.0, "fee": 5.0, "quantity": 3,
+         "created": "2026-10-09T10:00:00Z", "refunded": 150.0, "shipped": True}], 20.0)
+    sales_log.save(log)
+    _sync([_row(4, "111111111111", sold="1")], [_listing("111111111111", sold=1)])
+    assert writes == [(4, [("U", 0)])]
+
+
+def test_cancelled_units_helper():
+    from tools import sales_log
+    log = _log_with_cancel()
+    assert sales_log.cancelled_units(log) == {"111111111111": 1}
+    assert sales_log.cancelled_units({}) == {}
+
+
+def test_run_reconciles_sales_before_writing_col_u(monkeypatch, creds, writes, txns):
+    """A cancellation discovered this run lands in col U in the SAME run."""
+    txns["txns"] = [{"transaction_id": "T2", "price": 103.99, "fee": 15.0, "quantity": 1,
+                     "created": "2026-10-15T11:44:35Z", "refunded": 88.07, "shipped": False}]
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="40.00", sold=1)])))
+    rows = [_row(4, "111111111111", price="$40.00", sold="1", costco_cost="$20", fee_rate="0.10")]
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: rows)
+    monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget"})
+    run_ebay_sync(_ALERT_ONLY, COL, "svc", "Product Tracker", 4, 500)
+    assert (4, [("U", 0)]) in writes
+
+
+# ── col H mirrors eBay's live price ───────────────────────────────────────────
+
+def _mirror(rep, titles=None, **kw):
+    titles = titles if titles is not None else {4: "Widget", 5: "Widget"}
+    return ebay_sync.mirror_live_prices(rep, "svc", COL, "Product Tracker",
+                                        title_reader=lambda: titles, **kw)
+
+
+def test_mirror_writes_col_h_when_ebay_price_differs(writes):
+    rep = _sync([_row(4, "111111111111", price="$29.99")], [_listing("111111111111", price=40.0)],
+                dry_run=True)
+    out = _mirror(rep)
+    assert writes == [(4, [("H", 40.0)])]
+    assert out == [{"row_num": 4, "title": "Widget", "item_id": "111111111111",
+                    "old_price": 29.99, "new_price": 40.0, "outcome": "mirrored"}]
+    assert "h_mirrored 1" in ebay_sync.summarize({**rep, "h_mirror": out})
+
+
+def test_mirror_no_write_when_col_h_already_matches(writes):
+    rep = _sync([_row(4, "111111111111", price="$40.00")], [_listing("111111111111", price=40.0)],
+                dry_run=True)
+    assert _mirror(rep) == [] and writes == []
+
+
+def test_mirror_fills_a_blank_col_h(writes):
+    rep = _sync([_row(4, "111111111111", price="")], [_listing("111111111111", price=40.0)],
+                dry_run=True)
+    _mirror(rep)
+    assert writes == [(4, [("H", 40.0)])]
+
+
+def test_mirror_skips_non_active_rows(writes):
+    rep = _sync([_row(4, "111111111111", status="PAUSED_OOS", price="$29.99")],
+                [_listing("111111111111", price=40.0)], dry_run=True)
+    assert _mirror(rep) == [] and writes == []
+
+
+def test_mirror_skips_items_repriced_this_run(writes):
+    rep = _sync([_row(4, "111111111111", price="$29.99")], [_listing("111111111111", price=40.0)],
+                dry_run=True)
+    assert _mirror(rep, skip_ids={"111111111111"}) == [] and writes == []
+
+
+def test_mirror_row_moved_writes_nothing(writes):
+    rep = _sync([_row(4, "111111111111", price="$29.99")], [_listing("111111111111", price=40.0)],
+                dry_run=True)
+    (r,) = _mirror(rep, titles={4: "Something Else"})
+    assert r["outcome"] == "row_moved" and writes == []
+
+
+def test_mirror_dry_run_writes_nothing(writes):
+    rep = _sync([_row(4, "111111111111", price="$29.99")], [_listing("111111111111", price=40.0)],
+                dry_run=True)
+    (r,) = _mirror(rep, dry_run=True)
+    assert r["outcome"] == "dry_run" and writes == []
+
+
+def test_mirror_never_calls_ebay_or_touches_manual_cost(monkeypatch, writes):
+    monkeypatch.setattr(ebay_sync, "revise_fixed_price", lambda *a, **k: pytest.fail("eBay write"))
+    monkeypatch.setattr(ebay_sync, "fetch_item_price", lambda *a, **k: pytest.fail("eBay call"))
+    rep = _sync([_row(4, "111111111111", price="$29.99", manual_cost="25")],
+                [_listing("111111111111", price=40.0)], dry_run=True)
+    _mirror(rep)
+    assert writes == [(4, [("H", 40.0)])]                       # H only — never BE
+
+
+def test_run_auto_repriced_row_keeps_break_even_in_col_h(monkeypatch, creds, writes, ebay):
+    """The mirror runs after auto-reprice, and the listing data is pre-revision: the repriced
+    row must keep the break-even price, not get the stale eBay price written back."""
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="29.00", sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
+        _row(4, "111111111111", price="$27.00", sold="0", **_HARD)])
+    monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget"})
+    run_ebay_sync({}, COL, "svc", "Product Tracker", 4, 500)
+    assert ebay["revise"] == [("111111111111", 36.99)]
+    assert writes == [(4, [("H", 36.99)])]                      # no stale H=29.00 afterwards
+
+
+def test_run_mirrors_bulk_edited_ebay_price(monkeypatch, creds, writes):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price="44.99", sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
+        _row(4, "111111111111", price="$39.99", sold="0", costco_cost="$10", fee_rate="0.10",
+             sold_90d="3")])
+    monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget"})
+    res = run_ebay_sync(_ALERT_ONLY, COL, "svc", "Product Tracker", 4, 500)
+    assert writes == [(4, [("H", 44.99)])] and "h_mirrored 1" in res["notes"]

@@ -1,12 +1,16 @@
 """
-eBay sync — Stage 1 (read-only on eBay, flag-only on the sheet)
+eBay sync — sheet follows eBay (col U units sold, col H live price) + guarded eBay writes
 ===============================================================
 Pulls Jay's active eBay listings via the Trading API (GetMyeBaySelling), matches
 them to Product Tracker rows by the item ID in col Q (ebay_listing_url), and:
 
-  * writes QuantitySold into units_sold (col U) when it changed, and — when a NEW
-    sale lands — snapshots costco_cost (col G) into buy_cost (col BB) if buy_cost is
-    blank (so margin alerts use what Jay actually pays; manual override always wins);
+  * writes QuantitySold into units_sold (col U) when it changed — minus units in orders
+    the sales log knows were cancelled/refunded — and, when a NEW sale lands, snapshots
+    costco_cost (col G) into buy_cost (col BB) if buy_cost is blank (so margin alerts use
+    what Jay actually pays; manual override always wins);
+  * MIRRORS eBay's live Buy It Now price into ebay_price (col H) on matched ACTIVE rows
+    (mirror_live_prices — runs last, skips items repriced this run), so a bulk edit in
+    Seller Hub flows into the sheet. Price only: col BE (manual_cost) is never touched;
   * REPORTS (never fixes) margin breaches (live eBay price vs cost — NOT raw price
     movement; Jay undercuts by a cent himself), eBay listings missing from the sheet,
     and ACTIVE sheet rows that eBay no longer lists.
@@ -17,8 +21,8 @@ present else costco_cost (col G). Matches the sheet's col I formula (H-G-AC-AD-A
 HARD (Telegram per run): net < 0. SOFT (once-a-day digest): 0 <= net < $4 AND
 sold_90d == 0. Everything else is silent.
 
-The sync itself never touches eBay data and never changes any price. Run via
-`python agents/scheduler.py --mode ebay_sync [--dry-run]`.
+The sync itself never changes anything on eBay; the sheet follows eBay (col U, col H).
+Run via `python agents/scheduler.py --mode ebay_sync [--dry-run]`.
 
 The eBay writes in this module are revise_fixed_price() (ReviseFixedPriceItem),
 set_quantity() (ReviseInventoryStatus) and end_fixed_price() (EndItem, unused). Prices change
@@ -815,12 +819,13 @@ def _check_margin(row, listing, report, floor_price=FLOOR_PRICE, floor_margin_pc
 
 
 def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
-         col_map=None, title_reader=None, floor_price=FLOOR_PRICE,
+         col_map=None, title_reader=None, cancelled_units=None, floor_price=FLOOR_PRICE,
          floor_margin_pct=FLOOR_MARGIN_PCT) -> dict:
     """
     Match listings to sheet rows by the item ID in col Q. Flag-only except two writes:
     units_sold (col U) when QuantitySold differs, and buy_cost (col BB) snapshotted
     from costco_cost when a NEW sale lands on a row whose buy_cost is still blank.
+    (Col H is mirrored afterwards by mirror_live_prices, from report["matched"].)
 
     sheet_rows:    dicts from load_sheet_rows (row_num, title, status, platform,
                    ebay_price, ebay_listing_url, units_sold, plus the margin inputs
@@ -829,6 +834,10 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
     title_reader:  optional callable -> {row_num: title}; called once before the
                    first write. A row whose title no longer matches (auditor deleted
                    rows since the read) is skipped, not written.
+    cancelled_units: {item_id: units} in cancelled/refunded orders (default: read from the
+                   sales log). Col U = eBay QuantitySold minus these, floored at 0 — eBay's
+                   count still includes a refunded-before-shipping order. Only items the log
+                   knows about are adjusted; no history = raw QuantitySold.
 
     Returns {matched, updated, margin_breach, margin_unchecked, on_ebay_not_in_sheet,
              active_not_on_ebay, duplicate_url, stale_rows, write_errors, dry_run}.
@@ -848,6 +857,14 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
               "buy_cost_snapshots": [], "dry_run": dry_run,
               "floor_price": floor_price, "floor_margin_pct": floor_margin_pct}
 
+    if cancelled_units is None:
+        try:
+            from tools import sales_log
+            cancelled_units = sales_log.cancelled_units(sales_log.load())
+        except Exception as e:   # never let the log break the units_sold sync
+            logger.warning(f"ebay_sync: sales log unavailable for col U ({e}) — raw QuantitySold")
+            cancelled_units = {}
+
     by_id = {l["item_id"]: l for l in listings}
     claimed = set()
     to_write = []
@@ -865,10 +882,14 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                 continue
             claimed.add(item_id)
             old_sold = _to_int(row.get("units_sold"))
-            new_sold = listing["quantity_sold"]
+            cancelled = int(cancelled_units.get(item_id, 0) or 0)
+            new_sold = max(listing["quantity_sold"] - cancelled, 0)
             entry = {
                 "row_num": row["row_num"], "title": title, "item_id": item_id,
                 "old_units_sold": old_sold, "quantity_sold": new_sold,
+                "cancelled_units": cancelled,
+                "status": str(row.get("status", "")).strip().upper(),
+                "sheet_price": _to_float(row.get("ebay_price", "")),
                 "available": max(listing["quantity"] - new_sold, 0),
                 "watch_count": listing["watch_count"], "price": listing["price"],
             }
@@ -974,6 +995,9 @@ def summarize(report: dict) -> str:
          f"not_in_sheet {len(report['on_ebay_not_in_sheet'])}")
     if report.get("buy_cost_snapshots"):
         s += f", buy_cost_snapped {len(report['buy_cost_snapshots'])}"
+    n_mirror = sum(1 for m in report.get("h_mirror") or [] if m["outcome"] in ("mirrored", "dry_run"))
+    if n_mirror:
+        s += f", h_mirrored {n_mirror}"
     for outcome in ("repriced", "held", "failed", "manual"):
         n = sum(1 for m in report["margin_breach"] if m.get("auto") == outcome)
         if n:
@@ -1114,6 +1138,71 @@ def _dedupe_alert(alert, dry_run=False, now=None):
     except (OSError, ValueError, TypeError) as e:
         logger.warning(f"ebay_sync: alert de-dup state unavailable ({e}) — sending anyway")
     return alert
+
+
+# ── Mirror eBay's live price into col H ───────────────────────────────────────
+
+def mirror_live_prices(report: dict, service, COL, sheet_name: str, *, skip_ids=(),
+                       title_reader=None, dry_run: bool = False) -> list[dict]:
+    """
+    Col H follows eBay: for every matched ACTIVE row whose col H differs from eBay's live
+    Buy It Now price (by >= $0.005, or is blank), write col H = the eBay price. Runs LAST in
+    run_ebay_sync. skip_ids = items whose price changed this run (auto-repriced, col BD
+    applied): they already have col H written, and the listings data is pre-revision, so
+    mirroring them would write a stale price back. Never calls eBay, never touches col BE
+    (manual_cost) — this syncs the price, not Jay's intent.
+
+    Titles are re-read once before the first write; a row whose title changed (auditor
+    shift) is skipped ("row_moved"). Returns [{row_num, title, item_id, old_price,
+    new_price, outcome: mirrored|dry_run|row_moved|error}].
+    """
+    skip = set(skip_ids or ())
+    todo = []
+    for m in report.get("matched", []):
+        price = m.get("price")
+        if (m.get("status") != "ACTIVE" or price is None or m.get("item_id") in skip):
+            continue
+        old = m.get("sheet_price")
+        if old is not None and abs(old - price) < 0.005:
+            continue
+        todo.append({"row_num": m["row_num"], "title": m.get("title", ""),
+                     "item_id": m.get("item_id"), "old_price": old, "new_price": price,
+                     "outcome": None})
+    if not todo:
+        return []
+    if dry_run:
+        for t in todo:
+            t["outcome"] = "dry_run"
+        return todo
+
+    titles = None
+    if title_reader is not None:
+        try:
+            titles = title_reader()
+        except Exception as e:
+            logger.error(f"ebay_sync: col H mirror skipped — could not re-verify titles: {e}")
+            for t in todo:
+                t["outcome"] = "error"
+            return todo
+    first = True
+    for t in todo:
+        if titles is not None and str(titles.get(t["row_num"], "")).strip() != str(t["title"]).strip():
+            t["outcome"] = "row_moved"
+            logger.warning(f"ebay_sync: row {t['row_num']} changed since read — col H not mirrored")
+            continue
+        if not first:
+            _sleep(WRITE_DELAY)
+        first = False
+        try:
+            safe_write_row(service, sheet_name, t["row_num"], [(COL["ebay_price"], t["new_price"])])
+            t["outcome"] = "mirrored"
+            old = f"${t['old_price']:.2f}" if t["old_price"] is not None else "blank"
+            logger.info(f"ebay_sync: row {t['row_num']} col H {old} -> ${t['new_price']:.2f} "
+                        f"(eBay live price)")
+        except Exception as e:
+            t["outcome"] = "error"
+            logger.error(f"ebay_sync: col H mirror failed for row {t['row_num']}: {e}")
+    return todo
 
 
 # ── Auto-reprice hard breaches to break-even ──────────────────────────────────
@@ -1718,6 +1807,17 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         except Exception as e:  # never let the sweep break the units_sold sync
             logger.exception(f"ebay_sync: target-price sweep failed: {e}")
 
+    # True-sale reconciliation first: it refreshes the sales log (new sales, refunds) that
+    # sync() reads to take cancelled units out of col U, and writes col 'actual_net'.
+    try:
+        actual = sync_actual_sales(service, sheet_name, COL, rows, listings, dry_run=dry_run)
+        if actual["written"]:
+            logger.info(f"ebay_sync: actual net written for {actual['written']} sold listing(s)")
+        if actual["logged"]:
+            logger.info(f"ebay_sync: {actual['logged']} new sale(s) added to the sales log")
+    except Exception as e:  # never break the sync over reconciliation
+        logger.exception(f"ebay_sync: actual-sale reconciliation failed: {e}")
+
     report = sync(
         service, rows, listings, dry_run=dry_run, sheet_name=sheet_name, col_map=COL,
         title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
@@ -1726,6 +1826,7 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
     )
     # Auto-reprice hard breaches BEFORE building the alert (repriced ones leave "Losing money").
     auto_summary = None
+    auto_results = []
     try:
         auto_results = auto_reprice_breaches(
             report, service, COL, sheet_name,
@@ -1736,15 +1837,17 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
     except Exception as e:  # never let auto-reprice break the units_sold sync
         logger.exception(f"ebay_sync: auto-reprice failed: {e}")
 
-    # True-sale reconciliation: write actual net/unit into col 'actual_net' for sold items.
+    # Last: col H mirrors eBay's live price — except items whose price changed this run.
+    changed = {r["item_id"] for r in auto_results or [] if r.get("outcome") == "repriced"}
+    if target_report:
+        changed |= {r["item_id"] for r in target_report["results"]
+                    if r["outcome"] in ("applied", "noop")}
     try:
-        actual = sync_actual_sales(service, sheet_name, COL, rows, listings, dry_run=dry_run)
-        if actual["written"]:
-            logger.info(f"ebay_sync: actual net written for {actual['written']} sold listing(s)")
-        if actual["logged"]:
-            logger.info(f"ebay_sync: {actual['logged']} new sale(s) added to the sales log")
-    except Exception as e:  # never break the sync over reconciliation
-        logger.exception(f"ebay_sync: actual-sale reconciliation failed: {e}")
+        report["h_mirror"] = mirror_live_prices(
+            report, service, COL, sheet_name, skip_ids=changed, dry_run=dry_run,
+            title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row))
+    except Exception as e:  # never let the mirror break the sync
+        logger.exception(f"ebay_sync: col H mirror failed: {e}")
 
     base_alert = alert_message(report)
     extras = [b for b in (target_summary, auto_summary) if b]

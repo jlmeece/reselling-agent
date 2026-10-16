@@ -136,6 +136,18 @@ def add_transactions(log: dict, item_id, txns: list[dict], cost_basis) -> int:
     return added
 
 
+def cancelled_units(log: dict) -> dict:
+    """{item_id: units in cancelled/refunded orders} — what ebay_sync subtracts from eBay's raw
+    QuantitySold (which still counts them) before writing col U. Items with no cancelled
+    sale are absent."""
+    out = {}
+    for iid, entries in log.items():
+        n = sum(int(e.get("quantity") or 1) for e in entries or [] if e.get("cancelled"))
+        if n:
+            out[str(iid)] = n
+    return out
+
+
 def _parse_created(s):
     try:
         dt = datetime.fromisoformat(str(s).strip().replace("Z", "+00:00"))
