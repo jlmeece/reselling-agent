@@ -103,3 +103,33 @@ def test_rotation_engine_ignores_absurd_units_sold():
     from tools.rotation_engine import _parse_units
     assert _parse_units("6") == 6 and _parse_units("") == 0
     assert _parse_units("100407064") == 0 and _parse_units("-2") == 0
+
+
+def test_unknown_net_is_filled_in_later_but_known_net_stays_frozen():
+    log = {}
+    sl.add_transactions(log, "111", [_txn("A", "2026-10-07T10:00:00Z")], None)     # no cost yet
+    assert log["111"][0]["net"] is None
+    assert sl.add_transactions(log, "111", [_txn("A", "2026-10-07T10:00:00Z")], 50.0) == 0
+    assert log["111"][0]["net"] == 30.88                    # upgraded in place, not duplicated
+    sl.add_transactions(log, "111", [_txn("A", "2026-10-07T10:00:00Z")], 80.0)
+    assert log["111"][0]["net"] == 30.88                    # known net never rewritten
+
+
+def test_estimated_fee_is_flagged_and_replaced_by_a_real_one():
+    log = {}
+    est = {**_txn("A", "2026-10-07T10:00:00Z", fee=12.0), "fee_estimated": True}
+    sl.add_transactions(log, "111", [est], 50.0)
+    assert log["111"][0]["fee_estimated"] is True
+    assert sl.summary(log, now=NOW)["estimated"] == 1
+    sl.add_transactions(log, "111", [_txn("A", "2026-10-07T10:00:00Z", fee=15.0)], 50.0)   # real fee
+    e = log["111"][0]
+    assert e["fee"] == 15.0 and e["net"] == 30.88 and not e.get("fee_estimated")
+
+
+def test_needs_backfill_until_every_net_is_known():
+    log = {}
+    assert sl.needs_backfill(log, "111")
+    sl.add_transactions(log, "111", [_txn("A", "2026-08-16T10:00:00Z")], None)
+    assert sl.needs_backfill(log, "111")                 # old sale with unknown net -> 90 days again
+    sl.add_transactions(log, "111", [_txn("A", "2026-08-16T10:00:00Z")], 50.0)
+    assert not sl.needs_backfill(log, "111")

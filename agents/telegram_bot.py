@@ -2012,6 +2012,8 @@ def _active_summary_text(items, log_summary):
         if log_summary.get("unknown"):
             n = log_summary["unknown"]
             trend += f"\n   ({n} sale{'s' if n != 1 else ''} without a cost — not counted)"
+        if log_summary.get("estimated"):
+            trend += "\n   (eBay fees estimated — eBay doesn't report the real fee via this API)"
     else:
         made, sold = 0.0, 0
         for p in items:

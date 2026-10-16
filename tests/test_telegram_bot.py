@@ -1287,3 +1287,10 @@ def test_activelist_screen_keeps_buttons_but_no_numbered_list(monkeypatch):
     assert "💰 Made (realized): $67.98 · 6 sold" in text and "🛒" not in text
     datas = [b.callback_data for r in kb.inline_keyboard for b in r]
     assert "activelist:pick:4" in datas and "activelist:show" in datas
+
+
+def test_active_summary_flags_estimated_fees():
+    log = {**_EMPTY_LOG, "net": 30.0, "units": 1, "sales": 1, "estimated": 1,
+           "windows": {15: 30.0, 30: 30.0, 60: 30.0, 90: 30.0}}
+    assert "fees estimated" in _tb._active_summary_text([_ap()], log)
+    assert "fees estimated" not in _tb._active_summary_text([_ap()], {**log, "estimated": 0})

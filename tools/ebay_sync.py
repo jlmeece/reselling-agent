@@ -1582,6 +1582,17 @@ def _fetch_transactions_window(token, app_id, dev_id, cert_id, iid, start, end) 
     return out
 
 
+def estimate_fee(price, quantity, fee_rate) -> float | None:
+    """eBay fee for one transaction the way col I models it (price x qty x fee_rate x 1.08 buyer
+    tax + $0.30/order). Used when GetItemTransactions sends no FinalValueFee — with managed
+    payments it never does (verified live 2026-10-16; the real fee is only in the Sell Finances
+    API, which needs an OAuth user token). None when price or fee rate is unknown."""
+    if price is None or fee_rate is None:
+        return None
+    qty = max(int(quantity or 1), 1)
+    return round(price * qty * fee_rate * EBAY_FEE_TAX_FACTOR + EBAY_FEE_FLAT, 2)
+
+
 def actual_net_per_unit(txn: dict, cost_basis) -> float | None:
     """Actual net per unit for one transaction: (price - fee/qty) - cost_basis*(1+tax).
     None when price/fee/cost are unknown."""
@@ -1596,8 +1607,8 @@ def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=F
     """Reconcile TRUE sale net: for each matched listing that has sold, pull its
     transactions, append every new one to the sales log (data/sales_log.json — timestamped,
     feeds the bot's Made / 15-90-day net), and write the most recent sale's actual net/unit
-    into col 'actual_net'. An item not yet in the log is backfilled with TXN_MAX_DAYS (90) of
-    history; known items fetch the last 30 days. A sale on a row with no cost is still logged
+    into col 'actual_net'. An item not yet in the log (or with a logged sale whose net is still
+    unknown) is fetched with TXN_MAX_DAYS (90) of history; otherwise the last 30 days. A sale on a row with no cost is still logged
     (net None). Dry run writes neither the log nor the sheet.
     Returns {written, skipped, logged, failed: [(item_id, msg)]}. Never raises."""
     from tools import sales_log
@@ -1611,7 +1622,8 @@ def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=F
         if not iid or iid not in sold_ids:
             continue
         cost = _cost_basis(row.get("buy_cost"), row.get("costco_cost"))
-        days = 30 if sales_log.has_item(log, iid) else TXN_MAX_DAYS
+        fee_rate = _to_rate(row.get("fee_rate", ""))
+        days = TXN_MAX_DAYS if sales_log.needs_backfill(log, iid) else 30
         try:
             txns = fetch_item_transactions(iid, days_back=days)
         except Exception as e:
@@ -1620,6 +1632,10 @@ def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=F
         if not txns:
             stats["skipped"] += 1
             continue
+        txns = [t if t.get("fee") is not None else
+                {**t, "fee": estimate_fee(t.get("price"), t.get("quantity"), fee_rate),
+                 "fee_estimated": True}
+                for t in txns]
         stats["logged"] += sales_log.add_transactions(log, iid, txns, cost)
         latest = max(txns, key=lambda t: t.get("created") or "")
         net = actual_net_per_unit(latest, cost)
@@ -1629,7 +1645,7 @@ def sync_actual_sales(service, sheet_name, col_map, rows, listings, *, dry_run=F
         if not dry_run:
             safe_write_row(service, sheet_name, row["row_num"], [(actual_col, net)])
         stats["written"] += 1
-    if stats["logged"] and not dry_run:
+    if (stats["logged"] or log != sales_log.load()) and not dry_run:
         try:
             sales_log.save(log)
         except OSError as e:

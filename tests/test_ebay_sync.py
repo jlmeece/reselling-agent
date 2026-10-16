@@ -1623,3 +1623,32 @@ def test_sync_actual_sales_skips_unsold_listings(txns, writes):
     rows = [_row(4, "111111111111", costco_cost="$50")]
     ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=0)])
     assert txns["calls"] == []
+
+
+def test_missing_final_value_fee_is_estimated_from_the_real_sale_price(txns, writes):
+    """Managed payments: GetItemTransactions sends no FinalValueFee (verified live 2026-10-16) —
+    estimate it like col I (price x fee_rate x 1.08 + $0.30) and flag it."""
+    from tools import sales_log
+    txns["txns"] = [{"transaction_id": "T1", "price": 389.99, "fee": None, "quantity": 1,
+                     "created": "2026-10-08T19:33:04.000Z"}]
+    rows = [_row(4, "111111111111", costco_cost="$299.99", fee_rate="0.1325")]
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=1)])
+    (e,) = sales_log.load()["111111111111"]
+    fee = round(389.99 * 0.1325 * 1.08 + 0.30, 2)                 # 56.11
+    assert e["fee"] == fee and e["fee_estimated"] is True
+    assert e["net"] == round(389.99 - fee - 299.99 * 1.0825, 2)
+    assert writes == [(4, [("BC", e["net"])])]
+
+
+def test_missing_fee_and_unknown_fee_rate_stays_unknown(txns, writes):
+    from tools import sales_log
+    txns["txns"] = [{"transaction_id": "T1", "price": 100.0, "fee": None, "quantity": 1,
+                     "created": "2026-10-08T19:33:04.000Z"}]
+    rows = [_row(4, "111111111111", costco_cost="$50")]          # no fee_rate in col AB
+    ebay_sync.sync_actual_sales("svc", "Tab", _SALES_COL, rows, [_listing("111111111111", sold=1)])
+    assert sales_log.load()["111111111111"][0]["net"] is None and writes == []
+
+
+def test_estimate_fee_multi_quantity():
+    assert ebay_sync.estimate_fee(100.0, 2, 0.10) == round(200 * 0.10 * 1.08 + 0.30, 2)
+    assert ebay_sync.estimate_fee(None, 1, 0.10) is None and ebay_sync.estimate_fee(10.0, 1, None) is None

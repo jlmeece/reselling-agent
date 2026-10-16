@@ -4,9 +4,12 @@ Sales log — every eBay sale with its real timestamp and net
 data/sales_log.json = {item_id: [{transaction_id, created, quantity, price, fee, net}, ...]}
 
 Filled by tools/ebay_sync.sync_actual_sales from GetItemTransactions (real TransactionPrice +
-FinalValueFee). `net` = actual_net_per_unit(txn, cost_basis) x quantity, frozen when the sale
-is first logged (a later Costco cost change must not rewrite past profit); None when the row
-had no cost. Entries are de-duplicated by transaction_id (created+price when eBay sends none).
+FinalValueFee). `net` = actual_net_per_unit(txn, cost_basis) x quantity, frozen once known
+(a later Costco cost change must not rewrite past profit); None when the row had no cost or
+fee — filled in by a later run once both are known. With managed payments eBay's Trading API
+sends NO FinalValueFee (verified live 2026-10-16), so ebay_sync estimates it from the real
+sale price (`fee_estimated: true`); a real fee arriving later replaces the estimate.
+Entries are de-duplicated by transaction_id (created+price when eBay sends none).
 
 The bot's Active Listings screen reads summary(): lifetime "Made" and 15/30/60/90-day net.
 Local file (gitignored) — the bot and the ebay_sync task both run on this machine.
@@ -56,12 +59,19 @@ def has_item(log: dict, item_id) -> bool:
     return bool(log.get(str(item_id)))
 
 
+def needs_backfill(log: dict, item_id) -> bool:
+    """True when the item should get the full 90-day fetch: never logged, or a logged sale
+    still has an unknown net (it may be older than the normal 30-day window)."""
+    entries = log.get(str(item_id)) or []
+    return not entries or any(e.get("net") is None for e in entries)
+
+
 def add_transactions(log: dict, item_id, txns: list[dict], cost_basis) -> int:
     """Append new transactions for item_id (mutates log). Returns how many were new."""
     from tools.ebay_sync import actual_net_per_unit   # ebay_sync imports this module
 
     entries = log.setdefault(str(item_id), [])
-    seen = {_key(e) for e in entries}
+    by_key = {_key(e): e for e in entries}
     added = 0
     for t in txns:
         qty = max(int(t.get("quantity") or 1), 1)
@@ -70,9 +80,22 @@ def add_transactions(log: dict, item_id, txns: list[dict], cost_basis) -> int:
                  "created": t.get("created") or "", "quantity": qty,
                  "price": t.get("price"), "fee": t.get("fee"),
                  "net": round(per_unit * qty, 2) if per_unit is not None else None}
-        if _key(entry) in seen:
+        if t.get("fee_estimated"):
+            entry["fee_estimated"] = True
+        old = by_key.get(_key(entry))
+        if old is not None:
+            # upgrade in place: unknown net -> known, estimated fee -> real fee. A known net
+            # is otherwise frozen (cost moves later must not rewrite past profit).
+            if entry["net"] is not None and (old.get("net") is None
+                                             or (old.get("fee_estimated")
+                                                 and not entry.get("fee_estimated"))):
+                old.update(fee=entry["fee"], net=entry["net"])
+                if entry.get("fee_estimated"):
+                    old["fee_estimated"] = True
+                else:
+                    old.pop("fee_estimated", None)
             continue
-        seen.add(_key(entry))
+        by_key[_key(entry)] = entry
         entries.append(entry)
         added += 1
     if not entries:
@@ -90,17 +113,21 @@ def _parse_created(s):
 
 def summary(log: dict, now=None, windows=WINDOWS) -> dict:
     """
-    {net, units, sales, unknown, windows: {days: net}} over every logged sale.
+    {net, units, sales, unknown, estimated, windows: {days: net}} over every logged sale.
     net / windows sum only sales with a known net; `unknown` counts the rest (still in
-    units/sales). A sale whose `created` won't parse counts toward lifetime only.
+    units/sales); `estimated` = sales whose eBay fee was estimated. A sale whose `created`
+    won't parse counts toward lifetime only.
     """
     now = now or datetime.now(timezone.utc)
     cutoffs = {d: now - timedelta(days=d) for d in windows}
-    out = {"net": 0.0, "units": 0, "sales": 0, "unknown": 0, "windows": {d: 0.0 for d in windows}}
+    out = {"net": 0.0, "units": 0, "sales": 0, "unknown": 0, "estimated": 0,
+           "windows": {d: 0.0 for d in windows}}
     for entries in log.values():
         for e in entries or []:
             out["sales"] += 1
             out["units"] += int(e.get("quantity") or 1)
+            if e.get("fee_estimated"):
+                out["estimated"] += 1
             net = e.get("net")
             if net is None:
                 out["unknown"] += 1
