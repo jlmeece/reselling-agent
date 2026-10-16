@@ -12,7 +12,9 @@ Twelve run modes (--mode flag):
   refresh-notes one-shot  Retroactively reformat Col T summary line
   recheck       one-shot  Retry Costco scrape for CHECK FAILED and empty-price rows
   audit         every 2 days  Graveyard pass — remove junk, flag borderline rows
-  ebay_sync     4x/day     Sync eBay active listings -> units_sold (col U); flag margin breaches
+  ebay_sync     4x/day     Sync eBay active listings -> units_sold (col U); flag margin breaches;
+                           push col BD target prices to eBay first
+  apply_prices  on demand  Push col BD target prices to eBay only (the bot's "Apply price changes now")
   sale-digest   1x/day     "Sale Radar" Telegram digest of items really on sale (read-only, --dry-run prints)
   sale-refresh  on demand  Re-scrape non-ACTIVE rows with unverified sale badges (writes G/X/AW only)
   savings       1x/day     Costco Member-Only Savings page -> update tracked sales, alert, add in-category PENDING rows
@@ -2246,6 +2248,33 @@ def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry
     return result
 
 
+def run_apply_prices_mode(config, COL, service, sheet_name, start_row, end_row, dry_run=False) -> dict:
+    """
+    apply_prices mode: push every col BD target price on an ACTIVE row to eBay
+    (tools.ebay_sync.apply_target_prices) without the rest of the sync. ebay_sync runs the
+    same sweep 4x/day; this is the on-demand path. Telegram only when BD had something.
+    """
+    cfg = ((config or {}).get("business") or {}).get("ebay_sync") or {}
+    report = ebay_sync.apply_target_prices(
+        service, COL, sheet_name, start_row, end_row, dry_run=dry_run,
+        warn_jump_pct=float(cfg.get("target_warn_jump_pct", ebay_sync.TARGET_WARN_JUMP_PCT)))
+    text = ebay_sync.format_target_summary(report)
+    if text:
+        token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if token and chat_id:
+            _send_telegram(token, chat_id, text)
+        else:
+            logger.warning("apply_prices: summary not sent — TELEGRAM_BOT_TOKEN/CHAT_ID unset")
+    notes = ebay_sync.summarize_targets(report) or "no col BD target prices"
+    failed = [r for r in report["results"] if r["outcome"] == "failed"]
+    out = {"status": "error" if failed else "ok",
+           "notes": ("[dry-run] " if dry_run else "") + notes}
+    if failed:
+        out["errors"] = "; ".join(f"row {r['row_num']}: {r['error']}" for r in failed)[:300]
+    return out
+
+
 def _attempt_cookie_autorefresh(reason: str = "age") -> tuple[bool, str]:
     """
     Thin wrapper around tools.cookie_refresh.refresh_costco_cookies() (the
@@ -2506,7 +2535,7 @@ def main():
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
                  "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export", "graveyard-sweep",
-                 "discovery-stats"],
+                 "discovery-stats", "apply_prices"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -2519,6 +2548,7 @@ def main():
             "rescore:        Flip WATCH/PAUSED_DEMAND -> PENDING for re-scoring (one-shot)\n"
             "audit:          Graveyard pass — remove junk, flag borderline rows (every 2 days)\n"
             "ebay_sync:      Sync eBay active listings -> units_sold; flag price mismatch / removed listings\n"
+            "apply_prices:   Push col BD target prices on ACTIVE rows to eBay (then sync H, clear BD)\n"
             "sale-digest:    ONE Telegram message of tracked items really on sale (read-only)\n"
             "sale-refresh:   Re-scrape non-ACTIVE rows with unverified sale badges (G/X/AW only)\n"
             "savings:        Scrape Costco Member-Only Savings -> update tracked sales, alert, add new PENDING rows\n"
@@ -2539,7 +2569,7 @@ def main():
     parser.add_argument("--row", type=int, default=None,
                         help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
-                        help="(ebay_sync / sale-digest / savings / export / graveyard-sweep) Report without writing / print instead of sending")
+                        help="(ebay_sync / apply_prices / sale-digest / savings / export / graveyard-sweep) Report without writing / print instead of sending")
     parser.add_argument("--queue", action="store_true",
                         help="(sale-refresh only) Scrape SCORED + AUDIT_REVIEW rows, including blank sale badges")
     args = parser.parse_args()
@@ -2563,7 +2593,7 @@ def main():
     if not _acquire_lock(args.mode):
         return
 
-    if args.mode not in ("sale-digest", "export"):   # Chrome-free: a cookie refresh/alert is irrelevant
+    if args.mode not in ("sale-digest", "export", "apply_prices"):   # Chrome-free: a cookie refresh/alert is irrelevant
         _check_cookie_age()
 
     config     = load_config()
@@ -2605,6 +2635,9 @@ def main():
         elif args.mode == "ebay_sync":
             _run_results.update(run_ebay_sync_mode(config, COL, service, sheet_name,
                                                    start_row, end_row, dry_run=args.dry_run))
+        elif args.mode == "apply_prices":
+            _run_results.update(run_apply_prices_mode(config, COL, service, sheet_name,
+                                                      start_row, end_row, dry_run=args.dry_run))
         elif args.mode == "sale-digest":
             _run_results.update(run_sale_digest(config, COL, service, sheet_name,
                                                 start_row, end_row, dry_run=args.dry_run))

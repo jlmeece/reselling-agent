@@ -1231,3 +1231,312 @@ def test_actual_net_per_unit_unknown_inputs_are_none():
     assert ebay_sync.actual_net_per_unit({"price": None, "fee": 1.0, "quantity": 1}, 10.0) is None
     assert ebay_sync.actual_net_per_unit({"price": 1.0, "fee": None, "quantity": 1}, 10.0) is None
     assert ebay_sync.actual_net_per_unit({"price": 1.0, "fee": 1.0, "quantity": 1}, None) is None
+
+
+# ── sheet-driven bulk reprice (col BD target_price) + manual-wins re-arm (col BE) ──
+
+COLT = {**COL, "costco_cost": "G", "buy_cost": "BB", "target_price": "BD", "manual_cost": "BE"}
+
+
+@pytest.fixture
+def live(monkeypatch):
+    """Stub fetch_item_price (GetItem). state["price"] = live eBay price for every item."""
+    state = {"price": 29.0, "status": "Active", "has_variations": False, "calls": [], "result": None}
+
+    def fake(item_id):
+        state["calls"].append(item_id)
+        return state["result"] or {
+            "ok": True, "item_id": item_id, "price": state["price"],
+            "listing_status": state["status"], "listing_type": "FixedPriceItem",
+            "has_variations": state["has_variations"],
+            "error_kind": None, "error_code": "", "message": ""}
+
+    monkeypatch.setattr(ebay_sync, "fetch_item_price", fake)
+    return state
+
+
+def _trow(n, item_id="111111111111", target="34.99", **kw):
+    """ACTIVE row, cost $30, fee 10% (break-even 36.74), with a col BD target."""
+    base = dict(costco_cost="$30", fee_rate="0.10", sold_90d="4", target_price=target, manual_cost="")
+    base.update(kw)
+    return _row(n, item_id, **base)
+
+
+def _apply(rows, fresh=None, **kw):
+    """fresh: {row_num: {title, target_price}} as re-read just before the write (default = unchanged)."""
+    if fresh is None:
+        fresh = {r["row_num"]: {"title": r["title"], "target_price": r.get("target_price", "")}
+                 for r in rows}
+    return ebay_sync.apply_target_prices("svc", COLT, "Product Tracker", 4, 500, rows=rows,
+                                         row_reader=lambda n: fresh.get(n), **kw)
+
+
+def test_apply_target_revises_syncs_h_clears_bd_and_snapshots_cost(live, ebay, writes):
+    rep = _apply([_trow(4, target="$39.99")])
+    assert live["calls"] == ["111111111111"]
+    assert ebay["revise"] == [("111111111111", 39.99)]
+    assert writes == [(4, [("H", 39.99), ("BD", ""), ("BE", 30.0)])]
+    (r,) = rep["results"]
+    assert r["outcome"] == "applied" and r["old_price"] == 29.0 and r["target"] == 39.99
+    (logged,) = ebay["logged"]
+    assert logged[1]["source"] == "manual" and logged[1]["old_price"] == 29.0 and logged[1]["row"] == 4
+    assert "applied 1" in ebay_sync.summarize_targets(rep)
+    msg = ebay_sync.format_target_summary(rep)
+    assert "$29.00→$39.99" in msg and "row 4" in msg
+
+
+def test_apply_target_equal_to_live_is_noop_that_clears_bd(live, ebay, writes):
+    live["price"] = 34.99
+    rep = _apply([_trow(4, target="34.99", price="$31.00")])
+    assert ebay["revise"] == []
+    assert writes == [(4, [("H", 34.99), ("BD", ""), ("BE", 30.0)])]
+    assert rep["results"][0]["outcome"] == "noop"
+
+
+def test_apply_target_failure_keeps_bd_and_alerts(live, ebay, writes):
+    ebay["result"] = {"ok": False, "item_id": "111111111111", "price": 39.99, "error_kind": "api",
+                      "error_code": "21916", "message": "nope"}
+    rep = _apply([_trow(4, target="39.99")])
+    assert writes == []                                       # BD stays filled -> retried next run
+    (r,) = rep["results"]
+    assert r["outcome"] == "failed" and "21916" in r["error"]
+    assert len(ebay["logged"]) == 1 and ebay["logged"][0][1]["source"] == "manual"
+    assert "❌" in ebay_sync.format_target_summary(rep)
+
+
+def test_apply_target_auth_error_stops_the_sweep(live, ebay, writes):
+    ebay["result"] = {"ok": False, "item_id": "x", "price": 1, "error_kind": "auth",
+                      "error_code": "931", "message": "token"}
+    rep = _apply([_trow(4, target="39.99"), _trow(5, "222222222222", target="39.99")])
+    assert len(ebay["revise"]) == 1 and rep["stopped"]
+    assert "EBAY_AUTH_TOKEN" in rep["results"][0]["error"]
+    assert writes == []
+
+
+def test_apply_target_getitem_auth_error_stops_before_revise(live, ebay, writes):
+    live["result"] = {"ok": False, "item_id": "x", "price": None, "listing_status": "",
+                      "error_kind": "auth", "error_code": "932", "message": "token"}
+    rep = _apply([_trow(4), _trow(5, "222222222222")])
+    assert ebay["revise"] == [] and len(live["calls"]) == 1 and rep["stopped"]
+
+
+def test_apply_target_skips_non_active_rows(live, ebay, writes):
+    rep = _apply([_trow(4, status="PAUSED_MARGIN")])
+    assert live["calls"] == [] and ebay["revise"] == [] and writes == []
+    (r,) = rep["results"]
+    assert r["outcome"] == "skipped" and "not ACTIVE" in r["error"]
+
+
+def test_apply_target_ignores_blank_bd(live, ebay, writes):
+    rep = _apply([_trow(4, target=""), _trow(5, "222222222222", target="  ")])
+    assert rep["results"] == [] and live["calls"] == [] and writes == []
+    assert ebay_sync.format_target_summary(rep) is None
+
+
+@pytest.mark.parametrize("url,needle", [("", "fill col Q"), ("https://example.com/x", "fill col Q")])
+def test_apply_target_skips_blank_or_unparseable_col_q(live, ebay, writes, url, needle):
+    rep = _apply([_trow(4, item_id="", url=url)])
+    assert live["calls"] == [] and writes == []
+    assert rep["results"][0]["outcome"] == "skipped" and needle in rep["results"][0]["error"]
+
+
+@pytest.mark.parametrize("target", ["abc", "0", "-5"])
+def test_apply_target_bad_value_is_flagged_not_sent(live, ebay, writes, target):
+    rep = _apply([_trow(4, target=target)])
+    assert live["calls"] == [] and writes == []
+    assert rep["results"][0]["outcome"] == "skipped" and "not a valid price" in rep["results"][0]["error"]
+
+
+def test_apply_target_duplicate_col_q_is_skipped(live, ebay, writes):
+    rep = _apply([_trow(4), _trow(5, target="")])          # same item id in two rows
+    assert live["calls"] == [] and "2 rows" in rep["results"][0]["error"]
+
+
+def test_apply_target_below_break_even_warns_but_applies(live, ebay, writes):
+    rep = _apply([_trow(4, target="31.00")])                 # break-even 36.74 -> loses money
+    assert ebay["revise"] == [("111111111111", 31.0)]
+    (r,) = rep["results"]
+    assert r["outcome"] == "applied" and any("break-even" in w for w in r["warnings"])
+    assert "break-even" in ebay_sync.format_target_summary(rep)
+
+
+def test_apply_target_big_change_gets_typo_warning(live, ebay, writes):
+    rep = _apply([_trow(4, target="99.99")])                 # $29 -> $99.99 = +245%
+    (r,) = rep["results"]
+    assert r["outcome"] == "applied" and any("typo" in w for w in r["warnings"])
+
+
+def test_apply_target_multi_variation_is_flagged(live, ebay, writes):
+    live["has_variations"] = True
+    rep = _apply([_trow(4)])
+    assert ebay["revise"] == [] and writes == []
+    assert "multi-variation" in rep["results"][0]["error"]
+
+
+def test_apply_target_listing_not_active_on_ebay_is_skipped(live, ebay, writes):
+    live["status"] = "Completed"
+    rep = _apply([_trow(4)])
+    assert ebay["revise"] == [] and writes == []
+    assert "Completed" in rep["results"][0]["error"]
+
+
+def test_apply_target_dry_run_never_calls_ebay(live, ebay, writes):
+    rep = _apply([_trow(4, target="39.99")], dry_run=True)
+    assert live["calls"] == [] and ebay["revise"] == [] and writes == [] and ebay["logged"] == []
+    assert rep["results"][0]["outcome"] == "dry_run"
+
+
+def test_apply_target_row_moved_revises_but_writes_nothing(live, ebay, writes):
+    rep = _apply([_trow(4)], fresh={4: {"title": "Other", "target_price": "34.99"}})
+    assert ebay["revise"] and writes == []
+    assert "row moved" in rep["results"][0]["sheet_note"]
+
+
+def test_apply_target_bd_edited_mid_run_is_kept_for_next_run(live, ebay, writes):
+    rep = _apply([_trow(4, target="39.99")], fresh={4: {"title": "Widget", "target_price": "44.99"}})
+    assert writes == [(4, [("H", 39.99), ("BE", 30.0)])]     # BD NOT cleared: Jay's new number waits
+    assert "changed" in rep["results"][0]["sheet_note"]
+
+
+def test_apply_target_updates_rows_in_memory(live, ebay, writes):
+    row = _trow(4, target="39.99")
+    _apply([row])
+    assert row["target_price"] == "" and row["manual_cost"] == 30.0 and row["ebay_price"] == 39.99
+
+
+def test_fetch_item_price_flags_variations(monkeypatch, creds):
+    sent = []
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            '<SellingStatus><CurrentPrice currencyID="USD">41.48</CurrentPrice>'
+            "<ListingStatus>Active</ListingStatus></SellingStatus>"
+            "<Variations><Variation><SKU>A</SKU></Variation></Variations></Item></GetItemResponse>")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(body))
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["ok"] and out["has_variations"] is True
+    assert b"<OutputSelector>Item.Variations</OutputSelector>" in sent[0].data
+
+
+def test_load_sheet_rows_reads_bd_and_be(monkeypatch):
+    seen = {}
+    raw = [[""] * 57]
+    raw[0][0], raw[0][2], raw[0][55], raw[0][56] = "ACTIVE", "Widget", "39.99", "30"
+
+    def fake_read(svc, rng):
+        seen["rng"] = rng
+        return raw
+    monkeypatch.setattr(ebay_sync, "read_sheet", fake_read)
+    (row,) = ebay_sync.load_sheet_rows("svc", COLT, "Tab", 4, 500)
+    assert seen["rng"] == "'Tab'!A4:BE500"
+    assert row["target_price"] == "39.99" and row["manual_cost"] == "30"
+
+
+# manual-wins / re-arm on the break-even safety net
+
+def test_auto_reprice_skips_manual_price_set_against_current_cost(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", manual_cost="30", **_HARD), 29.0))
+    assert _auto(rep) == [] and ebay["revise"] == [] and writes == []
+    m = rep["margin_breach"][0]
+    assert m["auto"] == "manual"
+    alert = alert_message(rep)
+    assert "Losing money" in alert and "manual price" in alert   # the loss still surfaces daily
+    assert "auto_manual 1" in summarize(rep)
+
+
+def test_auto_reprice_rearms_when_cost_moved_since_manual_price(ebay, writes):
+    # Jay priced at cost $25; Costco now $30 -> his decision is stale -> safety net fires
+    rep = _breach_report((_row(4, "111111111111", manual_cost="$25.00", **_HARD), 29.0))
+    (r,) = ebay_sync.auto_reprice_breaches(rep, "svc", COLT, "Product Tracker",
+                                           title_reader=lambda: {4: "Widget"})
+    assert ebay["revise"] == [("111111111111", 36.99)]
+    assert writes == [(4, [("H", 36.99), ("BE", "")])]          # BE cleared -> back to unprotected
+    assert r["outcome"] == "repriced" and r["rearmed"]
+    assert "Costco cost changed" in ebay_sync.format_auto_reprice_summary([r])
+
+
+def test_auto_reprice_without_manual_cost_never_touches_be(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", **_HARD), 29.0))
+    ebay_sync.auto_reprice_breaches(rep, "svc", COLT, "Product Tracker", title_reader=lambda: {4: "Widget"})
+    assert writes == [(4, [("H", 36.99)])]
+
+
+def test_auto_reprice_manual_with_unknown_cost_respects_manual(ebay, writes):
+    # G blank (cost basis from BB) -> can't tell the cost moved -> Jay's price stands
+    rep = _breach_report((_row(4, "111111111111", costco_cost="", buy_cost="$30", fee_rate="0.10",
+                               sold_90d="4", manual_cost="30"), 29.0))
+    assert _auto(rep) == [] and ebay["revise"] == []
+
+
+# run_ebay_sync folds the sweep in
+
+def _run_setup(monkeypatch, rows, ebay_price="29.00"):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResp(_page([_item("111111111111", price=ebay_price, sold=0)])))
+    monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: rows)
+    monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {r["row_num"]: r["title"] for r in rows})
+    monkeypatch.setattr(ebay_sync, "_read_row",
+                        lambda svc, COL, sheet, n: {"title": "Widget", "target_price": "31.00"})
+
+
+def test_run_applies_targets_before_auto_reprice_and_manual_price_survives(monkeypatch, creds, writes,
+                                                                          ebay, live):
+    rows = [_trow(4, target="31.00", price="$29.00", sold="0")]
+    _run_setup(monkeypatch, rows)
+    res = run_ebay_sync({}, COLT, "svc", "Product Tracker", 4, 500)
+    # Jay's below-break-even $31 is applied and NOT immediately undone by the safety net
+    assert ebay["revise"] == [("111111111111", 31.0)]
+    assert writes == [(4, [("H", 31.0), ("BD", ""), ("BE", 30.0)])]
+    assert "Price changes from the sheet" in res["alert"] and "Losing money" in res["alert"]
+    assert "targets applied 1" in res["notes"] and "auto_manual 1" in res["notes"]
+
+
+def test_run_target_sweep_can_be_disabled(monkeypatch, creds, writes, ebay, live):
+    _run_setup(monkeypatch, [_trow(4, target="31.00", price="$29.00", sold="0")])
+    run_ebay_sync({"business": {"ebay_sync": {"apply_target_prices": False, "auto_reprice": False}}},
+                  COLT, "svc", "Product Tracker", 4, 500)
+    assert live["calls"] == [] and ebay["revise"] == []
+
+
+def test_run_dry_run_never_calls_ebay_for_targets(monkeypatch, creds, writes, ebay, live):
+    _run_setup(monkeypatch, [_trow(4, target="31.00", price="$29.00", sold="0")])
+    res = run_ebay_sync({}, COLT, "svc", "Product Tracker", 4, 500, dry_run=True)
+    assert live["calls"] == [] and ebay["revise"] == [] and writes == []
+    assert "targets dry_run 1" in res["notes"]
+
+
+def test_run_target_sweep_crash_never_breaks_the_sync(monkeypatch, creds, writes, ebay, live):
+    _run_setup(monkeypatch, [_trow(4, target="31.00", price="$29.00", sold="0")])
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(ebay_sync, "apply_target_prices", boom)
+    res = run_ebay_sync(_ALERT_ONLY, COLT, "svc", "Product Tracker", 4, 500)
+    assert res["status"] == "ok"
+
+
+def test_scheduler_registers_apply_prices_mode(monkeypatch):
+    from agents import scheduler
+    monkeypatch.setattr(scheduler, "_acquire_lock", lambda mode: False)
+    monkeypatch.setattr(sys, "argv", ["scheduler.py", "--mode", "apply_prices", "--dry-run"])
+    scheduler.main()
+
+
+def test_scheduler_apply_prices_mode_sends_summary_and_flags_failures(monkeypatch):
+    from agents import scheduler
+    sent = []
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "c")
+    monkeypatch.setattr(scheduler, "_send_telegram", lambda tok, chat, text: sent.append(text))
+
+    monkeypatch.setattr(scheduler.ebay_sync, "apply_target_prices",
+                        lambda *a, **k: {"results": [], "stopped": False, "dry_run": False})
+    out = scheduler.run_apply_prices_mode({}, COLT, "svc", "Tab", 4, 500)
+    assert sent == [] and out == {"status": "ok", "notes": "no col BD target prices"}
+
+    failed = {"row_num": 4, "title": "W", "item_id": "1", "target": 9.99, "old_price": 8.0,
+              "outcome": "failed", "error": "21916: nope", "warnings": [], "sheet_note": None}
+    monkeypatch.setattr(scheduler.ebay_sync, "apply_target_prices",
+                        lambda *a, **k: {"results": [failed], "stopped": False, "dry_run": False})
+    out = scheduler.run_apply_prices_mode({}, COLT, "svc", "Tab", 4, 500)
+    assert len(sent) == 1 and "NOT applied" in sent[0]
+    assert out["status"] == "error" and "row 4" in out["errors"] and "targets failed 1" in out["notes"]

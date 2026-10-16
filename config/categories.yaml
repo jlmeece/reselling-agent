@@ -30,6 +30,12 @@ business:
     # sweep restores the quantity on restock if still profitable. false = alert only.
     # (Key name kept from the first version, which ended the listing.)
     auto_end_oos: true
+    # Sheet-driven bulk reprice: a price typed in col BD (target_price) on an ACTIVE row is pushed to
+    # eBay every ebay_sync run (and by the bot's "Apply price changes now" button), then col H is
+    # synced, BD cleared and col BE (manual_cost) = col G. Below break-even = warn and apply anyway.
+    # A change bigger than target_warn_jump_pct gets a "typo?" note (still applied).
+    apply_target_prices: true
+    target_warn_jump_pct: 0.50
 
   # Graveyard re-check (--mode graveyard-sweep, Windows only — needs Chrome). Re-checks a small
   # batch of Graveyard items' Costco pages each run to confirm they're really dead (delisted) or

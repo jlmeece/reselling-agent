@@ -115,6 +115,8 @@ HEADER_LABELS = [
     "MPT Rank",        # BA 52
     "BUY COST (PAID)", # BB 53 — MANUAL: what Jay actually paid; margin alerts prefer it over G
     "ACTUAL NET",      # BC 54 — true net/unit on the last sale (ebay_sync, eBay's real fee)
+    "TARGET PRICE",    # BD 55 — MANUAL: new eBay price; ebay_sync / bot pushes it to eBay, then clears it
+    "MANUAL COST",     # BE 56 — col G when a manual price was applied; auto-reprice off while G == this
 ]
 
 COLUMN_WIDTHS = {
@@ -150,10 +152,12 @@ COLUMN_WIDTHS = {
     51: 90,    # AZ: MPT vol
     52: 80,    # BA: MPT rank
     53: 100,   # BB: buy cost (paid)
+    55: 95,    # BD: target price (manual)
+    56: 95,    # BE: manual cost snapshot
 }
 
 VISIBLE_COLS  = 26    # A–Z
-TOTAL_COLS    = 55    # A–BC (must equal len(HEADER_LABELS) and required_grid_columns())
+TOTAL_COLS    = 57    # A–BE (must equal len(HEADER_LABELS) and required_grid_columns())
 HIDDEN_START  = 26    # AA onwards (index 26 = col AA)
 HIDDEN_END    = 48    # AA–AV hidden; AW–BA stay visible
 FROZEN_COLS   = 4     # A–D always visible

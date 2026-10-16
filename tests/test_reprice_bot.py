@@ -280,3 +280,102 @@ def test_active_card_cancel_button_when_scheduled():
 def test_schedule_routes_registered():
     for action in ("sched", "schedend", "cancel"):
         assert ("reprice", action) in tb._CALLBACK_ROUTES
+
+
+# ── sheet-driven bulk reprice: "Apply price changes now" + manual Set Price = manual price ──
+
+COLM = {**COL, "costco_cost": "G", "manual_cost": "BE"}
+
+
+def _mrow(cost="30"):
+    r = _row() + [""] * 40
+    r[6] = cost
+    return r
+
+
+def test_ops_screen_has_apply_prices_button():
+    update = SimpleNamespace(callback_query=SimpleNamespace(edit_message_text=AsyncMock()), message=None)
+    ctx = SimpleNamespace(user_data={}, bot_data={"chat_id": 1, "jobs": {}})
+    asyncio.run(tb.cb_menu_ops(update, ctx, ""))
+    kb = update.callback_query.edit_message_text.call_args.kwargs["reply_markup"]
+    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
+    assert "prices:apply" in datas
+    assert ("prices", "apply") in tb._CALLBACK_ROUTES
+
+
+@pytest.fixture
+def sweep(monkeypatch):
+    st = {"calls": [], "report": {"results": [], "stopped": False, "dry_run": False}, "raise": None}
+    monkeypatch.setattr(tb, "_sheet_ctx", lambda: (COLM, "svc", "Product Tracker", 4, 500))
+
+    def fake(service, col_map, sheet_name, start, end, **kw):
+        st["calls"].append((service, sheet_name, start, end, kw))
+        if st["raise"]:
+            raise st["raise"]
+        return st["report"]
+    monkeypatch.setattr(tb, "apply_target_prices", fake)
+    return st
+
+
+def test_apply_prices_runs_sweep_in_process_and_shows_summary(sweep):
+    sweep["report"] = {"results": [{"row_num": 4, "title": "Energy Shot", "item_id": ITEM_ID,
+                                    "target": 39.99, "old_price": 41.48, "outcome": "applied",
+                                    "error": None, "warnings": [], "sheet_note": None}],
+                       "stopped": False, "dry_run": False}
+    q = _tap("", action=tb.cb_prices_apply)
+    assert len(sweep["calls"]) == 1 and sweep["calls"][0][1:4] == ("Product Tracker", 4, 500)
+    text, _ = _final(q)
+    assert "$41.48→$39.99" in text and "Energy Shot" in text
+
+
+def test_apply_prices_with_empty_bd_says_so(sweep):
+    q = _tap("", action=tb.cb_prices_apply)
+    text, _ = _final(q)
+    assert "col BD" in text and "No" in text
+
+
+def test_apply_prices_sheet_failure_changes_nothing(sweep):
+    sweep["raise"] = RuntimeError("sheets down")
+    q = _tap("", action=tb.cb_prices_apply)
+    text, _ = _final(q)
+    assert "Nothing was changed" in text
+
+
+def test_apply_prices_double_tap_is_ignored(sweep):
+    ctx = SimpleNamespace(user_data={}, bot_data={"chat_id": 1, "prices_inflight": True})
+    _tap("", ctx=ctx, action=tb.cb_prices_apply)
+    assert sweep["calls"] == []
+
+
+def test_set_price_confirm_button_marks_the_price_manual():
+    kb = tb._price_confirm_kb(ITEM_ID, 39.99)
+    data = kb.inline_keyboard[0][0].callback_data
+    assert data == f"reprice:go:{ITEM_ID}:3999:m" and len(data.encode()) <= 64
+
+
+def test_manual_go_snapshots_cost_into_be_and_may_lower(env, monkeypatch):
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (COLM, "svc", "Product Tracker", 4, [_mrow()]))
+    q = _tap(f"{ITEM_ID}:3999:m")                         # live $41.48 -> Jay's lower $39.99
+    assert env["revise"] == [(ITEM_ID, 39.99)]
+    assert env["writes"] == [(4, {"H": 39.99, "P": "", "BE": 30.0})]
+    text, _ = _final(q)
+    assert "✓ Repriced to $39.99" in text
+
+
+def test_manual_go_at_live_price_just_snapshots(env, monkeypatch):
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (COLM, "svc", "Product Tracker", 4, [_mrow()]))
+    _tap(f"{ITEM_ID}:4148:m")
+    assert env["revise"] == []
+    assert env["writes"] == [(4, {"H": 41.48, "P": "", "BE": 30.0})]
+
+
+def test_one_tap_go_without_marker_never_writes_be(env, monkeypatch):
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (COLM, "svc", "Product Tracker", 4, [_mrow()]))
+    _tap(f"{ITEM_ID}:5099")
+    assert env["writes"] == [(4, {"H": 50.99, "P": ""})]
+
+
+def test_product_rows_read_reaches_be():
+    """_price_metrics reads buy_cost (BB); the bot's row read used to stop at BA."""
+    import inspect
+    assert ":BE{end}" in inspect.getsource(tb._read_product_rows)

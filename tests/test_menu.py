@@ -292,9 +292,9 @@ def test_legend_rows_no_old_column_quick_reference():
     assert "COLUMN QUICK REFERENCE" not in flat
 
 
-def test_header_labels_covers_all_55_columns():
+def test_header_labels_covers_all_57_columns():
     from tools.sheet_formatter import HEADER_LABELS, TOTAL_COLS
-    assert len(HEADER_LABELS) == TOTAL_COLS == 55, (
+    assert len(HEADER_LABELS) == TOTAL_COLS == 57, (
         f"Expected {TOTAL_COLS} labels, got {len(HEADER_LABELS)}"
     )
 
@@ -317,6 +317,8 @@ def test_header_labels_trailing_cols_labelled():
     assert HEADER_LABELS[52] == "MPT Rank"
     assert HEADER_LABELS[53] == "BUY COST (PAID)"
     assert HEADER_LABELS[54] == "ACTUAL NET"
+    assert HEADER_LABELS[55] == "TARGET PRICE"
+    assert HEADER_LABELS[56] == "MANUAL COST"
 
 
 def test_buy_cost_is_col_bb_and_not_protected():
@@ -342,7 +344,7 @@ def test_refresh_header_row_touches_only_row_3():
     reqs = svc.spreadsheets().batchUpdate.call_args.kwargs["body"]["requests"]
     rng = reqs[0]["repeatCell"]["range"]
     assert (rng["startRowIndex"], rng["endRowIndex"]) == (2, 3)
-    assert (rng["startColumnIndex"], rng["endColumnIndex"]) == (48, 55)
+    assert (rng["startColumnIndex"], rng["endColumnIndex"]) == (48, 57)
 
 
 def test_header_labels_visible_cols_unchanged():

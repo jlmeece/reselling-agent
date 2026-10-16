@@ -52,8 +52,8 @@ from tools.sheet_writer import (
 from tools.sale_priority import sale_end_sort_key
 from tools.spot_price import get_spot_price, parse_gold_weight
 from tools.ebay_sync import (
-    _cost_basis, _to_float, _to_rate, compute_net, extract_item_id, fetch_item_price,
-    revise_fixed_price,
+    _cost_basis, _to_float, _to_rate, apply_target_prices, compute_net, extract_item_id,
+    fetch_item_price, format_target_summary, revise_fixed_price,
 )
 from tools.reprice import (
     cancel_keyboard, format_reprice_prompt, get_pending, log_ignore, log_revise, pop_pending,
@@ -1448,7 +1448,7 @@ def _sheet_ctx():
 def _read_product_rows():
     """col_map, service, sheet_name, data_start_row, rows — for screens that need actual row data."""
     col_map, service, sheet_name, start, end = _sheet_ctx()
-    rows = read_sheet(service, f"'{sheet_name}'!A{start}:BA{end}")
+    rows = read_sheet(service, f"'{sheet_name}'!A{start}:BE{end}")
     return col_map, service, sheet_name, start, rows
 
 
@@ -2183,10 +2183,16 @@ def _tg_kb(kb_dict):
     ])
 
 
+_MANUAL_SUFFIX = ":m"   # reprice:go:<id>:<cents>:m = a price Jay typed (Set Price), not a suggestion
+
+
 def _parse_reprice_arg(arg):
-    """'<item_id>:<cents>' -> (item_id, target float) or (None, None)."""
+    """'<item_id>:<cents>[:m]' -> (item_id, target float) or (None, None)."""
+    arg = arg or ""
+    if arg.endswith(_MANUAL_SUFFIX):
+        arg = arg[: -len(_MANUAL_SUFFIX)]
     try:
-        item_id, cents = (arg or "").split(":", 1)
+        item_id, cents = arg.split(":", 1)
         target = int(cents) / 100
     except ValueError:
         return None, None
@@ -2211,12 +2217,24 @@ def _auth_text(code, t, tail):
             f"EBAY_AUTH_TOKEN in .env.\n<b>{t}</b> {tail}")
 
 
-async def _reprice_apply(item_id, target):
+def _manual_cost_pair(col_map, rows, start, row):
+    """[(col BE, current col G)] for a manual price — the key that keeps auto-reprice off this
+    listing until Costco's cost moves. [] when the col_map predates manual_cost."""
+    if not (col_map.get("manual_cost") and col_map.get("costco_cost")):
+        return []
+    raw = rows[row - start] if 0 <= row - start < len(rows) else []
+    cost = _to_float(safe_get(raw, col_to_idx(col_map["costco_cost"])))
+    return [(col_map["manual_cost"], cost if cost is not None else "")]
+
+
+async def _reprice_apply(item_id, target, manual=False):
     """
     Guards + revise + sheet write. Returns (html_text, reply_markup_or_None).
     Order: sheet row (ACTIVE, unique col Q match) -> LIVE eBay price via GetItem (col H can be
     stale; never lower) -> ReviseFixedPriceItem -> re-resolve the row (an audit delete may have
     shifted it during the eBay calls) -> col H = target, col P cleared. Every outcome is logged.
+    manual=True (Jay typed the price via Set Price): lowering is allowed, and col BE
+    (manual_cost) = col G is written too so the break-even auto-reprice leaves it alone.
     """
     retry_kb = _tg_kb(reprice_keyboard(item_id, target, retry=True))
     try:
@@ -2255,10 +2273,12 @@ async def _reprice_apply(item_id, target):
         return (f"<b>{t}</b> is {html.escape(live['listing_status'])} on eBay — nothing revised."), None
     current = live["price"]
 
-    if current >= target - 0.005:
+    if (abs(current - target) < 0.005) if manual else (current >= target - 0.005):
         # Already at/above the target (repriced by hand) — never lower; sync H, clear P.
+        # (manual: only an exact match lands here — Jay's lower price is applied below.)
         safe_write_row(service, sheet_name, row,
-                       [(col_map["ebay_price"], current), (col_map["price_change"], "")])
+                       [(col_map["ebay_price"], current), (col_map["price_change"], "")]
+                       + (_manual_cost_pair(col_map, rows, start, row) if manual else []))
         pop_pending(item_id)
         log_revise(service, {"ok": True, "item_id": item_id, "price": current,
                              "message": f"no revise — live price already >= ${target:.2f}"},
@@ -2283,7 +2303,8 @@ async def _reprice_apply(item_id, target):
             raise RuntimeError(f"item {item_id} now matches {len(matches)} sheet rows")
         row = matches[0]["row_num"]
         safe_write_row(service, sheet_name, row,
-                       [(col_map["ebay_price"], target), (col_map["price_change"], "")])
+                       [(col_map["ebay_price"], target), (col_map["price_change"], "")]
+                       + (_manual_cost_pair(col_map, rows, start, row) if manual else []))
     except Exception as e:
         logger.error(f"reprice: eBay revised but sheet write failed: {e}")
         log_revise(service, {**result, "message": f"eBay OK but SHEET WRITE FAILED: {e}"},
@@ -2309,7 +2330,8 @@ async def cb_reprice_go(update, context, arg):
     inflight.add(item_id)
     try:
         await query.edit_message_text(f"⏳ Repricing eBay item {item_id} to ${target:.2f}…")
-        text, kb = await _reprice_apply(item_id, target)
+        text, kb = await _reprice_apply(item_id, target,
+                                        manual=(arg or "").endswith(_MANUAL_SUFFIX))
         await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
     finally:
         inflight.discard(item_id)
@@ -2466,7 +2488,8 @@ def _price_metrics(p, target):
 def _price_confirm_kb(item_id, target):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"✓ Reprice to ${target:.2f}",
-                              callback_data=f"reprice:go:{item_id}:{int(round(target * 100))}")],
+                              callback_data=f"reprice:go:{item_id}:{int(round(target * 100))}"
+                                            f"{_MANUAL_SUFFIX}")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"reprice:setcancel:{item_id}")],
     ])
 
@@ -3032,6 +3055,7 @@ async def cb_menu_ops(update, context, arg):
     rows_ = [mode_buttons[i:i + 2] for i in range(0, len(mode_buttons), 2)]
     rows_.append([InlineKeyboardButton("📤 Export CSV", callback_data="job:export"),
                   InlineKeyboardButton("📥 Import Results", callback_data="ebayimport:start")])
+    rows_.append([InlineKeyboardButton("💲 Apply price changes now", callback_data="prices:apply")])
     rows_.append([
         InlineKeyboardButton("🔗 Google Sheet",
                               url="https://docs.google.com/spreadsheets/d/1KXxULBBp4dmZb1OMGYPkf_YIE1HFd4byQCsAb-_tSic"),
@@ -3093,6 +3117,39 @@ async def cb_job_export(update, context, arg):
     with open(path, "rb") as f:
         await context.bot.send_document(context.bot_data["chat_id"], document=f)
     await context.bot.send_message(context.bot_data["chat_id"], "📤 Export complete.", reply_markup=_home_inline_kb())
+
+
+async def cb_prices_apply(update, context, arg):
+    """
+    "💲 Apply price changes now": push every col BD target price on an ACTIVE row to eBay
+    right now, in-process (same sweep ebay_sync runs 4x/day; see tools.ebay_sync
+    .apply_target_prices). Both paths are idempotent — BD is cleared after a success.
+    """
+    if context.bot_data.get("prices_inflight"):
+        return                                  # double tap while the first sweep is running
+    context.bot_data["prices_inflight"] = True
+    try:
+        await _send_screen(update, "⏳ Applying the col BD price changes to eBay…")
+        try:
+            col_map, service, sheet_name, start, end = _sheet_ctx()
+            try:
+                cfg = (_load_business_cfg().get("ebay_sync") or {})
+            except Exception:
+                cfg = {}
+            report = await asyncio.to_thread(
+                apply_target_prices, service, col_map, sheet_name, start, end,
+                warn_jump_pct=float(cfg.get("target_warn_jump_pct", 0.50)))
+        except Exception as e:
+            logger.warning(f"prices:apply failed: {e}")
+            await _send_screen(update, _SHEET_UNREACHABLE_MSG + " Nothing was changed.",
+                               reply_markup=_home_inline_kb())
+            return
+        text = format_target_summary(report) or (
+            "No price changes waiting — type a new eBay price in col BD (TARGET PRICE) "
+            "of an ACTIVE row, then tap this again.")
+        await _send_screen(update, text, parse_mode="HTML", reply_markup=_home_inline_kb())
+    finally:
+        context.bot_data["prices_inflight"] = False
 
 
 # ── Category ROI / Spot Prices (spec Parts 8 & 10) ───────────────────────────
@@ -3404,6 +3461,7 @@ _CALLBACK_ROUTES.update({
     ("reprice", "cancel"): cb_reprice_cancel,
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
+    ("prices", "apply"): cb_prices_apply,
     ("ebayimport", "start"): cb_ebayimport_start,
     ("ebayimport", "confirm"): cb_ebayimport_confirm,
     ("ebayimport", "cancel"): cb_ebayimport_cancel,

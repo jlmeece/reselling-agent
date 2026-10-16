@@ -44,18 +44,19 @@ MENU_GROUPS = [
         "items": [
             {"label": "6. Check active eBay listings (OOS / price changes)", "mode": "active", "category_prompt": False, "args": []},
             {"label": "7. Run daily sweep (promote APPROVED, restock checks)", "mode": "daily", "category_prompt": False, "args": []},
+            {"label": "8. Apply sheet price changes (col BD) → eBay",         "mode": "apply_prices", "category_prompt": False, "args": []},
         ],
     },
     {
         "label": "MAINTENANCE",
         "items": [
-            {"label": "8. Audit: clean junk rows (CFO mode)",                "mode": "audit",          "category_prompt": False, "args": []},
-            {"label": "9. Weekly performance digest",                         "mode": "rotation",       "category_prompt": False, "args": []},
-            {"label": "10. Fix products with missing eBay prices",            "mode": "recheck",        "category_prompt": False, "args": []},
-            {"label": "11. Refresh all prices and stock status",              "mode": "recheck",        "category_prompt": False, "args": ["--force"]},
-            {"label": "12. Reset PAUSED products → PENDING for re-research", "action": "reset_paused", "category_prompt": False, "args": []},
-            {"label": "13. Refresh Costco session cookies",                   "mode": None,             "category_prompt": False, "args": [], "script": SETUP_COOKIES},
-            {"label": "14. Sheet formatter / setup",                          "mode": None,             "category_prompt": False, "args": [], "script": SETUP_SHEET},
+            {"label": "9. Audit: clean junk rows (CFO mode)",                "mode": "audit",          "category_prompt": False, "args": []},
+            {"label": "10. Weekly performance digest",                         "mode": "rotation",       "category_prompt": False, "args": []},
+            {"label": "11. Fix products with missing eBay prices",            "mode": "recheck",        "category_prompt": False, "args": []},
+            {"label": "12. Refresh all prices and stock status",              "mode": "recheck",        "category_prompt": False, "args": ["--force"]},
+            {"label": "13. Reset PAUSED products → PENDING for re-research", "action": "reset_paused", "category_prompt": False, "args": []},
+            {"label": "14. Refresh Costco session cookies",                   "mode": None,             "category_prompt": False, "args": [], "script": SETUP_COOKIES},
+            {"label": "15. Sheet formatter / setup",                          "mode": None,             "category_prompt": False, "args": [], "script": SETUP_SHEET},
         ],
     },
 ]
