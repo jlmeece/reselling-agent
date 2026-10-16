@@ -3,7 +3,7 @@ Date: 2026-10-15
 
 ## Overview
 
-Let Jay reprice any number of live eBay listings by typing a **target price** in the Google Sheet, then have the tool push those prices to eBay automatically. Introduces a **"manual price wins"** rule so the break-even auto-reprice safety net can never override a price Jay set deliberately (competitive pricing stays put).
+Let Jay reprice any number of live eBay listings by typing a **target price** in the Google Sheet, then have the tool push those prices to eBay automatically. Introduces a **"manual price wins"** rule so the break-even auto-reprice safety net never overrides a price Jay set deliberately — **with automatic re-arm**: once Costco's cost moves away from the cost Jay priced against, the safety net re-engages.
 
 ## Problem it solves
 
@@ -16,16 +16,16 @@ Today the sheet is write-only for price: col H is the creation price and the rec
 | Col | Name | Purpose |
 |-----|------|---------|
 | BD | `target_price` | Manual target eBay price. A filled cell = explicit instruction to reprice that listing. Cleared after a successful apply. |
-| BE | `price_manual_at` | Timestamp set whenever Jay applies a price himself. Signals the auto-reprice safety net to leave this listing alone. |
+| BE | `manual_cost` | Costco cost (col G) snapshot taken when Jay set a manual price. This is the **re-arm key**: the safety net respects Jay's manual price only while current cost still equals this snapshot. |
 
 ### The sweep — `apply_target_prices()`
 
 Runs on ACTIVE rows only. For each row:
 
-1. Must have a filled `target_price` (BD) **and** a valid eBay item ID in col Q. Anything else is skipped (non-ACTIVE rows, blank BD, blank/parseable col Q, multi-variation listings).
+1. Must have a filled `target_price` (BD) **and** a valid eBay item ID in col Q. Anything else is skipped (non-ACTIVE rows, blank BD, blank/unparseable col Q, multi-variation listings).
 2. Fetch the live Buy It Now price via `GetItem` (the existing read-only guard — never trust col H, which can be stale).
-3. If target == live price → clear BD, set BE, mark no-op.
-4. If target != live price → `ReviseFixedPriceItem(target)`. On success: write col H = target, clear BD, set BE = now, log. On failure: leave BD filled so it retries next run, and alert.
+3. If target == live price → clear BD, write BE = current G, mark no-op.
+4. If target != live price → `ReviseFixedPriceItem(target)`. On success: write col H = target, clear BD, write BE = current G, log. On failure: leave BD filled so it retries next run, and alert.
 5. Below break-even (net < 0 at the target): **warn-and-apply**. Apply his price, but flag it in the result message so he sees it loses money. Never block.
 6. No big-jump hold (this is Jay's explicit number, not a guess). A change over ~50% just gets a ⚠️ note in the confirmation as a typo guard.
 
@@ -36,28 +36,30 @@ Runs on ACTIVE rows only. For each row:
 
 Both paths are idempotent: revising to the same price is safe, and BD is cleared after success, so a concurrent second run just finds BD empty.
 
-### Safety net reconciliation (the key rule)
+### Safety net reconciliation — manual wins, then re-arms
 
-**Manual always wins over automatic.**
+**Auto-reprice a net < 0 ACTIVE row to break-even UNLESS it is manually priced against the *current* cost.**
 
-- The existing auto-reprice (push net < 0 ACTIVE rows up to break-even) stays exactly as-is **but now skips any row with `price_manual_at` (BE) set.**
-- So when Jay deliberately prices a listing below break-even to compete, the target sweep applies it and marks BE, and the safety net will never yank it back up.
-- Protection for manually-priced rows still comes from: the cost-rise tap prompt (existing) and the hard-margin alert (existing, 24h dedup). The alert message will note "manually priced" so Jay knows it's his call, not an accident.
+- BE blank → not manually priced → safety net applies (as today).
+- BE filled AND current G == BE → Jay priced this listing against this exact cost → safety net skips it (competitive price stays put).
+- BE filled AND current G != BE → Costco moved the cost since Jay's manual price → his decision is stale → safety net re-arms and auto-reprices to break-even (and clears BE so the row returns to the unprotected state).
 
-### Manual flag lifecycle
+Result: Jay's competitive price is fully respected while the cost environment he priced against is unchanged. The moment Costco raises (or lowers) that item's cost, the safety net re-engages and protects him. A cost *drop* simply makes his manual price more profitable, so no reprice fires (net stays ≥ 0).
 
-`price_manual_at` is **sticky**: set when Jay applies a price himself, cleared only when Jay clears the cell himself (or edits it). The safety net does not re-engage automatically. Rationale: predictable — "once you set a price, that listing is yours; the tool only nudges, never auto-changes it again."
+### Below break-even
+
+Warn-and-apply. The hard-margin alert (24h dedup) keeps surfacing the loss until Jay changes it, so a deliberate low price is never silent.
 
 ## Files touched
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `config/col_map.yaml` | Modify | Add `target_price` (BD) and `price_manual_at` (BE) |
-| `tools/ebay_sync.py` | Modify | Add `apply_target_prices()`; fold into `run_ebay_sync`; make `auto_reprice_breaches` skip rows with BE set |
+| `config/col_map.yaml` | Modify | Add `target_price` (BD) and `manual_cost` (BE) |
+| `tools/ebay_sync.py` | Modify | Add `apply_target_prices()`; fold into `run_ebay_sync`; make `auto_reprice_breaches` skip rows where BE is set AND G == BE |
 | `agents/scheduler.py` | Modify | Wire the sweep into `--mode ebay_sync` (and optionally a standalone `--mode apply_prices` for the manual trigger) |
 | `agents/telegram_bot.py` | Modify | Add "Apply price changes now" callback → `apply_target_prices()` |
 | `agents/menu.py` | Modify | Add the button to the Operations menu |
-| `tests/test_ebay_sync.py` | Modify | New tests for the sweep + manual-override rule |
+| `tests/test_ebay_sync.py` | Modify | New tests for the sweep + manual-wins + re-arm rule |
 | `config/categories.yaml` | Modify | Optional small block (below-break-even = warn, default on) |
 
 ## Edge cases
@@ -65,7 +67,7 @@ Both paths are idempotent: revising to the same price is safe, and BD is cleared
 - **Non-ACTIVE row with a filled BD** — ignored, noted in the run log. BD only applies to live listings with a col Q item ID.
 - **Multi-variation listing** — `ReviseFixedPriceItem` can't set a price without a SKU; skipped and flagged (same limit as existing auto-reprice).
 - **BD filled but col Q blank** — skipped; suggests filling col Q (same as existing link-suggestion flow).
-- **Below break-even** — warn-and-apply; the hard-margin alert will fire once/day (24h dedup) until Jay changes it.
+- **Below break-even** — warn-and-apply; the hard-margin alert fires once/day until Jay changes it.
 - **eBay auth error mid-sweep** — stop the loop (every later call fails the same way), leave remaining BD cells filled for retry, alert loudly (same as existing auto-reprice).
 
 ## Out of scope
