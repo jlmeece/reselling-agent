@@ -484,3 +484,96 @@ def test_non_oos_never_touches_listing(harness, stock):
     calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)],
                     _scrape(31.99, False, stock_status=stock, stock_source="inventory_api"))
     assert calls["ended"] == []
+
+
+# ── live listing on a non-ACTIVE row: stock check + OOS hide only ────────────
+
+def _orphan_row(status, ebay_url=EBAY_URL, notes="[AUDIT_REVIEW] stale 45 days"):
+    row = _energy_row(31.99, ebay_url=ebay_url, status=status)
+    idx = sch.col_to_idx(COL["tier_summary"])
+    while len(row) <= idx:
+        row.append("")
+    row[idx] = notes
+    return row
+
+
+@pytest.mark.parametrize("status", ["AUDIT_REVIEW", "PAUSED_MARGIN", "WATCH"])
+def test_live_listing_on_non_active_row_is_hidden_on_oos(harness, status):
+    calls = harness([_orphan_row(status)], _oos())
+    assert calls["ended"] == ["123456789012"]
+    _, w = _written(calls)
+    assert w[COL["status"]] == "PAUSED_OOS"
+    assert w[COL["stock_status"]] == "OUT OF STOCK"
+    assert w[COL["tier_summary"]] == f"[AUDIT_REVIEW] stale 45 days | {sch.OOS_HIDDEN_NOTE}"
+    assert COL["costco_cost"] not in w and COL["price_change"] not in w   # no sale/margin logic
+    assert calls["urgent"] == [] and calls["prompts"] == []
+    assert "hid 1 eBay listing" in calls["notify"][0]
+    assert sched.get_oos_hidden("123456789012")["prev_status"] == status
+
+
+def test_delisted_product_on_non_active_row_is_hidden_and_reported_removed(harness):
+    """The real incident: Costco 404'd the product — no inventory API call, still hidden."""
+    scrape = _scrape(None, False, stock_status="OUT OF STOCK", stock_source="dom")
+    scrape.update(removed=True, image_urls=[], error="Product removed from Costco (HTTP 404)")
+    calls = harness([_orphan_row("AUDIT_REVIEW")], scrape)
+    assert calls["ended"] == ["123456789012"]
+    _, w = _written(calls)
+    assert w[COL["status"]] == "PAUSED_OOS"
+    assert COL["image_urls"] not in w                     # keep the old col AT
+    assert "Removed from Costco" in calls["notify"][0] and "END THIS LISTING" in calls["notify"][0]
+
+
+def test_delisted_product_on_active_row_is_hidden(harness):
+    scrape = _scrape(None, False, stock_status="OUT OF STOCK", stock_source="dom")
+    scrape["removed"] = True
+    calls = harness([_energy_row(31.99, ebay_url=EBAY_URL)], scrape)
+    assert calls["ended"] == ["123456789012"]
+    assert calls["urgent"] == []
+
+
+def test_non_active_row_in_stock_only_refreshes_stock(harness):
+    calls = harness([_orphan_row("AUDIT_REVIEW", notes="[AUDIT_REVIEW] x | OUT OF STOCK — old")],
+                    _scrape(39.99, False, stock_source="inventory_api"))
+    assert calls["ended"] == [] and calls["urgent"] == [] and calls["prompts"] == []
+    _, w = _written(calls)
+    assert COL["status"] not in w and COL["costco_cost"] not in w
+    assert w[COL["tier_summary"]] == "[AUDIT_REVIEW] x"   # stale OOS line dropped
+    assert w[COL["stock_status"]] == "In Stock"
+
+
+def test_non_active_row_oos_hide_failure_is_urgent(harness):
+    calls = harness([_orphan_row("AUDIT_REVIEW")], _oos(source="dom"))
+    assert calls["ended"] == []
+    _, w = _written(calls)
+    assert COL["status"] not in w
+    (_, items), = calls["urgent"]
+    assert "LIVE eBay listing on a AUDIT_REVIEW row" in items[0]["reason"]
+    assert "NOT auto-hidden" in items[0]["reason"]
+
+
+def test_non_active_row_oos_with_auto_hide_off_is_urgent(harness):
+    cfg = {**CONFIG, "business": {**CONFIG["business"], "ebay_sync": {"auto_end_oos": False}}}
+    calls = harness([_orphan_row("PAUSED_MARGIN")], _oos(), config=cfg)
+    assert calls["ended"] == []
+    (_, items), = calls["urgent"]
+    assert "pause eBay listing" in items[0]["reason"]
+
+
+@pytest.mark.parametrize("row", [
+    _orphan_row("ENDED"),
+    _orphan_row("PAUSED_OOS"),
+    _orphan_row("AUDIT_REVIEW", ebay_url=""),
+    _orphan_row("AUDIT_REVIEW", ebay_url="https://www.ebay.com/sch/i.html?_nkw=x"),
+])
+def test_rows_without_a_live_listing_or_terminal_are_not_scraped(harness, monkeypatch, row):
+    scraped = []
+    monkeypatch.setattr(sch, "scrape_costco", lambda url, page=None: scraped.append(url) or _oos())
+    calls = harness([row], _oos())
+    assert scraped == [] and calls["writes"] == [] and calls["ended"] == []
+
+
+def test_no_browser_when_only_rows_are_ended_or_unlisted(harness, monkeypatch):
+    def _no_browser():
+        raise AssertionError("Chrome launched")
+    monkeypatch.setattr(sch, "make_browser", _no_browser)
+    harness([_orphan_row("ENDED"), _orphan_row("AUDIT_REVIEW", ebay_url="")], _oos())

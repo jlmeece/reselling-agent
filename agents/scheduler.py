@@ -146,9 +146,18 @@ OOS_HIDDEN_NOTE = "OUT OF STOCK — eBay listing hidden (quantity 0)"
 OOS_HANDLED = ("hidden", "ended_by_ebay", "already_off")   # nothing left for Jay to do now
 
 
-def _auto_hide_oos(service, item_id, costco_data, title, sheet_row):
+def _merge_oos_note(existing, note):
+    """Col T for a stock-check-only row: keep its own reason (e.g. "[AUDIT_REVIEW] ..."), drop
+    any OOS line an earlier run appended, then append `note` (None = only drop the stale line)."""
+    parts = [p for p in (existing or "").split(" | ") if p and not p.startswith("OUT OF STOCK")]
+    if note:
+        parts.append(note)
+    return " | ".join(parts)
+
+
+def _auto_hide_oos(service, item_id, costco_data, title, sheet_row, prev_status=None):
     """
-    Hide the live eBay listing of an ACTIVE row Costco just reported out of stock: quantity 0 via
+    Hide the live eBay listing of a row Costco just reported out of stock: quantity 0 via
     ReviseInventoryStatus (business.ebay_sync.auto_end_oos). With Jay's Out of Stock setting on
     and a GTC listing, eBay keeps it (watchers, sales history, search rank) and the daily sweep
     restores the quantity on restock. Returns (outcome, note); note replaces the OOS line in
@@ -158,13 +167,17 @@ def _auto_hide_oos(service, item_id, costco_data, title, sheet_row):
                         so eBay ended it — relist on restock
       "already_off"   — GetItem says the listing isn't Active (e.g. Jay ended it) — nothing sent
       "dom_only"      — the OOS came from page text, not the inventory API's Delivery state -> NOT
-                        hidden (the DOM read was wrong both ways on 10/04)
+                        hidden (the DOM read was wrong both ways on 10/04). A product Costco
+                        REMOVED (404/410 / not-found page, costco_data["removed"]) has no inventory
+                        call at all, so it is hidden without one.
       "auth"          — token rejected; the caller stops auto-hiding for the rest of the run
       "failed"        — any other eBay error / exception; manual fallback via the urgent alert
     The three handled outcomes drop the item's pending scheduled action + reprice prompt and
-    record it in data/.oos_hidden.json (prev_qty, hidden) for the daily sweep.
+    record it in data/.oos_hidden.json (prev_qty, hidden, prev_status) for the daily sweep.
+    prev_status: the row's status when it was NOT ACTIVE (stock-check-only rows) — the sweep
+    puts it back on restock instead of promoting the row to ACTIVE.
     """
-    if costco_data.get("stock_source") != "inventory_api":
+    if costco_data.get("stock_source") != "inventory_api" and not costco_data.get("removed"):
         return "dom_only", ("OUT OF STOCK (page text only, not confirmed by Costco's inventory API) — "
                             "NOT auto-hidden; verify on Costco, then set the eBay quantity to 0 by hand")
 
@@ -173,7 +186,7 @@ def _auto_hide_oos(service, item_id, costco_data, title, sheet_row):
             sched.cancel_action(item_id)    # a scheduled reprice/Hide at sale end would hit a hidden listing
             pop_pending(item_id)            # ...and so would a re-posted "✓ Reprice" prompt
             sched.record_oos_hidden(item_id, title=title, row=sheet_row, prev_qty=prev_qty,
-                                    hidden=(outcome == "hidden"))
+                                    hidden=(outcome == "hidden"), prev_status=prev_status)
         except Exception as e:
             logger.warning(f"  Auto-hide OOS: follow-up bookkeeping failed for eBay {item_id}: {e}")
         return outcome, note
@@ -314,13 +327,26 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
     oos_handled = []        # listings hidden (qty 0) / found already off on eBay this run
     stop_auto_hide = False  # token rejected -> don't hit the same auth error on every OOS row
 
-    # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL/APPROVED rows.
+    def _live_listing(url):
+        return url.startswith("http") and extract_item_id(url) is not None
+
+    def _oos_safety_only(st, url):
+        # A live eBay listing on a row the monitor otherwise ignores (AUDIT_REVIEW, PAUSED_MARGIN,
+        # WATCH, ...) still sells — stock-check it and hide it on OOS. ENDED is terminal and
+        # PAUSED_OOS is already hidden + watched by the daily sweep.
+        return (_live_listing(url) and st not in ACTIVE_MONITOR_STATUSES
+                and st not in ("READY", "APPROVED", "ENDED", "PAUSED_OOS"))
+
+    # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL/APPROVED rows and no
+    # other row with a live eBay listing.
     # This prevents a guaranteed crash on CI (GitHub Actions) where no local Chrome exists.
     has_active = any(
         safe_get(r, col_to_idx(COL["status"])) in ACTIVE_MONITOR_STATUSES
         or safe_get(r, col_to_idx(COL["status"])) == "APPROVED"
         or (safe_get(r, col_to_idx(COL["status"])) == "READY"
             and safe_get(r, col_to_idx(COL["ebay_listing_url"])).startswith("http"))
+        or _oos_safety_only(safe_get(r, col_to_idx(COL["status"])),
+                            safe_get(r, col_to_idx(COL["ebay_listing_url"])))
         for r in all_data if r
     )
     if not has_active:
@@ -338,11 +364,14 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             status    = safe_get(row, col_to_idx(COL["status"]))
             ebay_url  = safe_get(row, col_to_idx(COL["ebay_listing_url"]))
 
-            # Process ACTIVE rows, READY rows with eBay URL, and APPROVED rows (stock watch)
+            # Process ACTIVE rows, READY rows with eBay URL, APPROVED rows (stock watch), and any
+            # other row with a live eBay listing (stock check + OOS hide only)
             is_approved_check = (status == "APPROVED")
+            is_oos_safety_only = _oos_safety_only(status, ebay_url)
             if (status not in ACTIVE_MONITOR_STATUSES
                     and not (status == "READY" and ebay_url.startswith("http"))
-                    and not is_approved_check):
+                    and not is_approved_check
+                    and not is_oos_safety_only):
                 continue
 
             title       = safe_get(row, col_to_idx(COL["title"]))
@@ -395,6 +424,56 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                     logger.warning(f"  APPROVED row OOS: {title[:50]}")
                 else:
                     logger.info(f"  APPROVED stock OK: {stock_status}")
+                time.sleep(2)
+                continue
+
+            # Live eBay listing on a non-ACTIVE row: stock check + OOS hide ONLY. No sale /
+            # reprice / margin logic — the row's status says it isn't being actively managed.
+            if is_oos_safety_only:
+                new_status = status
+                oos_note = None
+                if stock_status == "OUT OF STOCK":
+                    oos_iid = extract_item_id(ebay_url)
+                    if auto_end_oos and not stop_auto_hide:
+                        outcome, oos_note = _auto_hide_oos(service, oos_iid, costco_data, title,
+                                                           sheet_row, prev_status=status)
+                    else:
+                        outcome, oos_note = "off", OOS_PAUSE_NOTE
+                    if outcome in OOS_HANDLED:
+                        new_status = "PAUSED_OOS"
+                        oos_handled.append({"title": title, "item_id": oos_iid, "row": sheet_row,
+                                            "outcome": outcome,
+                                            "removed": bool(costco_data.get("removed"))})
+                        logger.info(f"  OOS listing {outcome} on {status} row: {title[:50]} (eBay {oos_iid})")
+                    else:
+                        if outcome == "auth":
+                            stop_auto_hide = True
+                            _notify("🚨 <b>eBay token rejected</b> while hiding an OOS listing — renew "
+                                    "EBAY_AUTH_TOKEN in .env. Remaining OOS listings this run were NOT "
+                                    "hidden; set their eBay quantity to 0 by hand.")
+                        # Still selling on eBay with nothing behind it — Jay must act now
+                        urgent_items.append({
+                            "title":        title,
+                            "row":          sheet_row,
+                            "category":     category,
+                            "reason":       f"LIVE eBay listing on a {status or 'blank-status'} row — {oos_note}",
+                            "reprice_note": "",
+                        })
+                        logger.warning(f"  OOS live listing NOT hidden on {status} row: {title[:50]}")
+                updates = [
+                    (COL["stock_status"], stock_status),
+                    (COL["last_checked"], run_time),
+                    (COL["tier_summary"], _merge_oos_note(
+                        safe_get(row, col_to_idx(COL["tier_summary"])), oos_note)),
+                ]
+                if image_urls:   # a removed product's page has none — keep the old col AT
+                    updates.append((COL["image_urls"], image_urls))
+                if new_status != status:
+                    updates.append((COL["status"], new_status))
+                    logger.info(f"  Status: {status} -> {new_status}")
+                write_row_partial(service, sheet_name, sheet_row, updates)
+                for _col, _val in updates:
+                    _set_cell(row, col_to_idx(_col), _val)
                 time.sleep(2)
                 continue
 
@@ -1097,6 +1176,10 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                             oos_iid, hidden_rec)
                         if line:
                             oos_restore_lines[kind].append(line)
+                        if new_st == "ACTIVE" and hidden_rec.get("prev_status"):
+                            # hidden from a non-ACTIVE row (e.g. AUDIT_REVIEW): give it its status back
+                            new_st = hidden_rec["prev_status"]
+                            notes = f"{notes} — status back to {new_st}"
                         if new_st:
                             updates.append((COL["status"], new_st))
                             sched.pop_oos_hidden(oos_iid)

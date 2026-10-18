@@ -113,16 +113,19 @@ def _save(path, data):
 
 
 # ── hidden-on-OOS store (data/.oos_hidden.json) ──────────────────────────────
-# {item_id: {title, row, prev_qty, hidden, hidden_at}} — written when the active monitor sets a
+# {item_id: {title, row, prev_qty, hidden, hidden_at[, prev_status]}} — written when the active monitor sets a
 # listing to quantity 0 because Costco went OOS (hidden False = eBay ended it instead: not GTC /
 # Out of Stock setting off / already ended). The daily sweep reads it on restock to restore the
 # quantity (or ask for a relist) and pops it once the row leaves PAUSED_OOS.
 
-def record_oos_hidden(item_id, *, title="", row=None, prev_qty=None, hidden=True, path=None, now=None):
+def record_oos_hidden(item_id, *, title="", row=None, prev_qty=None, hidden=True, prev_status=None,
+                      path=None, now=None):
     path = path or OOS_HIDDEN_PATH
     data = _load(path)
     data[str(item_id)] = {"title": title, "row": row, "prev_qty": prev_qty, "hidden": hidden,
                           "hidden_at": _iso(now or utcnow())}
+    if prev_status:     # hidden from a non-ACTIVE row (e.g. AUDIT_REVIEW) — restored to it on restock
+        data[str(item_id)]["prev_status"] = prev_status
     _save(path, data)
 
 

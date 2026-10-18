@@ -101,6 +101,17 @@ def test_restock_restores_previous_quantity_and_goes_active(sweep):
     assert sched.get_oos_hidden(IID) is None
 
 
+def test_restock_of_listing_hidden_from_non_active_row_restores_its_status(sweep):
+    sched.record_oos_hidden(IID, title="Seaweed Snack", row=START_ROW, prev_qty=5,
+                            prev_status="AUDIT_REVIEW")
+    calls = sweep([_oos_row()])
+    assert calls["set_qty"] == [(IID, 5)]
+    w = _sweep_write(calls)
+    assert w[COL["status"]] == "AUDIT_REVIEW"
+    assert "status back to AUDIT_REVIEW" in w[COL["tier_summary"]]
+    assert sched.get_oos_hidden(IID) is None
+
+
 @pytest.mark.parametrize("limit, expected", [("4/day", 4), ("", 99)])
 def test_unknown_previous_quantity_falls_back_to_purchase_limit_then_99(sweep, limit, expected):
     _hide(prev_qty=None)
