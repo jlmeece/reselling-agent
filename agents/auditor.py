@@ -102,6 +102,12 @@ def _days_since(timestamp_str: str) -> int:
     return _DAYS_UNKNOWN
 
 
+def _live_listing(url) -> bool:
+    """Col Q holds a URL with a parseable eBay item id (the active monitor's own test)."""
+    from tools.ebay_sync import extract_item_id
+    return str(url).startswith("http") and extract_item_id(url) is not None
+
+
 def _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes=""):
     """First matching auto-remove reason for a non-protected row, or None.
     Order matters: it is an if/elif chain, so a row claimed by an earlier rule
@@ -263,6 +269,15 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
 
         # ── Auto-remove rules ─────────────────────────────────────────────────
         remove_reason = _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes)
+
+        if remove_reason and _live_listing(_safe(row, _col_to_idx(COL["ebay_listing_url"]))):
+            # Deleting the row would orphan a listing that still sells: nothing would
+            # stock-check or hide it again. AUDIT_REVIEW is protected and stock-checked.
+            flag_reason = (f"Would auto-remove ({remove_reason}) but its eBay listing is LIVE — "
+                           "end or hide it on eBay, then delete the row")
+            logger.warning(f"  Row {sheet_row} NOT removed, live eBay listing: {title[:50]}")
+            to_flag.append((sheet_row, product_dict, flag_reason))
+            continue
 
         if remove_reason:
             logger.info(f"  Row {sheet_row} AUTO-REMOVE [{remove_reason}]: {title[:50]}")

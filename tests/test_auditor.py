@@ -193,3 +193,68 @@ def test_real_zero_net_still_removed():
 
 def test_ended_status_is_protected_from_audit():
     assert "ENDED" in PROTECTED
+
+
+# ── live eBay listing guard (2026-10-19: deleted rows orphaned live listings) ──
+
+import pytest  # noqa: E402
+from agents import auditor  # noqa: E402
+from agents.scheduler import load_col_map  # noqa: E402
+
+_COL = load_col_map()
+
+
+def _sheet_row(status, ebay_url="", net="0.72", sold="0"):
+    cells = {"status": status, "title": "Grand Leisure City Heights", "category": "Outdoor Furniture",
+             "net_profit": net, "sold_90d": sold, "ebay_listing_url": ebay_url,
+             "costco_url": "https://www.costco.com/x.product.1.html"}
+    row = [""] * 48
+    for k, v in cells.items():
+        row[auditor._col_to_idx(_COL[k])] = v
+    return row
+
+
+@pytest.fixture
+def audit(monkeypatch):
+    calls = {"flags": [], "graveyard": [], "deletes": []}
+    state = {"rows": []}
+    monkeypatch.setattr(auditor, "read_sheet", lambda *a, **k: state["rows"])
+    monkeypatch.setattr(auditor, "write_row_partial",
+                        lambda svc, sheet, row, pairs: calls["flags"].append((row, dict(pairs))))
+    monkeypatch.setattr(auditor, "write_to_graveyard", lambda svc, rows: calls["graveyard"].extend(rows))
+    for name in ("setup_graveyard_tab", "setup_audit_log_tab", "append_audit_log", "_send_telegram"):
+        monkeypatch.setattr(auditor, name, lambda *a, **k: None)
+    monkeypatch.setattr(auditor, "queue_substitute", lambda *a, **k: None)
+    monkeypatch.setattr(auditor.time, "sleep", lambda s: None)
+
+    class _Svc:
+        def spreadsheets(self):
+            return self
+        def get(self, **k):
+            return {"sheets": [{"properties": {"title": "Product Tracker", "sheetId": 0}}]}
+        def batchUpdate(self, **k):
+            calls["deletes"].append(k["body"]["requests"][0]["deleteDimension"]["range"]["startIndex"] + 1)
+            return None
+    monkeypatch.setattr(auditor, "execute_with_retry",
+                        lambda req, *a, **k: req if isinstance(req, dict) else None)
+
+    def run(rows):
+        state["rows"] = rows
+        auditor.run_audit({"business": {}}, _COL, _Svc(), "Product Tracker", 4, 500)
+        return calls
+    return run
+
+
+def test_row_with_live_listing_is_flagged_not_deleted(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN", ebay_url="https://www.ebay.com/itm/860049380044")])
+    assert calls["deletes"] == [] and calls["graveyard"] == []
+    ((row, w),) = calls["flags"]
+    assert row == 4 and w[_COL["status"]] == "AUDIT_REVIEW"
+    assert "eBay listing is LIVE" in w[_COL["tier_summary"]] and "Would auto-remove (" in w[_COL["tier_summary"]]
+
+
+@pytest.mark.parametrize("url", ["", "https://www.ebay.com/sch/i.html?_nkw=x"])
+def test_row_without_live_listing_is_still_removed(audit, url):
+    calls = audit([_sheet_row("PAUSED_MARGIN", ebay_url=url)])
+    assert calls["deletes"] == [4] and len(calls["graveyard"]) == 1
+    assert calls["flags"] == []
