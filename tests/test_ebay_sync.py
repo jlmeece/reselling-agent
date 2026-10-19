@@ -604,6 +604,14 @@ def test_orphan_with_close_match_says_verify(writes):
     assert "(row 5, close title match, verify then fill col Q)" in alert_message(rep)
 
 
+def test_hidden_orphans_do_not_alert_alone_and_are_counted(writes):
+    hidden = _listing("999999999999", title="Hidden Stray", qty=3, sold=3)     # 0 available
+    assert alert_message(_sync([], [hidden])) is None
+    msg = alert_message(_sync([], [hidden, _listing("888888888888", title="Selling Stray")]))
+    assert "On eBay but not in the sheet (1)" in msg and "Selling Stray" in msg
+    assert "Hidden Stray" not in msg and "1 more not in the sheet, hidden at quantity 0" in msg
+
+
 def test_orphan_section_is_capped(writes):
     rep = _sync([], [_listing(f"{900000000000 + i}", title=f"Stray {i}") for i in range(30)])
     msg = alert_message(rep)

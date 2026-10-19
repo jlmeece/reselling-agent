@@ -3010,11 +3010,22 @@ async def cb_audit_confirm_delete(update, context, arg):
         await _send_screen(update, _SHEET_UNREACHABLE_MSG)
         return
 
-    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category")
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category", "ebay_listing_url", "sku")
     current = _find_by_row_num(_extract_rows_by_field(rows, col_map, fields, data_start_row=start), row_num)
     if current is None:
         await _send_screen(
             update, "This item is no longer there — it may have already been handled.",
+            reply_markup=_home_inline_kb(),
+        )
+        return
+    # Deleting the row would orphan a live listing: nothing would stock-check or hide it
+    # again (the 13 orphans of 10/19). Same test as the auditor's guard.
+    ebay_url = str(current.get("ebay_listing_url") or "")
+    if ebay_url.startswith("http") and extract_item_id(ebay_url):
+        logger.warning(f"audit delete blocked, live eBay listing: row {row_num} {ebay_url}")
+        await _send_screen(
+            update, f"🚫 '{current.get('title', '')[:60]}' — this listing is live on eBay "
+                    f"(item {extract_item_id(ebay_url)}) — end or hide it first, then delete.",
             reply_markup=_home_inline_kb(),
         )
         return
@@ -3030,6 +3041,8 @@ async def cb_audit_confirm_delete(update, context, arg):
         "score": current.get("demand_score", ""),
         "status_at_removal": "AUDIT_REVIEW",
         "original_row": row_num,
+        "costco_url": current.get("costco_url", ""),   # graveyard sweep re-check
+        "sku": current.get("sku", ""),
     }])
     _delete_sheet_row(service, sheet_name, row_num, context)
 

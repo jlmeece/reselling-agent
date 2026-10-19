@@ -1042,7 +1042,10 @@ def alert_message(report: dict) -> str | None:
               if m["severity"] == "hard" and m.get("auto") != "repriced"]
     floor = [m for m in report["margin_breach"] if m["severity"] == "floor"]
     gone = report["active_not_on_ebay"]
-    orphans = report["on_ebay_not_in_sheet"]
+    # Orphans at quantity 0 are hidden (or sold out) — they can't sell, so they don't alert.
+    orphans = [o for o in report["on_ebay_not_in_sheet"]
+               if (o.get("quantity") or 0) - (o.get("quantity_sold") or 0) > 0]
+    hidden_orphans = len(report["on_ebay_not_in_sheet"]) - len(orphans)
     if not losing and not floor and not gone and not orphans:
         return None
     msg = ["🛒 <b>eBay sync</b>" + (" (dry run)" if report.get("dry_run") else "")]
@@ -1081,6 +1084,8 @@ def alert_message(report: dict) -> str | None:
             return f"• {html.escape(_truncate(o['title']))} — eBay {o['item_id']} ({hint})"
         msg += _section(f"\n🔗 <b>On eBay but not in the sheet ({len(orphans)})</b>",
                         [_oline(o) for o in orphans])
+    if hidden_orphans:
+        msg.append(f"\nℹ️ {hidden_orphans} more not in the sheet, hidden at quantity 0 (not selling)")
     return "\n".join(msg)
 
 
