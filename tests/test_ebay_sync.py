@@ -577,8 +577,38 @@ def test_suggestion_text_is_html_escaped_in_alert(writes):
 def test_alert_message_none_when_clean(writes):
     rep = _sync([_row(4, "111111111111", sold="0")], [_listing("111111111111", sold=1)])
     assert alert_message(rep) is None                    # only units changed -> silent
-    rep2 = _sync([], [_listing("999999999999")])
-    assert alert_message(rep2) is None                   # only not-in-sheet -> silent
+    assert rep["on_ebay_not_in_sheet"] == [] and rep["active_not_on_ebay"] == []
+
+
+def test_alert_message_fires_on_orphans_alone(writes):
+    rep = _sync([], [_listing("999999999999", title="Stray <Patio> & Set")])
+    msg = alert_message(rep)
+    assert msg and "On eBay but not in the sheet (1)" in msg
+    assert "Stray &lt;Patio&gt; &amp; Set" in msg and "999999999999" in msg
+    assert "no matching sheet row, end it or link it by hand" in msg
+    assert writes == []
+
+
+def test_orphan_with_exact_match_gets_fill_col_q_hint(writes):
+    rep = _sync([_row(14, "", title="Soy Beverage Vanilla")],
+                [_listing("318547418616", title="soy beverage - VANILLA!")])
+    msg = alert_message(rep)
+    assert "eBay 318547418616 (row 14, blank col Q, fill col Q to link)" in msg
+    assert writes == []
+
+
+def test_orphan_with_close_match_says_verify(writes):
+    rep = _sync([_row(5, "", title="Kirkland Signature Fish Oil 1000 mg 400 Softgels")],
+                [_listing("111111111111", title="Kirkland Signature Fish Oil 1000 mg 400 Softgels Bottle")])
+    assert rep["on_ebay_not_in_sheet"][0]["match_kind"] == "close"
+    assert "(row 5, close title match, verify then fill col Q)" in alert_message(rep)
+
+
+def test_orphan_section_is_capped(writes):
+    rep = _sync([], [_listing(f"{900000000000 + i}", title=f"Stray {i}") for i in range(30)])
+    msg = alert_message(rep)
+    assert "On eBay but not in the sheet (30)" in msg
+    assert f"…and {30 - ebay_sync.MAX_REPORT_LINES} more" in msg
 
 
 def test_alert_message_escapes_and_truncates_and_caps(writes):

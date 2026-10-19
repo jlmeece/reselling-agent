@@ -946,6 +946,7 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                             if kind == "exact" else
                             f" — possibly = eBay item {listing['item_id']} (close title match), fill col Q")
         pool[listing["item_id"]]["suggested_row"] = entry["row_num"]
+        pool[listing["item_id"]]["match_kind"] = kind     # alert_message's orphan hint
 
     if to_write and not dry_run:
         _write_units_sold(service, sheet_name, units_col, to_write, report, title_reader,
@@ -1041,7 +1042,8 @@ def alert_message(report: dict) -> str | None:
               if m["severity"] == "hard" and m.get("auto") != "repriced"]
     floor = [m for m in report["margin_breach"] if m["severity"] == "floor"]
     gone = report["active_not_on_ebay"]
-    if not losing and not floor and not gone:
+    orphans = report["on_ebay_not_in_sheet"]
+    if not losing and not floor and not gone and not orphans:
         return None
     msg = ["🛒 <b>eBay sync</b>" + (" (dry run)" if report.get("dry_run") else "")]
     if losing:
@@ -1066,9 +1068,19 @@ def alert_message(report: dict) -> str | None:
         msg += _section(f"\n⚠️ <b>ACTIVE but not on eBay ({len(gone)})</b>", [
             f"• {html.escape(_truncate(g['title']))} — {html.escape(g['reason'])} (row {g['row_num']})"
             for g in gone])
-    extra = len(report["on_ebay_not_in_sheet"])
-    if extra:
-        msg.append(f"\nℹ️ {extra} eBay listing(s) not in the sheet")
+    if orphans:
+        # Live on eBay but no sheet row watches it — nothing hides it when Costco goes OOS.
+        def _oline(o):
+            row = o.get("suggested_row")
+            if row is None:
+                hint = "no matching sheet row, end it or link it by hand"
+            elif o.get("match_kind") == "close":
+                hint = f"row {row}, close title match, verify then fill col Q"
+            else:
+                hint = f"row {row}, blank col Q, fill col Q to link"
+            return f"• {html.escape(_truncate(o['title']))} — eBay {o['item_id']} ({hint})"
+        msg += _section(f"\n🔗 <b>On eBay but not in the sheet ({len(orphans)})</b>",
+                        [_oline(o) for o in orphans])
     return "\n".join(msg)
 
 
