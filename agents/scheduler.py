@@ -2076,6 +2076,75 @@ def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
     return {"status": "ok", "notes": notes}
 
 
+BACKFILL_LOWEST_STATUSES = {"SCORED", "READY", "APPROVED", "ACTIVE"}
+
+
+def run_backfill_lowest(config, COL, service, sheet_name, start_row, end_row,
+                        limit=None, dry_run=False) -> dict:
+    """
+    backfill_lowest mode: re-scrape eBay active comps (title query, unscoped category) for rows in
+    BACKFILL_LOWEST_STATUSES and write ONLY col BF (lowest_active), so ⚡ Competitive works on rows
+    researched before col BF existed. A scrape with no lowest price leaves BF untouched (never
+    blanks a good value); re-runs refresh it. One Chrome page reused for every row. --dry-run
+    prints the plan and opens no browser. Telegram summary at the end (not on dry run).
+    """
+    all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:BF{end_row}")
+    status_i, title_i = col_to_idx(COL["status"]), col_to_idx(COL["title"])
+    cat_i, bf_i = col_to_idx(COL["category"]), col_to_idx(COL["lowest_active"])
+    targets = []
+    for idx, row in enumerate(all_data):
+        if not row or safe_get(row, status_i) not in BACKFILL_LOWEST_STATUSES:
+            continue
+        title = str(safe_get(row, title_i)).strip()
+        if title:
+            targets.append((idx + start_row, title, safe_get(row, cat_i), safe_get(row, bf_i)))
+    total = len(targets)
+    if limit:
+        targets = targets[:limit]
+    if not targets:
+        return {"status": "ok", "notes": "backfill_lowest: no SCORED/READY/APPROVED/ACTIVE rows"}
+
+    if dry_run:
+        for sheet_row, title, category, bf in targets:
+            print(f"  row {sheet_row}: {title[:60]} [{category}] col BF now {bf or '(blank)'}")
+        notes = f"backfill_lowest DRY RUN: would re-scrape {len(targets)} of {total} rows (no writes)"
+        logger.info(notes)
+        return {"status": "ok", "notes": notes}
+    if sys.platform != "win32":
+        return {"status": "ok", "notes": f"backfill_lowest: {total} rows, Chrome scrape skipped (non-Windows)"}
+
+    import random
+    from tools.ebay_research import get_ebay_comps
+    filled, no_comps, errors = 0, 0, 0
+    with make_browser() as page:
+        for n, (sheet_row, title, category, _bf) in enumerate(targets):
+            if n:
+                time.sleep(random.uniform(1, 2))   # eBay rate limit
+            logger.info(f"  [backfill_lowest] row {sheet_row}: {title[:50]}")
+            try:
+                comps = get_ebay_comps(title, category or None, page=page,
+                                       brand=None, model=None, ebay_category_id=None)
+                lowest = comps.get("lowest_active")
+                if lowest is None:
+                    no_comps += 1
+                    continue
+                write_row_partial(service, sheet_name, sheet_row, [(COL["lowest_active"], lowest)])
+                filled += 1
+            except Exception as e:
+                errors += 1
+                logger.warning(f"  [backfill_lowest] row {sheet_row} failed: {e}")
+    summary = (f"⚡ Backfilled cheapest-competitor price: {filled} of {len(targets)} rows "
+               f"({no_comps} no-comps, {errors} errors)")
+    logger.info(summary)
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        _send_telegram(token, chat_id, summary)
+    notes = (f"backfill_lowest: {filled} of {len(targets)} rows filled ({total} eligible), "
+             f"{no_comps} no-comps, {errors} errors")
+    return {"status": "ok", "notes": notes}
+
+
 SAVINGS_ALERT_STATE = os.path.join(_REPO_ROOT, "data", ".savings_alert.json")
 SAVINGS_SEEN_STATE = os.path.join(_REPO_ROOT, "data", ".savings_seen.json")
 
@@ -2618,7 +2687,7 @@ def main():
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
                  "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export", "graveyard-sweep",
-                 "discovery-stats", "apply_prices"],
+                 "discovery-stats", "apply_prices", "backfill_lowest"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -2639,6 +2708,7 @@ def main():
             "export:         branded photos -> host on eBay -> Seller Hub CSV of READY rows (Telegram on change)\n"
             "graveyard-sweep: re-check ~10 un-checked Graveyard items' Costco pages (dead / revive / alive)\n"
             "discovery-stats: print per-category discovery cadence + EXHAUSTED? flag (read-only)\n"
+            "backfill_lowest: re-scrape eBay active comps for SCORED/READY/APPROVED/ACTIVE rows -> col BF only\n"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -2744,6 +2814,10 @@ def main():
             _run_results.update(run_graveyard_sweep(config, COL, service, sheet_name,
                                                     start_row, end_row,
                                                     dry_run=args.dry_run, limit=args.limit))
+        elif args.mode == "backfill_lowest":
+            _run_results.update(run_backfill_lowest(config, COL, service, sheet_name,
+                                                    start_row, end_row,
+                                                    limit=args.limit, dry_run=args.dry_run))
         elif args.mode == "rescore":
             _run_results.update(run_rescore(config, COL, service, sheet_name, start_row, end_row))
         # One alert per run if the Costco price API stopped returning prices (col G would

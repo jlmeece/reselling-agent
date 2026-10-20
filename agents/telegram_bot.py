@@ -3276,11 +3276,13 @@ async def cb_menu_alerts(update, context, arg):
 # tied to the Application) lets the bot post its own completion message
 # instead of relying on that.
 
-_JOB_MODES = ("active", "daily", "research", "discovery", "rotation", "recheck", "rescore", "audit")
+_JOB_MODES = ("active", "daily", "research", "discovery", "rotation", "recheck", "rescore", "audit",
+              "backfill_lowest")
 _JOB_LABELS = {
     "active": "▶️ Active Monitor", "daily": "▶️ Daily Sweep", "research": "▶️ Research",
     "discovery": "▶️ Discovery", "rotation": "▶️ Rotation", "recheck": "▶️ Recheck",
     "rescore": "🔁 Re-score", "audit": "▶️ Audit",
+    "backfill_lowest": "⚡ Backfill competitive prices",
 }
 # refresh-notes intentionally excluded — a one-shot retroactive migration
 # per its own docstring, not a routine action; a tap target here risks an
