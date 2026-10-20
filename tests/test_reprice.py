@@ -178,3 +178,46 @@ def test_log_revise_writes_file_and_run_log(monkeypatch, tmp_path):
     assert runs[0][1]["status"] == "ok" and runs[1][1]["status"] == "error"
     assert "932" in runs[1][1]["errors"]
     assert all(r[2] is False for r in runs)              # every tap gets its own Run Log row
+
+
+# ── break-even + competitive target ──────────────────────────────────────────
+
+from tools.reprice import break_even_price, competitive_target  # noqa: E402
+
+
+def test_break_even_price_nets_zero_or_better():
+    be = break_even_price(100.0, 0.1325, ship=5.0)
+    assert str(be).endswith(".99")
+    assert compute_net(be, 100.0, 0.1325, 5.0) >= 0
+    assert compute_net(be - 1.0, 100.0, 0.1325, 5.0) < 0     # the next .99 down loses money
+
+
+def test_break_even_price_none_when_fees_eat_everything():
+    assert break_even_price(100.0, 0.6, ad_rate=0.5) is None
+    assert break_even_price(None, 0.13) is None
+    assert break_even_price(0, 0.13) is None
+
+
+def test_competitive_target_undercuts_by_a_cent():
+    c = competitive_target(150.00, 100.0, 0.1325)
+    assert c["target"] == 149.99 and c["lowest"] == 150.0
+    assert c["gap"] == -0.01 and c["above_lowest"] is False and c["note"] == ""
+
+
+def test_competitive_target_break_even_floor():
+    be = break_even_price(100.0, 0.1325)
+    c = competitive_target(110.00, 100.0, 0.1325)
+    assert c["target"] == be == c["break_even"]
+    assert c["above_lowest"] is True and c["gap"] == round(be - 110.0, 2)
+    assert "above the cheapest (break-even floor)" in c["note"]
+
+
+def test_competitive_target_no_lowest():
+    c = competitive_target(None, 100.0, 0.1325)
+    assert c["target"] is None and c["note"] == "no live competitors scraped"
+    assert competitive_target("", 100.0, 0.1325)["target"] is None
+
+
+def test_competitive_target_no_break_even():
+    c = competitive_target(150.0, None, 0.1325)
+    assert c["target"] is None and c["note"] == "can't compute break-even"

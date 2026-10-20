@@ -375,7 +375,7 @@ def test_one_tap_go_without_marker_never_writes_be(env, monkeypatch):
     assert env["writes"] == [(4, {"H": 50.99, "P": ""})]
 
 
-def test_product_rows_read_reaches_be():
-    """_price_metrics reads buy_cost (BB); the bot's row read used to stop at BA."""
+def test_product_rows_read_reaches_bf():
+    """_price_metrics reads buy_cost (BB) and competitive pricing reads lowest_active (BF)."""
     import inspect
-    assert ":BE{end}" in inspect.getsource(tb._read_product_rows)
+    assert ":BF{end}" in inspect.getsource(tb._read_product_rows)

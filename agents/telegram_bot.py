@@ -56,8 +56,8 @@ from tools.ebay_sync import (
     fetch_item_price, format_target_summary, revise_fixed_price,
 )
 from tools.reprice import (
-    cancel_keyboard, format_reprice_prompt, get_pending, log_ignore, log_revise, pop_pending,
-    reprice_keyboard,
+    cancel_keyboard, competitive_target, format_reprice_prompt, get_pending, log_ignore,
+    log_revise, pop_pending, reprice_keyboard,
 )
 from tools import sale_schedule as sched
 
@@ -268,6 +268,7 @@ _LOOKUP_PRODUCT_FIELDS = (
     "net_profit", "net_margin", "last_checked", "costco_url", "sale_info",
     "fee_rate", "ebay_fees", "ship_cost", "ad_cost", "ad_budget",
     "regular_price", "demand_score",
+    "lowest_active", "comp_count", "avg_price",
 )
 
 # Matches config/categories.yaml's "business.data_start_row" — the first real
@@ -589,6 +590,21 @@ def _format_last_checked_line(last_checked_raw, now=None):
     return line
 
 
+def _format_comps_line(lowest_raw, count_raw, avg_raw):
+    """'Comps: cheapest $X · N live · avg sold $Y' with only the pieces present; None if all blank."""
+    parts = []
+    lowest = _parse_currency(lowest_raw)
+    if lowest is not None and lowest > 0:
+        parts.append(f"cheapest ${lowest:,.2f}")
+    count = _parse_currency(count_raw)
+    if count is not None:
+        parts.append(f"{int(count)} live")
+    avg = _parse_currency(avg_raw)
+    if avg is not None and avg > 0:
+        parts.append(f"avg sold ${avg:,.2f}")
+    return "Comps: " + " · ".join(parts) if parts else None
+
+
 def format_product_detail(p, now=None):
     """
     Render the single-match /lookup card as plain text — no parse_mode is
@@ -624,6 +640,10 @@ def format_product_detail(p, now=None):
     net_with_ads_line = _format_net_with_ads_line(p.get("net_profit"), p.get("ad_budget"), p.get("ebay_price"))
     if net_with_ads_line:
         lines.append(net_with_ads_line)
+
+    comps_line = _format_comps_line(p.get("lowest_active"), p.get("comp_count"), p.get("avg_price"))
+    if comps_line:
+        lines.append(comps_line)
 
     lines.append(f"Stock: {p.get('stock_status') or '—'}")
     sale_line = _format_sale_line(p.get("sale_info"), now=now)
@@ -1452,7 +1472,7 @@ def _sheet_ctx():
 def _read_product_rows():
     """col_map, service, sheet_name, data_start_row, rows — for screens that need actual row data."""
     col_map, service, sheet_name, start, end = _sheet_ctx()
-    rows = read_sheet(service, f"'{sheet_name}'!A{start}:BE{end}")
+    rows = read_sheet(service, f"'{sheet_name}'!A{start}:BF{end}")
     return col_map, service, sheet_name, start, rows
 
 
@@ -2082,7 +2102,8 @@ def _format_active_line(p):
 def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None):
     rows = []
     if item_id:   # always offer a manual reprice on an ACTIVE listing with a live item ID
-        rows.append([InlineKeyboardButton("💲 Set Price", callback_data=f"reprice:set:{item_id}")])
+        rows.append([InlineKeyboardButton("💲 Set Price", callback_data=f"reprice:set:{item_id}"),
+                     InlineKeyboardButton("⚡ Competitive", callback_data=f"reprice:compete:{item_id}")])
     if reprice_item_id:   # a one-tap reprice prompt is pending for this listing
         rows.append([InlineKeyboardButton("💲 Reprice", callback_data=f"reprice:offer:{reprice_item_id}")])
     if cancel_item_id:    # a scheduled reprice / End is waiting for the sale end
@@ -2520,7 +2541,7 @@ async def cb_reprice_offer(update, context, arg):
 # typed price is re-read against the sheet (row numbers shift when the auditor deletes).
 
 _PRICE_FIELDS = ("status", "title", "costco_cost", "ebay_price", "fee_rate",
-                 "ship_cost", "ad_cost", "buy_cost", "ebay_listing_url")
+                 "ship_cost", "ad_cost", "buy_cost", "ebay_listing_url", "lowest_active")
 
 
 def _price_row_for_item(item_id, rows, col_map, start):
@@ -2650,6 +2671,69 @@ async def _handle_price_input(update, context, text):
                                     reply_markup=_price_confirm_kb(item_id, target))
 
 
+# ── Competitive pricing ($0.01 under the cheapest live competitor, never below break-even) ──
+#
+# Shared by the Review queue (review:compete -> review:compete_go writes H/BE/APPROVED) and
+# ACTIVE listings (reprice:compete -> the manual reprice:go executor, which writes H + BE).
+# col BE = col G keeps the break-even auto-reprice off the price until Costco's cost moves.
+
+_COMPETE_WARN_GAP = 1.50   # target this far above the cheapest (break-even floor bit) = warn
+
+
+def _competitive_for(p, cost):
+    """competitive_target() for a row dict (lowest col BF, fee col AB, ship col AD; no ad)."""
+    return competitive_target(p.get("lowest_active"), cost, _to_rate(p.get("fee_rate")),
+                              _to_float(p.get("ship_cost")) or 0.0)
+
+
+def _competitive_preview(title, comp, net):
+    """HTML preview lines for a competitive price (caller adds the buttons)."""
+    target, lowest = comp["target"], comp["lowest"]
+    net_txt = f", net ${net:.2f}" if net is not None else ""
+    lines = ["⚡ <b>Competitive price</b>", f"<b>{html.escape(title[:80])}</b>",
+             f"List <b>${target:.2f}</b> (cheapest ${lowest:.2f}{net_txt})"]
+    if comp["gap"] is not None and comp["gap"] > _COMPETE_WARN_GAP:
+        lines.append(f"⚠️ ${comp['gap']:.2f} above the cheapest — still list?")
+    return lines
+
+
+def _no_competitive_text(title, comp):
+    return (f"⚡ Can't price <b>{html.escape(title[:80])}</b> competitively: "
+            f"{html.escape(comp['note'])}.")
+
+
+async def cb_reprice_compete(update, context, arg):
+    """ACTIVE listing: preview the competitive price; ✓ goes through the manual reprice:go executor."""
+    item_id = (arg or "").strip()
+    if extract_item_id(item_id) != item_id:
+        await _send_screen(update, "Button data was malformed — nothing changed.",
+                           reply_markup=_home_inline_kb())
+        return
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"reprice:compete sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
+        return
+    p, err = _price_row_for_item(item_id, rows, col_map, start)
+    if err:
+        await _send_screen(update, html.escape(err), reply_markup=_home_inline_kb())
+        return
+    title = p.get("title") or "(untitled)"
+    comp = _competitive_for(p, _cost_basis(p.get("buy_cost"), p.get("costco_cost")))
+    if comp["target"] is None:
+        await _send_screen(update, _no_competitive_text(title, comp), parse_mode="HTML",
+                           reply_markup=_home_inline_kb())
+        return
+    net, _ = _price_metrics(p, comp["target"])
+    lines = _competitive_preview(title, comp, net)
+    cur = _parse_currency(p.get("ebay_price"))
+    if cur:
+        lines.insert(2, f"eBay now: ${cur:.2f}")
+    await _send_screen(update, "\n".join(lines), parse_mode="HTML",
+                       reply_markup=_price_confirm_kb(item_id, comp["target"]))
+
+
 # ── Review queue (spec Part 5) ───────────────────────────────────────────────
 
 def _active_queue_item(context, row_num):
@@ -2673,6 +2757,7 @@ def _review_card_kb(row_num):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Approve", callback_data=f"review:approve:{row_num}"),
          InlineKeyboardButton("⏸️ Pause", callback_data=f"review:pause:{row_num}")],
+        [InlineKeyboardButton("⚡ Competitive", callback_data=f"review:compete:{row_num}")],
         [InlineKeyboardButton("🔍 Flag for review", callback_data=f"review:audit:{row_num}"),
          InlineKeyboardButton("⏭️ Skip", callback_data=f"review:skip:{row_num}")],
         [InlineKeyboardButton("✅ Done", callback_data="menu:dashboard")],
@@ -2793,6 +2878,88 @@ async def cb_review_approve(update, context, arg):
     safe_write_row(service, sheet_name, row_num, [(col_map["status"], "APPROVED")])
     if item is None:
         await _send_screen(update, "✅ Approved.", reply_markup=_home_inline_kb())
+        return
+    context.user_data["queue"]["tally"]["approved"] += 1
+    await _advance_or_finish_review(update, context)
+
+
+def _review_compete_row(row_num):
+    """(col_map, service, sheet_name, row_dict) for a still-SCORED row; ValueError(msg) otherwise."""
+    col_map, service, sheet_name, start, rows = _read_product_rows()
+    fields = _LOOKUP_PRODUCT_FIELDS + ("title",)
+    p = _find_by_row_num(_extract_rows_by_field(rows, col_map, fields, data_start_row=start), row_num)
+    if p is None:
+        raise ValueError("That row is empty now — nothing changed.")
+    if (p.get("status") or "").strip() != "SCORED":
+        raise ValueError(f"This item is no longer SCORED ({p.get('status') or 'blank'}) — nothing changed.")
+    return col_map, service, sheet_name, p
+
+
+async def cb_review_compete(update, context, arg):
+    """Review card: preview the competitive list price; ✓ = review:compete_go."""
+    row_num = int(arg)
+    if _active_queue_item(context, row_num) is None:
+        await _send_screen(update, "This card is out of date — reopen the Review queue.",
+                           reply_markup=_home_inline_kb())
+        return
+    try:
+        col_map, service, sheet_name, p = _review_compete_row(row_num)
+    except ValueError as e:
+        await _send_screen(update, str(e), reply_markup=_review_card_kb(row_num))
+        return
+    except Exception as e:
+        logger.warning(f"review:compete sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_review_card_kb(row_num))
+        return
+    title = p.get("title") or "(untitled)"
+    cost = _to_float(p.get("costco_cost"))
+    comp = _competitive_for(p, cost)
+    if comp["target"] is None:
+        await _send_screen(update, _no_competitive_text(title, comp), parse_mode="HTML",
+                           reply_markup=_review_card_kb(row_num))
+        return
+    target = comp["target"]
+    net = round(compute_net(target, cost, _to_rate(p.get("fee_rate")),
+                            _to_float(p.get("ship_cost")) or 0.0), 2)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"✓ List at ${target:.2f}",
+                              callback_data=f"review:compete_go:{row_num}:{int(round(target * 100))}")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="queue:onepass:review")],
+    ])
+    await _send_screen(update, "\n".join(_competitive_preview(title, comp, net)),
+                       parse_mode="HTML", reply_markup=kb)
+
+
+async def cb_review_compete_go(update, context, arg):
+    """col H = the competitive price, col BE = col G (manual-price guard), status APPROVED."""
+    try:
+        row_s, cents = (arg or "").split(":", 1)
+        row_num, target = int(row_s), int(cents) / 100
+    except ValueError:
+        row_num, target = None, 0
+    if row_num is None or target <= 0:
+        await _send_screen(update, "Button data was malformed — nothing changed.",
+                           reply_markup=_home_inline_kb())
+        return
+    item = _active_queue_item(context, row_num)
+    try:
+        col_map, service, sheet_name, p = _review_compete_row(row_num)
+    except ValueError as e:
+        await _send_screen(update, str(e), reply_markup=_home_inline_kb())
+        return
+    except Exception as e:
+        logger.warning(f"review:compete_go sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG + " Nothing was changed.",
+                           reply_markup=_home_inline_kb())
+        return
+    cost = _to_float(p.get("costco_cost"))
+    pairs = [(col_map["ebay_price"], target)]
+    if col_map.get("manual_cost"):
+        pairs.append((col_map["manual_cost"], cost if cost is not None else ""))
+    pairs.append((col_map["status"], "APPROVED"))
+    safe_write_row(service, sheet_name, row_num, pairs)
+    if item is None:
+        await _send_screen(update, f"✅ Approved at ${target:.2f}.", reply_markup=_home_inline_kb())
         return
     context.user_data["queue"]["tally"]["approved"] += 1
     await _advance_or_finish_review(update, context)
@@ -3508,6 +3675,8 @@ _CALLBACK_ROUTES.update({
     ("review", "pause"): cb_review_pause,
     ("review", "audit"): cb_review_audit,
     ("review", "skip"): cb_review_skip,
+    ("review", "compete"): cb_review_compete,
+    ("review", "compete_go"): cb_review_compete_go,
     ("pause", "oos"): cb_pause_oos,
     ("pause", "margin"): cb_pause_margin,
     ("pause", "demand"): cb_pause_demand,
@@ -3533,6 +3702,7 @@ _CALLBACK_ROUTES.update({
     ("reprice", "ignore"): cb_reprice_ignore,
     ("reprice", "offer"): cb_reprice_offer,
     ("reprice", "set"): cb_reprice_set,
+    ("reprice", "compete"): cb_reprice_compete,
     ("reprice", "setcancel"): cb_reprice_setcancel,
     ("reprice", "sched"): cb_reprice_sched,
     ("reprice", "schedend"): cb_reprice_schedend,

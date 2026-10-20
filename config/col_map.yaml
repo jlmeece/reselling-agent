@@ -79,3 +79,4 @@ columns:
   actual_net:       "BC"  # true net/unit on the last sale — reconciled from eBay's real fee (ebay_sync GetItemTransactions)
   target_price:     "BD"  # MANUAL: type a new eBay price here -> ebay_sync / bot "Apply price changes now" pushes it to eBay, syncs H, clears BD
   manual_cost:      "BE"  # costco_cost (G) snapshot when a manual price was applied; auto-reprice skips the row while G == BE (re-arms when cost moves)
+  lowest_active:    "BF"  # cheapest live competitor price (raw min of the lowest-first active search, research); competitive-pricing floor

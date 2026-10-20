@@ -302,7 +302,7 @@ def test_format_net_with_ads_line_none_when_net_profit_unparseable():
 _COL = {
     "status": "A", "title": "C", "category": "D", "stock_status": "F",
     "costco_cost": "G", "ebay_price": "H", "net_profit": "I", "net_margin": "J",
-    "sold_90d": "K",
+    "sold_90d": "K", "avg_price": "L", "comp_count": "M", "lowest_active": "BF",
     "last_checked": "O", "costco_url": "R", "sale_info": "X",
     "fee_rate": "AB", "ebay_fees": "AC", "ship_cost": "AD", "ad_cost": "AE",
     "ad_budget": "AH", "regular_price": "AW", "demand_score": "B",
@@ -311,7 +311,7 @@ _COL = {
 
 
 def _make_row(**overrides):
-    row = [""] * (col_to_idx("AW") + 1)  # A..AW
+    row = [""] * (col_to_idx("BF") + 1)  # A..BF
     defaults = {
         "A": "ACTIVE", "B": "8.2", "C": "PAMP Suisse 1oz Gold Bar", "D": "Precious Metals",
         "F": "In Stock", "G": "$1998.99", "H": "$2199.00", "I": "$180.50",
@@ -1330,3 +1330,73 @@ def test_monthly_summary_real_fees_label_and_cost_note():
     text = _tb._active_summary_text([_ap()], log)
     assert "💰 Made (90d): $97.19\n" in text and "fees estimated" not in text
     assert "(2 sales without a cost — not counted)" in text
+
+
+# ── competitive pricing (comps line + review:compete_go) ─────────────────────
+
+import asyncio  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+from unittest.mock import AsyncMock  # noqa: E402
+
+
+def test_format_product_detail_comps_line_all_pieces():
+    p = search_products([_make_row(L="$212.50", M="14", BF="179.99")], _COL, "pamp")[0]
+    assert "Comps: cheapest $179.99 · 14 live · avg sold $212.50" in format_product_detail(p)
+
+
+def test_format_product_detail_comps_line_only_present_pieces():
+    p = search_products([_make_row(M="7")], _COL, "pamp")[0]
+    text = format_product_detail(p)
+    assert "Comps: 7 live" in text and "cheapest" not in text and "avg sold" not in text
+
+
+def test_format_product_detail_no_comps_line_when_blank():
+    p = search_products([_make_row()], _COL, "pamp")[0]
+    assert "Comps:" not in format_product_detail(p)
+
+
+_COMPETE_COL = {**_COL, "manual_cost": "BE"}
+
+
+def _compete_env(monkeypatch, status="SCORED"):
+    rows = [_make_row(A=status, BF="2150.00")]
+    writes = []
+    monkeypatch.setattr(_tb, "_read_product_rows",
+                        lambda: (_COMPETE_COL, "svc", "Product Tracker", 4, rows))
+    monkeypatch.setattr(_tb, "safe_write_row",
+                        lambda svc, sheet, row, pairs: writes.append((row, list(pairs))))
+    monkeypatch.setattr(_tb, "_send_screen", AsyncMock())
+    item = {"row_num": 4, "title": "PAMP Suisse 1oz Gold Bar"}
+    ctx = SimpleNamespace(user_data={"queue": {
+        "kind": "review", "items": [item, {"row_num": 5}], "pos": 0,
+        "tally": {"approved": 0, "paused": 0, "audited": 0, "skipped": 0}}}, bot_data={})
+    return writes, ctx
+
+
+def test_review_compete_go_writes_h_be_approved_and_advances(monkeypatch):
+    writes, ctx = _compete_env(monkeypatch)
+    render = AsyncMock()
+    monkeypatch.setattr(_tb, "_render_review_position", render)
+    asyncio.run(_tb.cb_review_compete_go(SimpleNamespace(), ctx, "4:214999"))
+    assert writes == [(4, [("H", 2149.99), ("BE", 1998.99), ("A", "APPROVED")])]
+    assert ctx.user_data["queue"]["tally"]["approved"] == 1
+    assert ctx.user_data["queue"]["pos"] == 1
+    render.assert_awaited_once()
+
+
+def test_review_compete_go_refuses_when_no_longer_scored(monkeypatch):
+    writes, ctx = _compete_env(monkeypatch, status="APPROVED")
+    asyncio.run(_tb.cb_review_compete_go(SimpleNamespace(), ctx, "4:214999"))
+    assert writes == []
+    assert "no longer SCORED" in _tb._send_screen.call_args.args[1]
+
+
+def test_review_compete_preview_shows_target(monkeypatch):
+    writes, ctx = _compete_env(monkeypatch)
+    asyncio.run(_tb.cb_review_compete(SimpleNamespace(), ctx, "4"))
+    assert writes == []
+    text = _tb._send_screen.call_args.args[1]
+    kb = _tb._send_screen.call_args.kwargs["reply_markup"]
+    assert "cheapest $2150.00" in text
+    go = kb.inline_keyboard[0][0]
+    assert go.callback_data.startswith("review:compete_go:4:")

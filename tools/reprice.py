@@ -73,6 +73,61 @@ def restore_margin_price(old_cost, new_cost, ebay_price, fee_rate, ship=0.0, ad_
     return target
 
 
+def break_even_price(cost, fee_rate, ship=0.0, ad_rate=0.0):
+    """
+    eBay price at which net = 0 (same math as compute_net), rounded UP to .99.
+
+    raw = (cost*(1+tax) + 0.30 + ship) / (1 - fee_rate*1.08 - ad_rate)
+
+    None when cost / fee_rate are unparseable, cost <= 0, or fee + ad >= 100%.
+    """
+    try:
+        cost, fee_rate = float(cost), float(fee_rate)
+        ship = float(ship or 0.0)
+        ad_rate = float(ad_rate or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if cost <= 0:
+        return None
+    denom = 1 - fee_rate * EBAY_FEE_TAX_FACTOR - ad_rate
+    if denom <= 0:
+        return None
+    return round_up_99((cost * (1 + COSTCO_TAX_RATE) + EBAY_FEE_FLAT + ship) / denom)
+
+
+def competitive_target(lowest_active, cost, fee_rate, ship=0.0, ad_rate=0.0) -> dict:
+    """
+    Price $0.01 under the cheapest live competitor, never below break-even.
+
+    target = max(break_even, lowest - 0.01). gap = target - lowest (<= 0: undercut/match,
+    > 0: the break-even floor forced the price above the cheapest). Returns
+    {lowest, break_even, target, gap, above_lowest, note}; target is None (with the reason
+    in note) when there is no competitor price or break-even can't be computed.
+    """
+    out = {"lowest": None, "break_even": None, "target": None, "gap": None,
+           "above_lowest": False, "note": ""}
+    try:
+        lowest = float(lowest_active) if lowest_active not in (None, "") else None
+    except (TypeError, ValueError):
+        lowest = None
+    if lowest is None or lowest <= 0:
+        out["note"] = "no live competitors scraped"
+        return out
+    out["lowest"] = round(lowest, 2)
+    be = break_even_price(cost, fee_rate, ship, ad_rate)
+    if be is None:
+        out["note"] = "can't compute break-even"
+        return out
+    out["break_even"] = be
+    undercut = round(lowest - 0.01, 2)
+    target = round(max(be, undercut), 2)
+    gap = round(target - lowest, 2)
+    out.update(target=target, gap=gap, above_lowest=gap > 0)
+    if gap > 0:
+        out["note"] = f"{gap:.2f} above the cheapest (break-even floor)"
+    return out
+
+
 def net_at(price, cost, fee_rate, ship=0.0, ad_rate=0.0) -> float:
     return round(compute_net(price, cost, fee_rate, ship, price * (ad_rate or 0.0)), 2)
 

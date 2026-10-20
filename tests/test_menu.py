@@ -294,7 +294,7 @@ def test_legend_rows_no_old_column_quick_reference():
 
 def test_header_labels_covers_all_57_columns():
     from tools.sheet_formatter import HEADER_LABELS, TOTAL_COLS
-    assert len(HEADER_LABELS) == TOTAL_COLS == 57, (
+    assert len(HEADER_LABELS) == TOTAL_COLS == 58, (
         f"Expected {TOTAL_COLS} labels, got {len(HEADER_LABELS)}"
     )
 
@@ -344,7 +344,7 @@ def test_refresh_header_row_touches_only_row_3():
     reqs = svc.spreadsheets().batchUpdate.call_args.kwargs["body"]["requests"]
     rng = reqs[0]["repeatCell"]["range"]
     assert (rng["startRowIndex"], rng["endRowIndex"]) == (2, 3)
-    assert (rng["startColumnIndex"], rng["endColumnIndex"]) == (48, 57)
+    assert (rng["startColumnIndex"], rng["endColumnIndex"]) == (48, 58)
 
 
 def test_header_labels_visible_cols_unchanged():

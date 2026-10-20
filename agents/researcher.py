@@ -1057,6 +1057,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 f"Community: {comm_summary}\n"
                 f"Sources: {comm_breakdown}"
             )
+            if ebay_data.get("lowest_active") is not None:
+                full_notes += f"\nLowest live competitor: ${ebay_data['lowest_active']:.2f}"
             if intent_seen:
                 full_notes += "\nIntent phrases: " + " | ".join(intent_seen[:3])
             if spot_data and spot_data.get("melt_value"):
@@ -1145,6 +1147,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 updates.append((COL["avg_price"],  ebay_data["avg_sold_price"]))
             if ebay_data.get("active_count") is not None:
                 updates.append((COL["comp_count"], ebay_data["active_count"]))
+            if ebay_data.get("lowest_active") is not None:
+                updates.append((COL["lowest_active"], ebay_data["lowest_active"]))
             if live_price:
                 updates.append((COL["costco_cost"], live_price))
             # Write suggested price to col H (once) and col V (permanent record, never overwrite)

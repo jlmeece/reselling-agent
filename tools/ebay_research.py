@@ -60,6 +60,7 @@ def _build_search_urls(query, sacat=0):
         f"&LH_BIN=1"                          # Buy It Now
         f"&LH_PrefLoc=1"                      # US Only
         f"&LH_FS=1"                           # Free Shipping — keep for active: shows our direct competitors
+        f"&_sop=15"                           # Sort: price + shipping, lowest first (page 1 holds the cheapest)
         f"&_ipg=60&_sacat={sacat}"
     )
     return sold, active
@@ -362,6 +363,7 @@ def get_ebay_comps(product_title, category=None, page=None,
         "sold_range":       None,
         "active_count":     None,
         "median_active":    None,
+        "lowest_active":    None,
         "price_basis":      None,
         "fee_rate":         fee_rate,
         "query_used":       primary_query,
@@ -388,6 +390,11 @@ def get_ebay_comps(product_title, category=None, page=None,
 
         active_count, active_prices_raw = _scrape_ebay_page(pg, active_url, "active")
         result["active_count"] = active_count
+        # Raw (untrimmed) minimum: _filter_outliers drops the bottom 10%, which
+        # would hide the real cheapest competitor.
+        result["lowest_active"] = (
+            round(min(active_prices_raw), 2) if active_prices_raw else None
+        )
 
         active_prices = _filter_outliers(active_prices_raw)
         if active_prices:
@@ -411,7 +418,7 @@ def get_ebay_comps(product_title, category=None, page=None,
             logger.debug(f"  Model query returned {result['sold_90d']} sold — retrying with title query")
             # Reset sold/active fields before fallback run
             for k in ("sold_90d", "median_sold", "avg_sold_price", "sold_range",
-                       "active_count", "median_active", "price_basis"):
+                       "active_count", "median_active", "lowest_active", "price_basis"):
                 result[k] = None
             result["note"] = ""
             pg.wait_for_timeout(800)
