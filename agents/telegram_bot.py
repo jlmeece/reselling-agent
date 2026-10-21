@@ -2042,9 +2042,8 @@ def _format_active_line(p):
 def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None,
                       prev_row_num=None, next_row_num=None):
     rows = []
-    if item_id:   # always offer a manual reprice on an ACTIVE listing with a live item ID
-        rows.append([InlineKeyboardButton("🎚️ Adjust", callback_data=f"reprice:stepper:{item_id}"),
-                     InlineKeyboardButton("⚡ Competitive", callback_data=f"reprice:compete:{item_id}")])
+    if item_id:   # the price editor (⚡ cheapest lives inside it; no ⚡ Competitive on the card)
+        rows.append([InlineKeyboardButton("🎚️ Adjust", callback_data=f"reprice:stepper:{item_id}")])
     if reprice_item_id:   # a one-tap reprice prompt is pending for this listing
         rows.append([InlineKeyboardButton("💲 Reprice", callback_data=f"reprice:offer:{reprice_item_id}")])
     if cancel_item_id:    # a scheduled reprice / End is waiting for the sale end
@@ -2835,9 +2834,12 @@ def _stepper_screen(p, cents, item_id):
     apply_label = (f"✓ Apply ${target:.2f}" if net is None or net >= 0
                    else "⚠️ Apply below break-even")
     kb.append([InlineKeyboardButton(apply_label, callback_data=f"reprice:stepapply:{item_id}:{cents}")])
-    kb.append([InlineKeyboardButton("← prev", callback_data=f"reprice:nav:{item_id}:prev"),
-               InlineKeyboardButton("next →", callback_data=f"reprice:nav:{item_id}:next")])
-    kb.append([InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show")])
+    # The editor is a sub-screen of the item card: back to the card, no prev/next of its own.
+    exits = []
+    if p.get("row_num") is not None:
+        exits.append(InlineKeyboardButton("⬅️ Back to card", callback_data=f"activelist:pick:{p['row_num']}"))
+    exits.append(InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"))
+    kb.append(exits)
     return "\n".join(lines), InlineKeyboardMarkup(kb)
 
 
@@ -2926,6 +2928,35 @@ async def cb_reprice_cheapest(update, context, arg):
     await _stepper_render(query, p, int(round(comp["target"] * 100)), item_id)
 
 
+def _after_apply_kb(item_id):
+    """After a successful ✓ Apply: Next item → (the next live listing's CARD), Back to card,
+    Active List. Next/Back are dropped when the row can't be resolved (sheet down, row moved)."""
+    row_num, next_row = None, None
+    try:
+        sheet = _read_product_rows()
+        col_map, _service, _sheet_name, start, rows = sheet
+        p, _err = _price_row_for_item(item_id, rows, col_map, start)
+        if p is not None:
+            row_num = p["row_num"]
+            ids = [r for r, _iid, _t in _active_stepper_order(sheet)]
+            try:
+                i = ids.index(row_num)
+            except ValueError:
+                i = -1
+            next_row = ids[i + 1] if 0 <= i < len(ids) - 1 else None
+    except Exception as e:
+        logger.warning(f"stepapply: next-item lookup failed: {e}")
+    kb = []
+    if next_row is not None:
+        kb.append([InlineKeyboardButton("Next item →", callback_data=f"activelist:pick:{next_row}")])
+    last = []
+    if row_num is not None:
+        last.append(InlineKeyboardButton("⬅️ Back to card", callback_data=f"activelist:pick:{row_num}"))
+    last.append(InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"))
+    kb.append(last)
+    return InlineKeyboardMarkup(kb)
+
+
 async def cb_reprice_stepapply(update, context, arg):
     """✓ Apply: the only stepper tap that writes (eBay + col H/BE/P via the manual executor)."""
     query = update.callback_query
@@ -2943,16 +2974,15 @@ async def cb_reprice_stepapply(update, context, arg):
         await query.edit_message_text(f"⏳ Repricing eBay item {item_id} to ${target:.2f}…")
         text, kb = await _reprice_apply(item_id, target, manual=True)
         if kb is None:
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎚️ Adjust again", callback_data=f"reprice:stepper:{item_id}"),
-                 InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show")]])
+            kb = _after_apply_kb(item_id)
         await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
     finally:
         inflight.discard(item_id)
 
 
 async def cb_reprice_nav(update, context, arg):
-    """← prev / next →: open the stepper on the adjacent ACTIVE listing (Active List order)."""
+    """← prev / next →: open the stepper on the adjacent ACTIVE listing (Active List order).
+    No longer rendered (the editor is a card sub-screen); kept for buttons on old messages."""
     query = update.callback_query
     item_id, _, direction = (arg or "").rpartition(":")
     if not item_id or extract_item_id(item_id) != item_id or direction not in ("prev", "next"):

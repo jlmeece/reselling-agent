@@ -56,7 +56,7 @@ def test_parse_step_arg_rejects_bad(arg):
 # ── _stepper_screen ──────────────────────────────────────────────────────────
 
 def test_screen_shows_reference_lines_and_buttons():
-    text, kb = tb._stepper_screen(_p(), 4999, ITEM_ID)
+    text, kb = tb._stepper_screen(dict(_p(), row_num=7), 4999, ITEM_ID)
     assert "Energy Shot" in text and "New price: <b>$49.99</b>" in text and "eBay now: $49.99" in text
     assert "⚡ cheapest competitor: $45.00" in text
     assert "🛑 break-even: $" in text and "Net: $" in text and "% margin" in text
@@ -68,9 +68,16 @@ def test_screen_shows_reference_lines_and_buttons():
     assert any(t.startswith("⚡ cheapest: $") for t in _labels(kb))
     assert "✓ Apply $49.99" in _labels(kb)
     assert f"reprice:stepapply:{ITEM_ID}:4999" in _datas(kb)
-    assert f"reprice:nav:{ITEM_ID}:prev" in _datas(kb) and f"reprice:nav:{ITEM_ID}:next" in _datas(kb)
+    assert not any(d.startswith("reprice:nav:") for d in _datas(kb))      # editor has no prev/next
+    assert "activelist:pick:7" in _datas(kb) and "⬅️ Back to card" in _labels(kb)
     assert "activelist:show" in _datas(kb)
     assert all(len(d.encode()) <= 64 for d in _datas(kb))
+
+
+def test_screen_without_row_num_has_no_back_to_card():
+    _text, kb = tb._stepper_screen(_p(), 4999, ITEM_ID)
+    assert not any(d.startswith("activelist:pick:") for d in _datas(kb))
+    assert "activelist:show" in _datas(kb)
 
 
 def test_screen_below_break_even_warns_and_relabels_apply():
@@ -259,7 +266,39 @@ def test_active_card_has_adjust_not_set_price():
     kb = tb._active_action_kb(7, item_id=ITEM_ID)
     assert "🎚️ Adjust" in _labels(kb) and f"reprice:stepper:{ITEM_ID}" in _datas(kb)
     assert not any(d.startswith("reprice:set:") for d in _datas(kb))
-    assert f"reprice:compete:{ITEM_ID}" in _datas(kb)
+    assert not any(d.startswith("reprice:compete:") for d in _datas(kb))   # ⚡ lives in the editor
+
+
+def _apply_ok(monkeypatch):
+    monkeypatch.setattr(tb, "_reprice_apply", AsyncMock(return_value=("✓ Repriced", None)))
+
+
+def test_stepapply_offers_next_item_card_for_a_middle_item(sheet, monkeypatch):
+    sheet["rows"] = [_sheet_row("ACTIVE", "First", "9.00", f"https://www.ebay.com/itm/{ITEM_2}"),   # row 4
+                     _sheet_row("ACTIVE", "Middle", "5.00", URL),                                    # row 5
+                     _sheet_row("ACTIVE", "Last", "1.00", f"https://www.ebay.com/itm/{ITEM_3}")]     # row 6
+    _apply_ok(monkeypatch)
+    kb = _tap(tb.cb_reprice_stepapply, f"{ITEM_ID}:4749").edit_message_text.call_args.kwargs["reply_markup"]
+    assert "Next item →" in _labels(kb) and "activelist:pick:6" in _datas(kb)
+    assert "activelist:pick:5" in _datas(kb)                 # ⬅️ Back to card
+    assert "activelist:show" in _datas(kb)
+    assert not any(d.startswith("reprice:stepper:") for d in _datas(kb))
+
+
+def test_stepapply_last_item_has_no_next(sheet, monkeypatch):
+    sheet["rows"] = [_sheet_row("ACTIVE", "First", "9.00", f"https://www.ebay.com/itm/{ITEM_2}"),
+                     _sheet_row("ACTIVE", "Last", "1.00", URL)]
+    _apply_ok(monkeypatch)
+    kb = _tap(tb.cb_reprice_stepapply, f"{ITEM_ID}:4749").edit_message_text.call_args.kwargs["reply_markup"]
+    assert "Next item →" not in _labels(kb)
+    assert "activelist:pick:5" in _datas(kb) and "activelist:show" in _datas(kb)
+
+
+def test_stepapply_sheet_down_still_offers_active_list(sheet, monkeypatch):
+    _apply_ok(monkeypatch)
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (_ for _ in ()).throw(RuntimeError("down")))
+    kb = _tap(tb.cb_reprice_stepapply, f"{ITEM_ID}:4749").edit_message_text.call_args.kwargs["reply_markup"]
+    assert _datas(kb) == ["activelist:show"]
 
 
 def test_stepper_routes_registered():
