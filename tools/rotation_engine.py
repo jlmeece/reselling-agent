@@ -262,7 +262,7 @@ def run_rotation_check(
                         f"No PENDING/WATCH replacement available yet."
                     )
                 write_row_partial(service, sheet_name, c["row"], [
-                    (col_map["notes"], note),
+                    (col_map["tier_summary"], note),
                 ])
                 logger.info(f"  Rotation candidate: {c['title'][:50]} (score: {c['perf_score']})")
 

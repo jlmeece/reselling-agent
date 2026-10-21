@@ -83,7 +83,7 @@ Replace all literal newlines with a single space inside the HTML string."""
 def generate_listing_copy(products_batch):
     """
     Sends up to 5 products to Claude in one API call with prompt caching.
-    products_batch: list of dicts with keys: title, category, cost, sell_price, site_url, discount_code
+    products_batch: list of dicts with keys: title, category, cost, sell_price
     Returns: list of dicts with listing copy fields per product.
     """
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))

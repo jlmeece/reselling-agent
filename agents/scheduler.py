@@ -344,6 +344,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
     checked = 0
     auto_end_oos = (business.get("ebay_sync") or {}).get("auto_end_oos", True)
     oos_handled = []        # listings hidden (qty 0) / found already off on eBay this run
+    no_costco_url = []      # live rows skipped because col R has no Costco URL
     stop_auto_hide = False  # token rejected -> don't hit the same auth error on every OOS row
 
     # Which item ids are really live on eBay (one ActiveList call). None = eBay unreachable ->
@@ -410,6 +411,13 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             demand      = safe_get(row, col_to_idx(COL["demand_score"]))
 
             if not costco_url.startswith("http"):
+                # Nothing to scrape -> no stock / cost / OOS-hide check at all. A pre-listing
+                # APPROVED/READY row can wait; a live listing must not be skipped silently.
+                if status == "ACTIVE" or live_other:
+                    no_costco_url.append({"title": title, "row": sheet_row, "status": status,
+                                          "item_id": extract_item_id(ebay_url)})
+                    logger.warning(f"  Live listing with no Costco URL (col R) — not monitored: "
+                                   f"{title[:50]} (row {sheet_row})")
                 continue
 
             logger.info(f"Active check: {title[:50]}...")
@@ -653,6 +661,16 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             time.sleep(2)
 
     logger.info(f"Active monitor complete. Checked: {checked} | Urgent: {len(urgent_items)}")
+
+    if no_costco_url:
+        lines = [f"⚠️ <b>Live listing(s) NOT monitored — no Costco URL in col R "
+                 f"({len(no_costco_url)})</b>"]
+        lines += [f"• {html.escape(a['title'][:40])} (row {a['row']}, {html.escape(a['status'] or 'blank status')}"
+                  + (f", eBay {a['item_id']}" if a["item_id"] else "") + ")"
+                  for a in no_costco_url]
+        lines.append("No stock / cost / out-of-stock check runs for these — paste the Costco "
+                     "product URL into col R.")
+        _notify("\n".join(lines))
 
     if oos_handled:
         tag = {"hidden": "", "ended_by_ebay": " ⚠️ eBay ENDED it (not GTC / Out of Stock off) — relist on restock",
@@ -1004,6 +1022,40 @@ def run_apply_scheduled(config, COL, service, sheet_name, start_row, end_row, no
 
 # ── Mode: DAILY sweep (1x/day) ────────────────────────────────────────────────
 
+def daily_status_message(ready, oos_recovered, margin_recovered, re_eval, stale_scored,
+                         max_lines=10):
+    """Telegram HTML listing every status the daily sweep changed (it used to go by email
+    only), or None when nothing moved. Pure — no I/O."""
+    def _items(entries):
+        out = [f"• {html.escape(str(e['title'])[:45])} (row {e['row']})" for e in entries[:max_lines]]
+        if len(entries) > max_lines:
+            out.append(f"…and {len(entries) - max_lines} more")
+        return out
+
+    sections = [
+        ("✅ APPROVED → READY", ready),
+        ("📦 PAUSED_OOS → restocked", oos_recovered),
+        ("📈 PAUSED_MARGIN → WATCH (margin recovered)", margin_recovered),
+        ("🔁 PAUSED_SEASONAL/DEMAND → PENDING (re-eval date)", re_eval),
+        ("🕰 SCORED → PENDING (stale)", stale_scored),
+    ]
+    lines = []
+    for header, entries in sections:
+        if not entries:
+            continue
+        lines.append(f"\n<b>{header} ({len(entries)})</b>")
+        if header.startswith("📦"):
+            lines += [f"• {html.escape(str(e['title'])[:45])} (row {e['row']}) → {e.get('to') or 'WATCH'}"
+                      for e in entries[:max_lines]]
+            if len(entries) > max_lines:
+                lines.append(f"…and {len(entries) - max_lines} more")
+        else:
+            lines += _items(entries)
+    if not lines:
+        return None
+    return "🧹 <b>Daily sweep — status changes</b>" + "\n".join([""] + lines)
+
+
 def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     """
     Handles APPROVED, PAUSED_OOS, and PAUSED_MARGIN rows once per day:
@@ -1081,7 +1133,7 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                 (COL["re_eval_date"], ""),
                 (COL["tier_summary"],       f"Re-eval date reached ({re_eval_raw}) — returned to PENDING for re-research"),
             ])
-            re_eval_promoted.append({"title": title, "row": sheet_row})
+            re_eval_promoted.append({"title": title, "row": sheet_row, "from": status})
             logger.info(f"  {status} -> PENDING (re_eval_date reached): {title[:50]}")
 
     # ── Pass 1b: stale SCORED demotion (no browser needed) ───────────────────
@@ -1155,12 +1207,9 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                         logger.info(f"  APPROVED held — OOS")
                     else:
                         if not seo_title:
-                            cat_config = categories.get(category, {})
                             products_need_copy.append({
                                 "title": title, "category": category,
                                 "cost": costco_cost, "sell_price": ebay_price,
-                                "site_url": cat_config.get("site_url", ""),
-                                "discount_code": business["discount_code"],
                             })
                             copy_row_map.append((sheet_row, title))
                             updates.append((COL["tier_summary"], "Stock OK — generating copy, will promote to READY"))
@@ -1191,13 +1240,13 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                         if new_st:
                             updates.append((COL["status"], new_st))
                             sched.pop_oos_hidden(oos_iid)
-                            oos_recovered.append({"title": title, "row": sheet_row})
+                            oos_recovered.append({"title": title, "row": sheet_row, "to": new_st})
                             logger.info(f"  PAUSED_OOS -> {new_st} (restocked, {kind})")
                         else:
                             logger.info(f"  PAUSED_OOS held — {notes}")
                     elif reason_code == "restock":
                         updates.append((COL["status"], "WATCH"))
-                        oos_recovered.append({"title": title, "row": sheet_row})
+                        oos_recovered.append({"title": title, "row": sheet_row, "to": "WATCH"})
                         logger.info(f"  PAUSED_OOS -> WATCH (restocked)")
                     updates.append((COL["tier_summary"], notes))
 
@@ -1290,6 +1339,10 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
             ("Stale SCORED -> PENDING",     len(stale_scored),     "#ff9500"),
             ("Newly paused",                len(newly_paused),     "#ff9500"),
         ]
+        tg = daily_status_message(ready_items, oos_recovered, margin_recovered,
+                                  re_eval_promoted, stale_scored)
+        if tg:
+            _notify(tg)
         send_routine_alert(
             subject="Daily sweep complete",
             summary_rows=summary_rows,
@@ -2579,7 +2632,10 @@ def run_ebay_sync_mode(config, COL, service, sheet_name, start_row, end_row, dry
     result = ebay_sync.run_ebay_sync(config, COL, service, sheet_name, start_row,
                                      end_row, dry_run=dry_run)
     messages = [m for m in (result.pop("alert", None), result.pop("digest", None)) if m]
-    if messages:
+    if messages and dry_run:          # --dry-run is read-only: print, never send
+        for m in messages:
+            print(f"[dry-run] Telegram (not sent):\n{m}\n")
+    elif messages:
         token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
         if token and chat_id:
@@ -2601,7 +2657,9 @@ def run_apply_prices_mode(config, COL, service, sheet_name, start_row, end_row, 
         service, COL, sheet_name, start_row, end_row, dry_run=dry_run,
         warn_jump_pct=float(cfg.get("target_warn_jump_pct", ebay_sync.TARGET_WARN_JUMP_PCT)))
     text = ebay_sync.format_target_summary(report)
-    if text:
+    if text and dry_run:              # --dry-run is read-only: print, never send
+        print(f"[dry-run] Telegram (not sent):\n{text}\n")
+    elif text:
         token   = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
         if token and chat_id:
@@ -3023,6 +3081,8 @@ def main():
         for _miss in (price_miss_message(), inventory_miss_message()):
             if _miss:
                 logger.error(_miss)
+                if args.dry_run:
+                    continue
                 _tok, _chat = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
                 if _tok and _chat:
                     _send_telegram(_tok, _chat, _miss)
@@ -3037,11 +3097,16 @@ def main():
         raise
     finally:
         _release_lock()
-        log_run_end(args.mode, _run_start, _run_results, service)
+        # --dry-run is read-only: no Run Log row (sheet or run_history.json) and no heartbeat
+        # ping (it would tell healthchecks.io the real scheduled run happened)
+        if args.dry_run:
+            logger.info(f"Scheduler [{args.mode}] dry run — Run Log row and heartbeat skipped")
+        else:
+            log_run_end(args.mode, _run_start, _run_results, service)
         # Heartbeat ping — tells healthchecks.io this run completed successfully
         _hc_key = f"HEALTHCHECK_URL_{args.mode.upper().replace('-', '_')}"
         _hc_url = os.getenv(_hc_key)
-        if _hc_url and _run_results["status"] == "ok":
+        if _hc_url and _run_results["status"] == "ok" and not args.dry_run:
             try:
                 import urllib.request
                 urllib.request.urlopen(_hc_url, timeout=5)

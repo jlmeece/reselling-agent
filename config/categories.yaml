@@ -2,7 +2,6 @@
 # Secrets (API keys, passwords) live in .env only.
 
 business:
-  discount_code: "SAVE10"
   batch_size: 3                    # products per Claude API call (3 × ~2500 tokens fits in 8192 max_tokens)
   price_change_threshold: 0.50     # USD — flag if price moves more than this
   min_margin_threshold: 0.10       # 10% — below this triggers PAUSED_MARGIN
@@ -205,7 +204,6 @@ categories:
     fee_rate: 0.04   # eBay bullion category 3229: ~1.35% FVF + ~2.7% payment processing ≈ 4% total (verify with your eBay account)
     ad_rate: 0.0     # Promoted Listings rate (0 = no ads); change to e.g. 0.02 to budget 2% of sale price
     fulfillment_risk: medium
-    site_url: "coming-soon.com/precious-metals"
     max_active: 10          # small — purchase limits mean low unit volume
     max_discovery: 30       # hard cap: covers gold bars + silver bars + gold coins (~25 real products)
     capacity_headroom: 2
@@ -285,7 +283,6 @@ categories:
     fee_rate: 0.15
     ad_rate: 0.0
     fulfillment_risk: low
-    site_url: "coming-soon.com/jewelry"
     max_active: 30
     capacity_headroom: 3
     rotation_threshold: 4.0
@@ -346,7 +343,6 @@ categories:
     fee_rate: 0.115
     ad_rate: 0.0
     fulfillment_risk: high
-    site_url: "coming-soon.com/outdoor"
     max_active: 15
     capacity_headroom: 2
     rotation_threshold: 4.0
@@ -391,7 +387,6 @@ categories:
     fee_rate: 0.13
     ad_rate: 0.0
     fulfillment_risk: low
-    site_url: "coming-soon.com/watches"
     max_active: 20
     capacity_headroom: 3
     rotation_threshold: 4.0
@@ -430,7 +425,6 @@ categories:
     fee_rate: 0.1325
     ad_rate: 0.0
     fulfillment_risk: low
-    site_url: "coming-soon.com/pharmacy"
     max_active: 20
     max_discovery: 50
     capacity_headroom: 3
@@ -495,7 +489,6 @@ categories:
     fee_rate: 0.1325   # eBay FVF for small kitchen appliances (was 0.1255 — understated; verified Oct 2026 vs real sale)
     ad_rate: 0.0
     fulfillment_risk: medium
-    site_url: "coming-soon.com/appliances"
     max_active: 20
     max_discovery: 50
     capacity_headroom: 3
@@ -562,7 +555,6 @@ categories:
   Toys:
     fee_rate: 0.1325
     ad_rate: 0.0
-    site_url: "coming-soon.com/toys"
     research_skill: "skills/research_toys.py"
     seasonal_peak_months: [10, 11, 12]
     notes: "Future category — not yet active"

@@ -710,3 +710,30 @@ def test_blank_fee_with_no_category_rate_stays_blank(harness):
     calls = harness([_grand_leisure_row()], _scrape(2799.99, False), live_ids={"860049380044"})
     _, w = _written(calls)
     assert COL["fee_rate"] not in w
+
+
+# ── live row without a Costco URL is never skipped silently (audit 10/21) ───────────────────
+
+def _no_url_row(status="ACTIVE"):
+    return _row(status=status, title="Mystery Patio Set", category="Outdoor Furniture",
+                ebay_listing_url="https://www.ebay.com/itm/860049380099", costco_url="",
+                costco_cost="100", ebay_price="200", fee_rate="0.115")
+
+
+def test_live_row_without_costco_url_sends_a_notice(harness):
+    calls = harness([_no_url_row()], _scrape(100.0, False), live_ids={"860049380099"})
+    assert calls["writes"] == []
+    (text,) = calls["notify"]
+    assert "NOT monitored — no Costco URL in col R (1)" in text
+    assert "Mystery Patio Set (row 4, ACTIVE, eBay 860049380099)" in text
+
+
+def test_live_non_active_row_without_costco_url_also_notifies(harness):
+    calls = harness([_no_url_row("AUDIT_REVIEW")], _scrape(100.0, False), live_ids={"860049380099"})
+    assert len(calls["notify"]) == 1 and "AUDIT_REVIEW" in calls["notify"][0]
+
+
+def test_approved_row_without_costco_url_stays_quiet(harness):
+    row = _row(status="APPROVED", title="Pre-listing", costco_url="")
+    calls = harness([row], _scrape(100.0, False), live_ids=set())
+    assert calls["notify"] == []

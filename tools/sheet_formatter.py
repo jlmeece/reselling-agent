@@ -89,7 +89,7 @@ HEADER_LABELS = [
     "FEE RATE",        # AB 27
     "eBay FEES",       # AC 28
     "SHIP COST $",     # AD 29
-    "FULFILLMENT",     # AE 30
+    "AD COST",         # AE 30 — col_map ad_cost (=H*ad_rate)
     "TAX EST.",        # AF 31
     "SITE PROFIT",     # AG 32
     "AD BUDGET",       # AH 33
@@ -798,7 +798,7 @@ def _build_legend_rows():
         ("F", "STOCK",         "In Stock / Available (2/day limit) / OUT OF STOCK.",                     ""),
         ("G", "COST $",        "What you pay at Costco.",                                                ""),
         ("H", "eBay PRICE",    "Your eBay listing price. Agent sets once; edit freely.",                 ""),
-        ("I", "NET PROFIT",    "eBay Price − Cost − Fees − Shipping.",                                   "formula"),
+        ("I", "NET PROFIT",    "formula: H-G-AC-AD-AE-AF = eBay Price − Cost − eBay Fees − Shipping − Ad Cost − Costco Tax. Blank until eBay Price is set.", "formula"),
         ("J", "MARGIN",        "Net Profit / eBay Price. Target ≥ 10%.",                                 "formula"),
         ("K", "SOLD 90d",      "eBay sold listings in the last 90 days.",                                ""),
         ("L", "AVG eBay $",    "Average eBay sold price across comps.",                                  ""),
@@ -831,9 +831,9 @@ def _build_legend_rows():
     hidden_cols = [
         ("AA", "SKU",          "Costco product SKU."),
         ("AB", "FEE RATE",     "eBay fee rate applied to this product (default 13.25%)."),
-        ("AC", "eBay FEES",    "formula: eBay Price × Fee Rate."),
+        ("AC", "eBay FEES",    "formula: eBay Price × Fee Rate × 1.08 + $0.30 (FVF incl. buyer tax + per-order fee)."),
         ("AD", "SHIP COST $",  "Shipping cost in dollars (raw value behind the Y badge)."),
-        ("AE", "FULFILLMENT",  "Fulfillment cost if applicable."),
+        ("AE", "AD COST",      "formula: eBay Price × category ad rate (0 until ads are on)."),
         ("AF", "TAX EST.",     "formula: Costco Cost × 8.25%."),
         ("AG", "SITE PROFIT",  "formula: eBay Price × 0.90 − Cost."),
         ("AH", "AD BUDGET",    "formula: Net Profit × 15%."),

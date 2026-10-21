@@ -56,3 +56,14 @@ def test_product_lines_exclude_site_url_and_discount_code(monkeypatch):
     assert "discount_code" not in user_msg.lower()
     assert "SITE URL" not in user_msg
     assert "DISCOUNT CODE" not in user_msg
+
+
+def test_config_has_no_off_ebay_redirect():
+    """The old "buy direct at coming-soon.com with SAVE10" box got listings hidden (policy
+    21920397); its config is gone so nothing can bring it back."""
+    import os
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "config", "categories.yaml")
+    text = open(path, encoding="utf-8").read()
+    assert "coming-soon" not in text and "SAVE10" not in text
+    assert "discount_code" not in text and "site_url" not in text

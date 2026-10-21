@@ -1506,6 +1506,23 @@ def mirror_live_prices(report: dict, service, COL, sheet_name: str, *, skip_ids=
     return todo
 
 
+def format_mirror_summary(results: list[dict]) -> str | None:
+    """Telegram HTML block for col H prices the mirror overwrote (or would, on a dry run), or
+    None. A hand edit to col H is replaced by eBay's price, so it must never be silent."""
+    done = [r for r in results or [] if r.get("outcome") in ("mirrored", "dry_run")]
+    if not done:
+        return None
+
+    def _line(r):
+        old = f"${r['old_price']:.2f}" if r.get("old_price") is not None else "blank"
+        return (f"• {html.escape(_truncate(r['title']))} — {old} → ${r['new_price']:.2f} "
+                f"(row {r['row_num']})")
+    lines = _section(f"\n✏️ <b>Col H set to eBay's live price ({len(done)})</b>",
+                     [_line(r) for r in done])
+    lines.append("To change a live price from the sheet, use col BD (target price), not col H.")
+    return "\n".join(lines)
+
+
 # ── Auto-reprice hard breaches to break-even ──────────────────────────────────
 #
 # The ONE eBay write that runs without a tap (Jay's call, 2026-10-05). Guards: ACTIVE rows
@@ -2155,7 +2172,8 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         logger.exception(f"ebay_sync: col H mirror failed: {e}")
 
     base_alert = alert_message(report)
-    extras = [b for b in (target_summary, auto_summary) if b]
+    mirror_summary = format_mirror_summary(report.get("h_mirror"))
+    extras = [b for b in (target_summary, auto_summary, mirror_summary) if b]
     if base_alert and extras:
         combined_alert = "\n".join([base_alert] + extras)
     elif extras:

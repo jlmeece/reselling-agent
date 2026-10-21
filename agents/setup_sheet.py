@@ -153,25 +153,9 @@ def _delete_legend_tab(service, spreadsheet_id):
         logger.warning(f"Could not check/remove Legend tab: {e}")
 
 
-def _write_legend_tab(service, spreadsheet_id):
-    """
-    Creates (or overwrites) a 'Legend' tab explaining every status value,
-    column formula, and scoring threshold used by the agent.
-    Safe to re-run — always overwrites.
-    """
-    # Ensure the Legend tab exists
-    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    existing_titles = {s["properties"]["title"] for s in meta["sheets"]}
-    if "Legend" not in existing_titles:
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": [{"addSheet": {"properties": {"title": "Legend"}}}]},
-        ).execute()
-        logger.info("Created 'Legend' tab.")
-    else:
-        logger.info("'Legend' tab already exists — overwriting.")
-
-    rows = [
+def legend_rows():
+    """Legend tab rows (status values, formulas, key columns). Pure — no I/O."""
+    return [
         ["WAT Reselling Agent — Legend", "", ""],
         ["", "", ""],
         ["STATUS VALUES", "Meaning", "Your next action"],
@@ -193,11 +177,11 @@ def _write_legend_tab(service, spreadsheet_id):
         ["Tier 3",  "< 3.0",           "Skip — low demand or margin too thin"],
         ["", "", ""],
         ["FORMULA COLUMNS (do not overwrite)", "Formula", "What it shows"],
-        ["I  (net_profit)",    "=H-G-AC-AD-AE",        "eBay price minus all costs"],
+        ["I  (net_profit)",    '=IF(H<>"",H-G-AC-AD-AE-AF,"")', "eBay price minus all costs (fees, ship, ads, Costco tax); blank until H is set"],
         ["J  (net_margin)",    "=IF(H>0,I/H,0)",        "Net profit as % of sale price"],
         ["N  (comp_sat)",      "=IFERROR(M/MAX(K,1),\"\")","Active listings ÷ 90-day sold"],
         ["Z  (total_cost)",    "=IFERROR(G+AD,G)",      "Costco cost + shipping"],
-        ["AC (ebay_fees)",     "=H*AB",                  "eBay fees (fee_rate × price)"],
+        ["AC (ebay_fees)",     "=H*AB*1.08+0.30",        "eBay fees (FVF incl. buyer tax + $0.30/order)"],
         ["AF (tax_est)",       "=G*0.0825",              "Estimated Costco tax"],
         ["AG (site_profit)",   "=H*0.90-G",             "Gross margin at 90% of price"],
         ["AH (profit reserve)", "=I*0.15",               "15% of net profit held as reserve (not a real ad spend)"],
@@ -205,9 +189,30 @@ def _write_legend_tab(service, spreadsheet_id):
         ["KEY COLUMNS", "Column", "Notes"],
         ["AB  fee_rate",       "AB", "eBay fee rate — default 0.1325 (13.25%)"],
         ["AD  ship_cost",      "AD", "Costco shipping cost (0 if free shipping)"],
-        ["AE  fulfillment",    "AE", "Fulfillment cost (manual entry, usually 0 for dropship)"],
+        ["AE  ad_cost",        "AE", "Ad spend =H*ad_rate (0 until ads are on per category)"],
         ["AV  full_notes",     "AV", "Full research narrative — hidden, view in formula bar"],
     ]
+
+
+def _write_legend_tab(service, spreadsheet_id):
+    """
+    Creates (or overwrites) a 'Legend' tab explaining every status value,
+    column formula, and scoring threshold used by the agent.
+    Safe to re-run — always overwrites.
+    """
+    # Ensure the Legend tab exists
+    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    existing_titles = {s["properties"]["title"] for s in meta["sheets"]}
+    if "Legend" not in existing_titles:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": "Legend"}}}]},
+        ).execute()
+        logger.info("Created 'Legend' tab.")
+    else:
+        logger.info("'Legend' tab already exists — overwriting.")
+
+    rows = legend_rows()
 
     data = [{"range": "Legend!A1", "values": rows}]
     service.spreadsheets().values().batchUpdate(

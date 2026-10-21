@@ -109,6 +109,19 @@ def _live_listing(url) -> bool:
     return is_live_listing(url)
 
 
+def _current_title(service, sheet_name, COL, sheet_row) -> str | None:
+    """The title in sheet_row right now (one cell), or None when it can't be read. Checked
+    just before each delete: a row number from the start-of-run read can point at a different
+    product if anything (the bot, another run) inserted or deleted rows since."""
+    col = COL["title"]
+    try:
+        raw = read_sheet(service, f"'{sheet_name}'!{col}{sheet_row}:{col}{sheet_row}")
+    except Exception as e:
+        logger.error(f"  Could not re-read the title of row {sheet_row}: {e}")
+        return None
+    return str(raw[0][0]).strip() if raw and raw[0] else ""
+
+
 def _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes=""):
     """First matching auto-remove reason for a non-protected row, or None.
     Order matters: it is an if/elif chain, so a row claimed by an earlier rule
@@ -166,12 +179,19 @@ def _fmt_line(product_dict: dict, reason: str) -> str:
     return f"• {title} — {reason_txt}"
 
 
-def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=True):
-    """Pure string-builder for the audit Telegram message — no I/O, easy to unit test."""
+def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=True,
+                         not_deleted=()):
+    """Pure string-builder for the audit Telegram message — no I/O, easy to unit test.
+    not_deleted: [(sheet_row, product_dict, why)] removals that were NOT carried out (row moved
+    since the read, or the sheet lookup failed) — listed so a skipped delete is never silent."""
     lines = [
         f"🧹 <b>Audit Complete — {run_date}</b>",
-        f"Auto-removed: {len(to_remove)} rows",
+        f"Auto-removed: {len(to_remove) - len(not_deleted)} rows",
     ]
+    if not_deleted:
+        lines.append(f"⚠️ Not deleted ({len(not_deleted)}) — already in the Graveyard tab, "
+                     "check the sheet:")
+        lines += [_fmt_line(p, why) for _, p, why in list(not_deleted)[:8]]
     lines += [_fmt_line(p, r) for _, p, r in to_remove[:8]]
     if len(to_remove) > 8:
         lines.append(f"…and {len(to_remove) - 8} more")
@@ -340,6 +360,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         write_to_graveyard(service, graveyard_rows)
 
     # ── Delete rows in REVERSE order (highest row number first) ──────────────
+    not_deleted = []    # (sheet_row, product_dict, why) — reported in the Telegram summary
     if to_remove:
         spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
         try:
@@ -352,11 +373,24 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
                 if s["properties"]["title"] == sheet_name
             )
         except Exception as e:
-            logger.error(f"Could not get sheet GID for deletion: {e}")
-            sheet_gid = 0
+            # Never guess: sheet id 0 may be a different tab, and a delete there removes the
+            # wrong data. Skip every delete this run; the rows are already in the Graveyard.
+            logger.error(f"Could not get sheet GID for deletion — no rows deleted: {e}")
+            sheet_gid = None
 
         sorted_removes = sorted(to_remove, key=lambda x: x[0], reverse=True)
         for sheet_row, product_dict, reason in sorted_removes:
+            if sheet_gid is None:
+                not_deleted.append((sheet_row, product_dict, "sheet lookup failed, not deleted"))
+                continue
+            now_title = _current_title(service, sheet_name, COL, sheet_row)
+            if now_title != product_dict["title"]:
+                why = ("title unreadable, not deleted" if now_title is None
+                       else f"row {sheet_row} now holds a different product, not deleted")
+                logger.warning(f"  Row {sheet_row} NOT deleted — expected "
+                               f"{product_dict['title'][:40]!r}, found {str(now_title)[:40]!r}")
+                not_deleted.append((sheet_row, product_dict, why))
+                continue
             try:
                 body = {"requests": [{"deleteDimension": {"range": {
                     "sheetId":    sheet_gid,
@@ -371,6 +405,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
                 time.sleep(1.5)  # ~35 deletes/min — stays under the 60/min write cap
             except Exception as e:
                 logger.error(f"  Failed to delete row {sheet_row}: {e}")
+                not_deleted.append((sheet_row, product_dict, f"delete failed: {e}"))
 
     # ── Queue substitute PENDING rows ─────────────────────────────────────────
     n_subs = 0
@@ -432,9 +467,11 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
     append_audit_log(service, audit_summary)
 
     # ── Telegram ──────────────────────────────────────────────────────────────
-    tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=True)
+    tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health,
+                                   include_health=True, not_deleted=not_deleted)
     if len(tg_text) > 4096:
-        tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=False)
+        tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health,
+                                       include_health=False, not_deleted=not_deleted)
     if len(tg_text) > 4096:
         tg_text = tg_text[:4096 - 15] + "\n[truncated]"
     _send_telegram(tg_text)

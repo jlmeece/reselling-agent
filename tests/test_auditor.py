@@ -216,14 +216,22 @@ def _sheet_row(status, ebay_url="", net="0.72", sold="0"):
 
 @pytest.fixture
 def audit(monkeypatch):
-    calls = {"flags": [], "graveyard": [], "deletes": []}
-    state = {"rows": []}
+    calls = {"flags": [], "graveyard": [], "deletes": [], "telegram": []}
+    state = {"rows": [], "titles_now": None, "meta_fails": False}
     monkeypatch.setattr(auditor, "read_sheet", lambda *a, **k: state["rows"])
+
+    def _title_now(svc, sheet, COL, row):
+        if state["titles_now"] is not None:          # simulate rows moved since the read
+            return state["titles_now"].get(row)
+        r = state["rows"][row - 4]
+        return r[auditor._col_to_idx(COL["title"])]
+    monkeypatch.setattr(auditor, "_current_title", _title_now)
     monkeypatch.setattr(auditor, "write_row_partial",
                         lambda svc, sheet, row, pairs: calls["flags"].append((row, dict(pairs))))
     monkeypatch.setattr(auditor, "write_to_graveyard", lambda svc, rows: calls["graveyard"].extend(rows))
-    for name in ("setup_graveyard_tab", "setup_audit_log_tab", "append_audit_log", "_send_telegram"):
+    for name in ("setup_graveyard_tab", "setup_audit_log_tab", "append_audit_log"):
         monkeypatch.setattr(auditor, name, lambda *a, **k: None)
+    monkeypatch.setattr(auditor, "_send_telegram", lambda text: calls["telegram"].append(text))
     monkeypatch.setattr(auditor, "queue_substitute", lambda *a, **k: None)
     monkeypatch.setattr(auditor.time, "sleep", lambda s: None)
 
@@ -231,6 +239,8 @@ def audit(monkeypatch):
         def spreadsheets(self):
             return self
         def get(self, **k):
+            if state["meta_fails"]:
+                raise OSError("sheets meta down")
             return {"sheets": [{"properties": {"title": "Product Tracker", "sheetId": 0}}]}
         def batchUpdate(self, **k):
             calls["deletes"].append(k["body"]["requests"][0]["deleteDimension"]["range"]["startIndex"] + 1)
@@ -238,8 +248,8 @@ def audit(monkeypatch):
     monkeypatch.setattr(auditor, "execute_with_retry",
                         lambda req, *a, **k: req if isinstance(req, dict) else None)
 
-    def run(rows):
-        state["rows"] = rows
+    def run(rows, titles_now=None, meta_fails=False):
+        state["rows"], state["titles_now"], state["meta_fails"] = rows, titles_now, meta_fails
         auditor.run_audit({"business": {}}, _COL, _Svc(), "Product Tracker", 4, 500)
         return calls
     return run
@@ -258,3 +268,31 @@ def test_row_without_live_listing_is_still_removed(audit, url):
     calls = audit([_sheet_row("PAUSED_MARGIN", ebay_url=url)])
     assert calls["deletes"] == [4] and len(calls["graveyard"]) == 1
     assert calls["flags"] == []
+
+
+# ── delete safety (audit 10/21): title re-check, no sheet-id-0 fallback ──────────────────────
+
+def test_row_that_moved_since_the_read_is_not_deleted_and_is_reported(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN")], titles_now={4: "Some Other Product"})
+    assert calls["deletes"] == []
+    assert len(calls["graveyard"]) == 1                 # written before the check — data kept
+    (msg,) = calls["telegram"]
+    assert "Auto-removed: 0 rows" in msg and "Not deleted (1)" in msg
+    assert "now holds a different product" in msg
+
+
+def test_unreadable_title_is_not_deleted(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN")], titles_now={4: None})
+    assert calls["deletes"] == [] and "title unreadable" in calls["telegram"][0]
+
+
+def test_sheet_lookup_failure_deletes_nothing(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN")], meta_fails=True)
+    assert calls["deletes"] == []                        # never falls back to sheet id 0
+    assert "sheet lookup failed" in calls["telegram"][0]
+
+
+def test_matching_title_is_deleted_and_counted(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN")])
+    assert calls["deletes"] == [4]
+    assert "Auto-removed: 1 rows" in calls["telegram"][0] and "Not deleted" not in calls["telegram"][0]

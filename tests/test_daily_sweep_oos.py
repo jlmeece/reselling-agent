@@ -9,7 +9,7 @@ from agents import scheduler as sch
 from tools import sale_schedule as sched
 
 COL = sch.load_col_map()
-CONFIG = {"business": {"min_margin_threshold": 0.10, "discount_code": "", "batch_size": 5},
+CONFIG = {"business": {"min_margin_threshold": 0.10, "batch_size": 5},
           "categories": {"Pharmacy": {"fee_rate": 0.1325, "ad_rate": 0.02}}}
 START_ROW = 4
 IID = "123456789012"
@@ -96,8 +96,9 @@ def test_restock_restores_previous_quantity_and_goes_active(sweep):
     w = _sweep_write(calls)
     assert w[COL["status"]] == "ACTIVE"
     assert "quantity restored to 5" in w[COL["tier_summary"]]
-    (msg,) = calls["notify"]
+    msg, moves = calls["notify"]                  # restore notice, then the status-change list
     assert "restored 1" in msg and "Seaweed Snack" in msg
+    assert "PAUSED_OOS → restocked (1)" in moves and "→ ACTIVE" in moves
     assert sched.get_oos_hidden(IID) is None
 
 
@@ -183,4 +184,27 @@ def test_still_oos_keeps_the_hidden_record(sweep):
 def test_manually_paused_row_keeps_old_restock_to_watch(sweep):
     calls = sweep([_oos_row()])
     w = _sweep_write(calls)
-    assert w[COL["status"]] == "WATCH" and calls["set_qty"] == [] and calls["notify"] == []
+    assert w[COL["status"]] == "WATCH" and calls["set_qty"] == []
+    (moves,) = calls["notify"]                    # no restore notice, but the move is not silent
+    assert "PAUSED_OOS → restocked (1)" in moves and "Seaweed Snack (row 4) → WATCH" in moves
+
+
+# ── daily_status_message: status moves reach Telegram, not just email (audit 10/21) ─────────
+
+def test_daily_status_message_lists_every_move_and_escapes():
+    msg = sch.daily_status_message(
+        [{"title": "Ready <One>", "row": 5}], [{"title": "Restocked", "row": 6, "to": "ACTIVE"}],
+        [{"title": "Margin Back", "row": 7}], [{"title": "Seasonal", "row": 8}],
+        [{"title": "Stale", "row": 9}])
+    assert msg.startswith("🧹 <b>Daily sweep — status changes</b>")
+    for part in ("APPROVED → READY (1)", "Ready &lt;One&gt; (row 5)", "Restocked (row 6) → ACTIVE",
+                 "PAUSED_MARGIN → WATCH (margin recovered) (1)", "PAUSED_SEASONAL/DEMAND → PENDING",
+                 "SCORED → PENDING (stale) (1)", "Stale (row 9)"):
+        assert part in msg
+
+
+def test_daily_status_message_none_when_nothing_moved_and_caps_long_lists():
+    assert sch.daily_status_message([], [], [], [], []) is None
+    many = [{"title": f"T{i}", "row": i} for i in range(15)]
+    msg = sch.daily_status_message([], [], [], [], many)
+    assert "SCORED → PENDING (stale) (15)" in msg and "…and 5 more" in msg

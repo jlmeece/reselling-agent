@@ -728,7 +728,7 @@ def test_run_soft_digest_sent_once_per_day_and_never_in_dry_run(monkeypatch, cre
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
                         lambda *a, **k: FakeResp(_page([_item("111111111111", price="29.00", sold=0)])))
     monkeypatch.setattr(ebay_sync, "load_sheet_rows", lambda *a, **k: [
-        _row(4, "111111111111", sold="0", costco_cost="$23", fee_rate="0.10", sold_90d="0")])
+        _row(4, "111111111111", sold="0", price="$29.00", costco_cost="$23", fee_rate="0.10", sold_90d="0")])
     dry = run_ebay_sync(*_cfg_args(), dry_run=True)
     assert dry["alert"] is None and dry["digest"]                # dry run shows it, records nothing
     first = run_ebay_sync(*_cfg_args())
@@ -2110,3 +2110,27 @@ def test_live_item_ids_excludes_hidden_and_returns_none_on_failure(monkeypatch):
     monkeypatch.setattr(ebay_sync, "fetch_active_listings", _fail)
     assert ebay_sync.live_item_ids() is None
     ebay_sync._set_error(None)
+
+
+# ── col H mirror is never silent (audit 10/21) ──────────────────────────────────────────────
+
+def test_format_mirror_summary_lists_overwritten_prices():
+    text = ebay_sync.format_mirror_summary([
+        {"row_num": 9, "title": "Kettle <Pro>", "item_id": "1", "old_price": 119.99,
+         "new_price": 124.99, "outcome": "mirrored"},
+        {"row_num": 10, "title": "Blank H", "item_id": "2", "old_price": None,
+         "new_price": 49.99, "outcome": "mirrored"},
+        {"row_num": 11, "title": "Moved", "item_id": "3", "old_price": 1.0,
+         "new_price": 2.0, "outcome": "row_moved"}])
+    assert "Col H set to eBay's live price (2)" in text
+    assert "Kettle &lt;Pro&gt; — $119.99 → $124.99 (row 9)" in text
+    assert "Blank H — blank → $49.99 (row 10)" in text
+    assert "Moved" not in text
+    assert "use col BD" in text
+
+
+def test_format_mirror_summary_none_when_nothing_written():
+    assert ebay_sync.format_mirror_summary([]) is None
+    assert ebay_sync.format_mirror_summary([{"row_num": 1, "title": "x", "item_id": "1",
+                                             "old_price": 1.0, "new_price": 2.0,
+                                             "outcome": "error"}]) is None
