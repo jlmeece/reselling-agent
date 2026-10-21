@@ -1277,9 +1277,11 @@ def test_activelist_screen_keeps_buttons_but_no_numbered_list(monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
     col = {"status": "A", "title": "C", "category": "D", "costco_cost": "G", "ebay_price": "H",
-           "net_profit": "I", "net_margin": "J", "units_sold": "U", "sku": "AA", "actual_net": "BC"}
+           "net_profit": "I", "net_margin": "J", "units_sold": "U", "sku": "AA", "actual_net": "BC",
+           "ebay_listing_url": "Q"}
     row = [""] * 55
     row[0], row[2], row[7], row[8], row[20] = "ACTIVE", "Energy Shot", "53.99", "$11.33", "6"
+    row[16] = "https://www.ebay.com/itm/123456789012"
     monkeypatch.setattr(_tb, "_read_product_rows", lambda: (col, "svc", "Tab", 4, [row]))
     monkeypatch.setattr(_tb, "_load_sales_summary", lambda: _EMPTY_LOG)
     q = SimpleNamespace(edit_message_text=AsyncMock())
@@ -1290,7 +1292,7 @@ def test_activelist_screen_keeps_buttons_but_no_numbered_list(monkeypatch):
     kb = q.edit_message_text.call_args.kwargs["reply_markup"]
     assert "💰 Made (sheet estimate): $67.98\n📦 Sold: 6 units" in text and "🛒" not in text
     datas = [b.callback_data for r in kb.inline_keyboard for b in r]
-    assert "activelist:pick:4" in datas and "activelist:show" in datas
+    assert "activelist:pick:4" in datas and "activelist:show:1" in datas
 
 
 def test_active_summary_flags_estimated_fees():

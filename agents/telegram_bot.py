@@ -2068,6 +2068,9 @@ def _ended_confirm_kb(row_num):
     ])
 
 
+_ACTIVE_LIST_PAGE = 30   # listing buttons per Active Listings page (Telegram caps a keyboard at 100)
+
+
 async def cb_activelist_show(update, context, arg):
     context.user_data["awaiting_search"] = False
     _clear_listing_state(context)
@@ -2079,15 +2082,11 @@ async def cb_activelist_show(update, context, arg):
         await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
         return
 
-    status_i = col_to_idx(col_map["status"])
-
-    def is_active(row):
-        return safe_get(row, status_i) == "ACTIVE"
-
-    fields = tuple(f for f in _ACTIVE_LISTING_FIELDS if f in col_map)
-    items = _extract_rows_by_field(
-        rows, col_map, fields, data_start_row=start, filter_fn=is_active
-    )
+    # Every live eBay listing, whatever its sheet status (status is a workflow label only) —
+    # the same is_live_listing test the monitor and the reprice buttons use.
+    fields = tuple(f for f in _ACTIVE_LISTING_FIELDS + ("ebay_listing_url",) if f in col_map)
+    items = _extract_rows_by_field(rows, col_map, fields, data_start_row=start)
+    items = [p for p in items if is_live_listing(p.get("ebay_listing_url"), p.get("status"))]
     items.sort(key=_active_net_key)
 
     if not items:
@@ -2099,15 +2098,30 @@ async def cb_activelist_show(update, context, arg):
     except Exception as e:   # a broken log must never take the screen down — fall back to the sheet
         logger.warning(f"activelist: sales log unavailable: {e}")
         log_summary = {"sales": 0}
-    text = _active_summary_text(items, log_summary)
+    page = max(1, int(arg)) if (arg or "").strip().isdigit() else 1
+    total_pages = max(1, -(-len(items) // _ACTIVE_LIST_PAGE))
+    page = min(page, total_pages)
+    first = (page - 1) * _ACTIVE_LIST_PAGE
+    page_items = items[first:first + _ACTIVE_LIST_PAGE]
+
+    text = _active_summary_text(items, log_summary)      # summary = the FULL live set
+    if total_pages > 1:
+        text += f"\n\nPage {page} of {total_pages}"
 
     kb_rows = [
         [InlineKeyboardButton(f"{i}. {(p.get('title') or '(untitled)')[:34]}",
                               callback_data=f"activelist:pick:{p['row_num']}")]
-        for i, p in enumerate(items, 1)
+        for i, p in enumerate(page_items, start=first + 1)
     ]
+    nav = []
+    if page > 1:
+        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"activelist:show:{page - 1}"))
+    if page < total_pages:
+        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"activelist:show:{page + 1}"))
+    if nav:
+        kb_rows.append(nav)
     kb_rows.append([
-        InlineKeyboardButton("🔄 Refresh", callback_data="activelist:show"),
+        InlineKeyboardButton("🔄 Refresh", callback_data=f"activelist:show:{page}"),
         InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
     ])
     await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(kb_rows))
