@@ -97,15 +97,19 @@ def test_screen_omits_missing_inputs():
 
 # ── _active_stepper_order ────────────────────────────────────────────────────
 
-def test_active_stepper_order_filters_and_sorts_net_desc():
+def test_active_stepper_order_walks_every_live_listing_net_desc():
     rows = [
         _sheet_row("ACTIVE", "Low", "2.00", f"https://www.ebay.com/itm/{ITEM_2}"),
         _sheet_row("ACTIVE", "No id", "50.00", ""),
-        _sheet_row("SCORED", "Scored", "40.00", f"https://www.ebay.com/itm/{ITEM_3}"),
+        _sheet_row("AUDIT_REVIEW", "Audit", "40.00", f"https://www.ebay.com/itm/{ITEM_3}"),
         _sheet_row("ACTIVE", "High", "9.00", URL),
+        _sheet_row("PAUSED_MARGIN", "Paused", "5.00", "https://www.ebay.com/itm/423456789012"),
+        _sheet_row("ENDED", "Ended", "99.00", "https://www.ebay.com/itm/523456789012"),
+        _sheet_row("PAUSED_OOS", "Oos", "98.00", "https://www.ebay.com/itm/623456789012"),
     ]
     order = tb._active_stepper_order((COL, "svc", "Product Tracker", 4, rows))
-    assert order == [(7, ITEM_ID, "High"), (4, ITEM_2, "Low")]
+    assert order == [(6, ITEM_3, "Audit"), (7, ITEM_ID, "High"),
+                     (8, "423456789012", "Paused"), (4, ITEM_2, "Low")]
 
 
 def test_active_stepper_order_sheet_error_is_empty(monkeypatch):
@@ -294,3 +298,11 @@ def test_compete_without_comps_offers_back_to_item(sheet):
     assert "competitively" in text
     assert [(b.text, b.callback_data) for r in kb.inline_keyboard for b in r] == [
         ("⬅️ Back to item", "activelist:pick:4"), ("📊 Dashboard", "menu:dashboard")]
+
+
+def test_nav_works_from_a_non_active_live_listing(sheet, monkeypatch):
+    sheet["rows"] = [_sheet_row("AUDIT_REVIEW", "First", "9.00", URL),
+                     _sheet_row("PAUSED_MARGIN", "Second", "2.00", f"https://www.ebay.com/itm/{ITEM_2}")]
+    seen = _screens(monkeypatch)
+    _tap(tb.cb_reprice_nav, f"{ITEM_ID}:next")
+    assert seen == [(4999, ITEM_2)]

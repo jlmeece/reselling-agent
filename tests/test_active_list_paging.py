@@ -158,3 +158,64 @@ def test_card_shows_cached_30d_views_before_watchers(monkeypatch):
 def test_card_without_view_cache_shows_watchers_alone(monkeypatch):
     text, _ = _pick(monkeypatch, {"ok": True, "view_count": None, "watch_count": 2})
     assert "⭐ 2 watchers" in text and "👁️" not in text
+
+
+# ── detail card Prev / Next ─────────────────────────────────────────────────
+
+def _nav(kb):
+    return [(b.text, b.callback_data) for r in kb.inline_keyboard for b in r
+            if b.text in ("⬅️ Prev", "Next ➡️")]
+
+
+def test_action_kb_prev_next_only_when_given():
+    assert _nav(tb._active_action_kb(5)) == []
+    assert len(tb._active_action_kb(5).inline_keyboard) == len(tb._active_action_kb(5, prev_row_num=None).inline_keyboard)
+    assert _nav(tb._active_action_kb(5, prev_row_num=4, next_row_num=9)) == [
+        ("⬅️ Prev", "activelist:pick:4"), ("Next ➡️", "activelist:pick:9")]
+    assert _nav(tb._active_action_kb(5, next_row_num=9)) == [("Next ➡️", "activelist:pick:9")]
+
+
+def _pick_nav(monkeypatch, rows, row_num):
+    import yaml
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "config", "col_map.yaml")) as f:
+        col = yaml.safe_load(f)["columns"]
+    sheet_rows = []
+    for status, title, net, item_id in rows:
+        r = [""] * 60
+        r[tb.col_to_idx(col["status"])] = status
+        r[tb.col_to_idx(col["title"])] = title
+        r[tb.col_to_idx(col["net_profit"])] = net
+        r[tb.col_to_idx(col["ebay_listing_url"])] = f"https://www.ebay.com/itm/{item_id}" if item_id else ""
+        sheet_rows.append(r)
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (col, "svc", "Tab", 4, sheet_rows))
+    monkeypatch.setattr(tb, "get_pending", lambda item_id: None)
+    monkeypatch.setattr(tb, "fetch_item_price", lambda item_id: {})
+    q = SimpleNamespace(edit_message_text=AsyncMock())
+    asyncio.run(tb.cb_activelist_pick(SimpleNamespace(callback_query=q, message=None),
+                                      SimpleNamespace(user_data={}, bot_data={}), str(row_num)))
+    return _nav(q.edit_message_text.call_args.kwargs["reply_markup"])
+
+
+_THREE = [("PAUSED_MARGIN", "Mid", "$5.00", "100000000002"),      # row 4
+          ("ACTIVE", "Top", "$9.00", "100000000001"),             # row 5
+          ("AUDIT_REVIEW", "Low", "$1.00", "100000000003"),       # row 6
+          ("ENDED", "Gone", "$7.00", "100000000004")]             # row 7 (not live)
+
+
+def test_pick_middle_item_has_prev_and_next(monkeypatch):
+    assert _pick_nav(monkeypatch, _THREE, 4) == [("⬅️ Prev", "activelist:pick:5"),
+                                                ("Next ➡️", "activelist:pick:6")]
+
+
+def test_pick_first_item_has_next_only(monkeypatch):
+    assert _pick_nav(monkeypatch, _THREE, 5) == [("Next ➡️", "activelist:pick:4")]
+
+
+def test_pick_last_item_has_prev_only(monkeypatch):
+    assert _pick_nav(monkeypatch, _THREE, 6) == [("⬅️ Prev", "activelist:pick:4")]
+
+
+def test_pick_not_live_or_lone_item_has_no_nav(monkeypatch):
+    assert _pick_nav(monkeypatch, _THREE, 7) == []
+    assert _pick_nav(monkeypatch, [("ACTIVE", "Only", "$3.00", "100000000001")], 4) == []

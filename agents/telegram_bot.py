@@ -2039,7 +2039,8 @@ def _format_active_line(p):
     return f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
 
 
-def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None):
+def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None,
+                      prev_row_num=None, next_row_num=None):
     rows = []
     if item_id:   # always offer a manual reprice on an ACTIVE listing with a live item ID
         rows.append([InlineKeyboardButton("🎚️ Adjust", callback_data=f"reprice:stepper:{item_id}"),
@@ -2049,8 +2050,15 @@ def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_i
     if cancel_item_id:    # a scheduled reprice / End is waiting for the sale end
         rows.append([InlineKeyboardButton("❌ Cancel scheduled action",
                                           callback_data=f"reprice:cancel:{cancel_item_id}")])
+    rows.append([InlineKeyboardButton("🔴 End Listing", callback_data=f"ended:start:{row_num}")])
+    nav = []   # neighbours in Active List order (every live listing)
+    if prev_row_num is not None:
+        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"activelist:pick:{prev_row_num}"))
+    if next_row_num is not None:
+        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"activelist:pick:{next_row_num}"))
+    if nav:
+        rows.append(nav)
     return InlineKeyboardMarkup(rows + [
-        [InlineKeyboardButton("🔴 End Listing", callback_data=f"ended:start:{row_num}")],
         [InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"),
          InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
     ])
@@ -2139,6 +2147,14 @@ async def cb_activelist_pick(update, context, arg):
             reply_markup=_home_inline_kb(),
         )
         return
+    order = _active_stepper_order((col_map, service, sheet_name, start, rows))
+    ids = [r for r, _iid, _t in order]
+    try:
+        i = ids.index(row_num)
+    except ValueError:
+        i = -1
+    prev_row = ids[i - 1] if i > 0 else None
+    next_row = ids[i + 1] if 0 <= i < len(ids) - 1 else None
     lines = [format_product_detail(p)]
     if (p.get("units_sold") or "").strip():
         lines.append(f"Units sold: {(p.get('units_sold') or '').strip()}")
@@ -2170,7 +2186,8 @@ async def cb_activelist_pick(update, context, arg):
     await _send_screen(update, "\n".join(lines),
                        reply_markup=_active_action_kb(row_num, pending,
                                                       cancel_item_id=item_id if scheduled else None,
-                                                      item_id=item_id))
+                                                      item_id=item_id, prev_row_num=prev_row,
+                                                      next_row_num=next_row))
 
 
 async def cb_ended_start(update, context, arg):
@@ -2761,8 +2778,8 @@ def _stepper_break_even(p):
 
 
 def _active_stepper_order(sheet=None):
-    """[(row_num, item_id, title)] of ACTIVE rows with a live item id in col Q, in Active List
-    order (_active_net_key, net desc). sheet = a _read_product_rows() result to reuse.
+    """[(row_num, item_id, title)] of every live listing (is_live_listing — any sheet status), in
+    Active List order (_active_net_key, net desc). sheet = a _read_product_rows() result to reuse.
     [] on any sheet-read error (callers treat it as "no navigation")."""
     try:
         col_map, _service, _sheet_name, start, rows = sheet or _read_product_rows()
@@ -2771,8 +2788,7 @@ def _active_stepper_order(sheet=None):
     except Exception as e:
         logger.warning(f"stepper order: sheet read failed: {e}")
         return []
-    items = [p for p in items if (p.get("status") or "").strip() == "ACTIVE"
-             and extract_item_id(p.get("ebay_listing_url"))]
+    items = [p for p in items if is_live_listing(p.get("ebay_listing_url"), p.get("status"))]
     items.sort(key=_active_net_key)
     return [(p["row_num"], extract_item_id(p.get("ebay_listing_url")), p.get("title") or "(untitled)")
             for p in items]
@@ -2952,7 +2968,7 @@ async def cb_reprice_nav(update, context, arg):
     order = _active_stepper_order(sheet)
     ids = [iid for _row, iid, _title in order]
     if item_id not in ids:
-        await query.answer("This listing isn't in the ACTIVE list any more.")
+        await query.answer("This listing isn't live any more.")
         return
     i = ids.index(item_id) + (-1 if direction == "prev" else 1)
     if not 0 <= i < len(ids):
