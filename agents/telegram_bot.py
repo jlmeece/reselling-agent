@@ -2689,8 +2689,12 @@ async def cb_reprice_compete(update, context, arg):
     title = p.get("title") or "(untitled)"
     comp = _competitive_for(p, _cost_basis(p.get("buy_cost"), p.get("costco_cost")))
     if comp["target"] is None:
+        back_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("⬅️ Back to item", callback_data=f"activelist:pick:{p['row_num']}"),
+            InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
+        ]])
         await _send_screen(update, _no_competitive_text(title, comp), parse_mode="HTML",
-                           reply_markup=_home_inline_kb())
+                           reply_markup=back_kb)
         return
     net, _ = _price_metrics(p, comp["target"])
     lines = _competitive_preview(title, comp, net)
@@ -2710,10 +2714,16 @@ async def cb_reprice_compete(update, context, arg):
 # Below break-even only relabels Apply (a deliberate tap still applies it).
 
 _STEP_SIZES = (-500, -100, -25, 25, 100, 500)   # cents
+_STEP_SIZES_BIG = (-5000, -1000, -100, 100, 1000, 5000)   # $50 / $10 / $1
 _STEPPER_CEILING_GAP = 20.0                      # $ over the cheapest competitor = soft note
 # Handlers that answer the callback themselves (with a toast), so on_callback must not ack first:
 # Telegram accepts one answerCallbackQuery per tap.
 _SELF_ANSWER_ROUTES = {("reprice", "cheapest"), ("reprice", "nav")}
+
+
+def _step_sizes(cents):
+    """Nudge steps for a proposed price: coarse-but-fine for big-ticket items, fine for cheap."""
+    return _STEP_SIZES_BIG if cents >= 10000 else _STEP_SIZES
 
 
 def _parse_step_arg(arg):
@@ -2790,7 +2800,7 @@ def _stepper_screen(p, cents, item_id):
 
     kb = [[InlineKeyboardButton(f"{'+' if d > 0 else '−'}${abs(d) / 100:g}",
                                 callback_data=f"reprice:nudge:{item_id}:{cents}:{d}")
-           for d in _STEP_SIZES]]
+           for d in _step_sizes(cents)]]
     comp = _competitive_for(p, _cost_basis(p.get("buy_cost"), p.get("costco_cost")))
     if comp["target"] is not None:
         kb.append([InlineKeyboardButton(f"⚡ cheapest: ${comp['target']:.2f}",

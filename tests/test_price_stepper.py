@@ -263,3 +263,34 @@ def test_stepper_routes_registered():
         assert ("reprice", action) in tb._CALLBACK_ROUTES
     for action in ("set", "setcancel"):                  # old Set Price messages still work
         assert ("reprice", action) in tb._CALLBACK_ROUTES
+
+
+# ── step tiers + Competitive back button ────────────────────────────────────
+
+def test_step_sizes_tiers():
+    assert tb._step_sizes(9999) == tb._STEP_SIZES == (-500, -100, -25, 25, 100, 500)
+    assert tb._step_sizes(10000) == tb._STEP_SIZES_BIG == (-5000, -1000, -100, 100, 1000, 5000)
+    assert tb._step_sizes(60000) == tb._STEP_SIZES_BIG
+
+
+@pytest.mark.parametrize("cents", [15000, 60000])
+def test_screen_big_ticket_uses_big_steps(cents):
+    _, kb = tb._stepper_screen(_p(price=f"{cents / 100:.2f}", lowest=""), cents, ITEM_ID)
+    assert [b.text for b in kb.inline_keyboard[0]] == ["−$50", "−$10", "−$1", "+$1", "+$10", "+$50"]
+    assert [b.callback_data for b in kb.inline_keyboard[0]] == [
+        f"reprice:nudge:{ITEM_ID}:{cents}:{d}" for d in (-5000, -1000, -100, 100, 1000, 5000)]
+
+
+def test_nudge_with_big_step(sheet, monkeypatch):
+    seen = _screens(monkeypatch)
+    _tap(tb.cb_reprice_nudge, f"{ITEM_ID}:43899:-5000")
+    assert seen == [(38899, ITEM_ID)]
+
+
+def test_compete_without_comps_offers_back_to_item(sheet):
+    q = _tap(tb.cb_reprice_compete, ITEM_ID)                 # no col BF -> no competitive target
+    text = q.edit_message_text.call_args.args[0]
+    kb = q.edit_message_text.call_args.kwargs["reply_markup"]
+    assert "competitively" in text
+    assert [(b.text, b.callback_data) for r in kb.inline_keyboard for b in r] == [
+        ("⬅️ Back to item", "activelist:pick:4"), ("📊 Dashboard", "menu:dashboard")]
