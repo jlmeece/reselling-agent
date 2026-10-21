@@ -52,7 +52,7 @@ def test_skip_reasons():
     assert "GetItem failed (21920397" in plan_item(_job(), failed, None)[1]
 
 
-def test_build_targets_active_only_with_item_id():
+def test_build_targets_every_row_with_item_id_any_status():
     cols = {"status": 0, "title": 2, "sku": 26, "image_urls": 45, "ebay_listing_url": 16}
 
     def row(status, sku, q):
@@ -60,7 +60,20 @@ def test_build_targets_active_only_with_item_id():
         r[0], r[2], r[26], r[45], r[16] = status, "T", sku, "https://a/img.jpg", q
         return r
     rows = [row("ACTIVE", "A", "https://www.ebay.com/itm/318943101198"), row("READY", "B", ""),
-            row("ACTIVE", "C", "")]
+            row("ACTIVE", "C", ""),
+            row("PAUSED_MARGIN", "D", "https://www.ebay.com/itm/318925902426"),   # live, non-ACTIVE
+            row("AUDIT_REVIEW", "E", "860016681733"),                             # bare id in col Q
+            row("PAUSED_OOS", "F", "https://www.ebay.com/itm/318910010687"),      # hidden: GetItem decides
+            row("WATCH", "G", "")]                                                # no col Q -> skipped
     out = build_targets(rows, 4, cols)
-    assert [(j["sku"], j["item_id"]) for j in out] == [("A", "318943101198"), ("C", None)]
-    assert [j["sku"] for j in build_targets(rows, 4, cols, sku="C")] == ["C"]
+    assert [(j["sku"], j["status"], j["item_id"]) for j in out] == [
+        ("A", "ACTIVE", "318943101198"), ("D", "PAUSED_MARGIN", "318925902426"),
+        ("E", "AUDIT_REVIEW", "860016681733"), ("F", "PAUSED_OOS", "318910010687")]
+    assert out[1]["urls"] == ["https://a/img.jpg"] and out[1]["row"] == 7
+    assert [j["sku"] for j in build_targets(rows, 4, cols, sku="D")] == ["D"]
+    assert build_targets(rows, 4, cols, sku="C") == []               # no col Q -> never a target
+
+
+def test_non_active_listing_not_active_on_ebay_is_skipped():
+    action, detail, _ = plan_item(_job(status="PAUSED_MARGIN"), _live(listing_status="Completed"), None)
+    assert action == "skip" and "Completed" in detail

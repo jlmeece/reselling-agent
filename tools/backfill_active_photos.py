@@ -1,9 +1,9 @@
 """
-One-off: put the branded main photo on ACTIVE eBay listings that were created before the photo
-pipeline existed — by revising the live listing in place (ReviseFixedPriceItem PictureDetails),
+One-off: put the branded main photo on every LIVE eBay listing (any sheet status with an eBay
+item id in col Q, like the description scrub) that was created before the photo pipeline existed — by revising the live listing in place (ReviseFixedPriceItem PictureDetails),
 never re-listing, so rank / watchers / sold history are kept.
 
-Per ACTIVE row with a SKU (col AA), col AT image URLs and an eBay item id (col Q):
+Per row with an eBay item id (col Q), a SKU (col AA) and col AT image URLs, whatever its status:
   1. GetItem: must be Active, FixedPriceItem, not multi-variation; read its current pictures.
      Skipped when its first picture is already the branded photo (idempotent re-runs).
   2. photo_compositor builds data/listing_photos/<sku>.jpg (kept if it already exists).
@@ -46,16 +46,29 @@ def _pic_key(url):
 
 
 def build_targets(rows, start, cols, sku=None):
-    """ACTIVE jobs (photo_compositor shape) + item_id from col Q, optionally one SKU."""
-    jobs = pc.build_jobs(rows, start, cols, include_active=True)
+    """Jobs (photo_compositor shape) + item_id for every row with an eBay item id in col Q — any
+    sheet status (PAUSED_OOS / PAUSED_MARGIN / AUDIT_REVIEW / WATCH listings are live too);
+    optionally one SKU. Rows without a col Q item id are not targets. Whether the listing is
+    still Active on eBay is checked per item by plan_item (GetItem)."""
     q = cols.get("ebay_listing_url")
+    if q is None:
+        return []
     out = []
-    for job in jobs:
-        if job["status"] != "ACTIVE" or (sku and job["sku"] != sku):
+    for offset, row in enumerate(rows):
+        if not row:
             continue
-        row = rows[job["row"] - start]
-        job["item_id"] = extract_item_id(pc._cell(row, q)) if q is not None else None
-        out.append(job)
+        item_id = extract_item_id(pc._cell(row, q))
+        row_sku = pc._cell(row, cols["sku"])
+        if not item_id or (sku and row_sku != sku):
+            continue
+        out.append({
+            "row":     start + offset,
+            "status":  pc._cell(row, cols["status"]).upper(),
+            "title":   pc._cell(row, cols["title"]),
+            "sku":     row_sku,
+            "urls":    pc.parse_image_urls(pc._cell(row, cols["image_urls"])),
+            "item_id": item_id,
+        })
     return out
 
 
@@ -84,7 +97,7 @@ def plan_item(job, live, hosted_url):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Branded main photo onto existing ACTIVE eBay listings")
+    ap = argparse.ArgumentParser(description="Branded main photo onto every live eBay listing")
     ap.add_argument("--dry-run", action="store_true", help="read-only: print the plan per item")
     ap.add_argument("--sku", help="only this SKU (col AA)")
     ap.add_argument("--limit", type=int, help="revise at most N listings")
@@ -109,13 +122,14 @@ def main(argv=None):
 
     prefix = "[DRY RUN] " if args.dry_run else ""
     revised, skipped, failed, n_revise = [], [], [], 0
-    print(f"{prefix}{len(targets)} ACTIVE row(s) with a SKU")
+    print(f"{prefix}{len(targets)} row(s) with an eBay item id in col Q (any status)")
     for job in targets:
         key = pc.safe_sku(job["sku"]) if job["sku"] else ""
         live = fetch_item_price(job["item_id"]) if job.get("item_id") else {"ok": False}
         hosted_url = up.hosted_url_for(key, hosted) if key else None
         action, detail, gallery = plan_item(job, live, hosted_url)
-        label = f"row {job['row']} {job['item_id'] or '-'} {job['sku'] or '-'} {job['title'][:40]!r}"
+        label = (f"row {job['row']} {job['status'] or '-'} {job['item_id'] or '-'} "
+                 f"{job['sku'] or '-'} {job['title'][:40]!r}")
         if action == "skip":
             skipped.append((label, detail))
             print(f"  skip   {label}: {detail}")
