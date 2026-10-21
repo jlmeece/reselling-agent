@@ -391,9 +391,10 @@ def test_margin_flag_unknown_inputs_are_never_judged(price, cost, fee):
     assert _flag(price, cost, fee, 0, 0, 0) is None            # unknown != $0
 
 
-def test_cost_basis_prefers_buy_cost_else_costco():
+def test_cost_basis_prefers_costco_else_buy_cost():
     cb = ebay_sync._cost_basis
-    assert cb("$45.00", "$60.00") == 45.0
+    assert cb("$45.00", "$60.00") == 60.0                      # col G (current Costco) wins
+    assert cb("$20.00", "") == 20.0                            # blank G -> col BB fallback
     assert cb("", "$60.00") == 60.0
     assert cb("junk", "1,060.00") == 1060.0
     assert cb("0", "60") == 60.0                               # a 0 buy_cost is "not filled in"
@@ -422,10 +423,11 @@ def test_margin_breach_hard_uses_live_price_and_is_never_written(writes):
 
 
 def test_buy_cost_overrides_costco_cost(writes):
-    # Costco says $30 (would lose money at $29), but Jay paid $20 -> healthy
+    # col G wins now: Costco charges $30 today (a stale $20 col BB is ignored) -> loses money at $29
     rows = [_row(4, "111111111111", buy_cost="$20", costco_cost="$30", fee_rate="0.10", sold_90d="4")]
     rep = _sync(rows, [_listing("111111111111", price=29.0)])
-    assert rep["margin_breach"] == [] and rep["margin_unchecked"] == []
+    (b,) = rep["margin_breach"]
+    assert b["severity"] == "hard" and rep["margin_unchecked"] == []
 
 
 def test_raw_price_delta_no_longer_alerts(writes):

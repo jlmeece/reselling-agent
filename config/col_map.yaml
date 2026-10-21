@@ -75,7 +75,7 @@ columns:
   mpt_mu:           "AY"  # Annualized return μ (e.g. 0.42 = 42%) — written by mpt_engine
   mpt_sigma:        "AZ"  # Price volatility σ (Bayesian-shrunk) — written by mpt_engine
   mpt_rank:         "BA"  # Rank within this research run (1 = best Sharpe) — written by mpt_engine
-  buy_cost:         "BB"  # what Jay actually paid — auto-snapshotted from G on a new sale; manual override wins
+  buy_cost:         "BB"  # legacy cost snapshot (auto-filled from G on a new sale) — FALLBACK only: margin math uses col G when it's > 0
   actual_net:       "BC"  # true net/unit on the last sale — reconciled from eBay's real fee (ebay_sync GetItemTransactions)
   target_price:     "BD"  # MANUAL: type a new eBay price here -> ebay_sync / bot "Apply price changes now" pushes it to eBay, syncs H, clears BD
   manual_cost:      "BE"  # costco_cost (G) snapshot when a manual price was applied; auto-reprice skips the row while G == BE (re-arms when cost moves)

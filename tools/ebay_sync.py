@@ -6,8 +6,8 @@ them to Product Tracker rows by the item ID in col Q (ebay_listing_url), and:
 
   * writes QuantitySold into units_sold (col U) when it changed — minus units in orders
     the sales log knows were cancelled/refunded — and, when a NEW sale lands, snapshots
-    costco_cost (col G) into buy_cost (col BB) if buy_cost is blank (so margin alerts use
-    what Jay actually pays; manual override always wins);
+    costco_cost (col G) into buy_cost (col BB) if buy_cost is blank (a legacy snapshot:
+    margin math prefers the current col G, so BB is only a fallback when G is blank);
   * MIRRORS eBay's live Buy It Now price into ebay_price (col H) on matched ACTIVE rows
     (mirror_live_prices — runs last, skips items repriced this run), so a bulk edit in
     Seller Hub flows into the sheet. Price only: col BE (manual_cost) is never touched;
@@ -16,8 +16,9 @@ them to Product Tracker rows by the item ID in col Q (ebay_listing_url), and:
     and ACTIVE sheet rows that eBay no longer lists.
 
 Margin check: net = live price - cost_basis - (price*fee_rate*1.08 + 0.30) - ship - ad
-- cost_basis*0.0825 (Costco sales tax), where cost_basis = buy_cost (col BB, manual) if
-present else costco_cost (col G). Matches the sheet's col I formula (H-G-AC-AD-AE-AF).
+- cost_basis*0.0825 (Costco sales tax), where cost_basis = costco_cost (col G, today's
+Costco price = what a drop-shipper pays at sale time) if present and > 0, else buy_cost
+(col BB, fallback). Matches the sheet's col I formula (H-G-AC-AD-AE-AF).
 HARD (Telegram per run): net < 0. SOFT (once-a-day digest): 0 <= net < $4 AND
 sold_90d == 0. Everything else is silent.
 
@@ -963,11 +964,12 @@ def _to_rate(value):
 
 
 def _cost_basis(buy_cost, costco_cost):
-    """buy_cost (what Jay actually paid) if present, parseable and > 0, else costco_cost."""
-    bc = _to_float(buy_cost)
-    if bc is not None and bc > 0:
-        return bc
-    return _to_float(costco_cost)
+    """costco_cost (col G — current Costco price, what a drop-shipper pays at sale time)
+    if present, parseable and > 0, else buy_cost (col BB legacy snapshot) as fallback."""
+    g = _to_float(costco_cost)
+    if g is not None and g > 0:
+        return g
+    return _to_float(buy_cost)
 
 
 def compute_net(ebay_price, cost_basis, fee_rate, ship=0.0, ad=0.0) -> float:
