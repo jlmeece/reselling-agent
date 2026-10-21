@@ -52,9 +52,17 @@ The old copy tool embedded a "Save 10% buying direct at [site] — no eBay fees"
 description; it got the Henredon listing (item 318910864177) hidden under policy 21920397.
 
 The CURRENT `tools/listing_copy.py` no longer generates this field — descriptions end with the
-clean footer: "Sold by JA_Liquidations — Ships from Texas. eBay Money Back Guarantee applies."
+clean footer: "Sold by JA_Liquidations. eBay Money Back Guarantee applies."
 
 Do NOT re-add a redirect message, external link, or off-eBay contact info to any description.
+
+**No Costco, no "Ships from Texas" (2026-10-21):** items drop-ship straight from Costco, so
+"Ships from Texas" is a false claim, and naming Costco ("Costco quality", "original Costco
+packaging", "sourced from Costco") advertises reselling another retailer's stock, a dropshipping
+red flag. The copy prompt forbids naming any retailer, where the item was bought, or where it
+ships from. `tools/fix_listing_descriptions.py` rewrites that wording in place on live listings
+(and their col AK) and is idempotent, so re-run it (`--dry-run` first) after any bulk copy change.
+"Texas toast" is left alone.
 
 ---
 

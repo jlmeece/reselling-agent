@@ -16,7 +16,7 @@ import anthropic
 SYSTEM_PROMPT = """You are an expert eBay seller and SEO copywriter for the seller account JA_Liquidations. \
 You write listing copy that builds trust, ranks in eBay search, and converts browsers into buyers.
 
-Seller identity: JA_Liquidations — ships from Texas. Use this to build buyer confidence.
+Seller identity: JA_Liquidations. Use this to build buyer confidence.
 
 Rules:
 - Never use the word "beautiful" — it is generic and kills trust
@@ -26,8 +26,9 @@ Rules:
 - HTML descriptions must use ONLY inline styles — no <style> blocks, eBay strips them
 - HTML descriptions must contain NO <a href> to external sites — eBay policy
 - HTML descriptions must contain NO <script>, <form>, <embed>, or event handlers
+- Never name another retailer or warehouse club, where the item was bought, or where it ships from
 - Footer line in every HTML description must read exactly:
-  "Sold by JA_Liquidations — Ships from Texas. eBay Money Back Guarantee applies to all purchases."
+  "Sold by JA_Liquidations. eBay Money Back Guarantee applies."
 
 Return ONLY a raw JSON array. No markdown fences, no explanation. Start with [ and end with ]."""
 
@@ -44,11 +45,11 @@ want to know they're getting value vs melt price. Trust is everything: "authenti
 OUTDOOR FURNITURE COPY RULES: Lead with material durability (HDPE, powder-coated steel, \
 Sunbrella fabric, etc.). Call out weather/UV resistance explicitly. Mention HOA-friendly \
 neutral colors where applicable. Note that item ships fully or partially assembled — \
-reduces buyer hesitation. Reference Costco quality and brand name prominently. \
+reduces buyer hesitation. Reference the brand name prominently. \
 Seasonal urgency is real: patio buyers move fast in spring.""",
 
     "Watches": """
-WATCHES COPY RULES: Box and papers are included (standard from Costco) — always state this. \
+WATCHES COPY RULES: Box and papers are included — always state this. \
 Specify movement type (solar, eco-drive, quartz, automatic). State water resistance in ATM or meters. \
 Brand heritage matters — Citizen, Seiko, Luminox are trusted names, lean into that. \
 Warranty info (usually 2-5 years) is a trust signal. Buyers comparison-shop on specs: \
@@ -72,8 +73,7 @@ Follow this exact structure (fill in real product content):
     <li style="padding:10px 0;border-bottom:1px solid #f2f2f2;font-size:14px">✓ {BULLET 4}</li>
     <li style="padding:10px 0;font-size:14px">✓ {BULLET 5}</li>
   </ul>
-  <p style="font-size:12px;color:#6e6e73;margin:0">Sold by JA_Liquidations — Ships from Texas. New in original packaging. \
-eBay Money Back Guarantee applies to all purchases.</p>
+  <p style="font-size:12px;color:#6e6e73;margin:0">Sold by JA_Liquidations. eBay Money Back Guarantee applies.</p>
 </div>
 
 The HTML must be a single string with no newlines that would break a CSV cell. \
@@ -101,7 +101,7 @@ def generate_listing_copy(products_batch):
         product_lines.append(
             f"{i}. PRODUCT: {p['title']}\n"
             f"   CATEGORY: {p['category']}\n"
-            f"   COSTCO COST: ${p['cost']}\n"
+            f"   COST: ${p['cost']}\n"
             f"   EBAY SELL PRICE: ${p['sell_price']}"
         )
 

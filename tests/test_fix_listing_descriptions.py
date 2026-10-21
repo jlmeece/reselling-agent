@@ -4,12 +4,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.fix_listing_descriptions import FOOTER, find_violations, scrub
+from tools.fix_listing_descriptions import FOOTER, find_violations, scrub, strip_retailer
 
 OLD_FOOTER = ('<p style="font-size:12px;color:#6e6e73;margin:0">Sold by JA_Liquidations — Ships from '
               'Texas. eBay Money Back Guarantee applies to all purchases.</p>')
 BODY = ('<div style="font-family:Arial;max-width:680px"> <h3 style="font-size:20px">POLYWOOD Chair</h3> '
-        '<p style="font-size:15px">Commercial-grade HDPE — Costco quality.</p> '
+        '<p style="font-size:15px">Commercial-grade HDPE, built for every season.</p> '
         '<ul style="list-style:none"> <li style="padding:10px 0">✓ <b>300-lb capacity</b>, 17-in seat</li> '
         '<li style="padding:10px 0">✓ <b>20-year warranty</b></li> </ul> ')
 REDIRECT = ('<div style="background:#f5f5f7;border-radius:10px;padding:16px;margin:0 0 20px 0"> '
@@ -17,7 +17,8 @@ REDIRECT = ('<div style="background:#f5f5f7;border-radius:10px;padding:16px;marg
             'Save 10% buying direct at coming-soon.com/outdoor with code SAVE10 — same product, no eBay fees.'
             '</p> </div> ')
 VIOLATING = BODY + REDIRECT + OLD_FOOTER + " </div>"
-CLEAN = BODY + OLD_FOOTER + " </div>"
+NEW_FOOTER = f'<p style="font-size:12px;color:#6e6e73;margin:0">{FOOTER}</p>'
+CLEAN = BODY + NEW_FOOTER + " </div>"
 
 
 def test_detects_redirect_and_bare_domain():
@@ -98,3 +99,59 @@ def test_drop_small_photos_refuses_when_nothing_large(monkeypatch):
     monkeypatch.setattr(es, "fetch_item_price", lambda iid: {"picture_urls": [small]})
     monkeypatch.setattr(es, "revise_picture", lambda *a, **k: (_ for _ in ()).throw(AssertionError("sent")))
     assert drop_small_photos("318925902421", "FixedPriceItem")[0] is False
+
+
+def test_footer_is_exact_and_old_texas_footer_is_a_violation():
+    assert FOOTER == "Sold by JA_Liquidations. eBay Money Back Guarantee applies."
+    old = BODY + OLD_FOOTER + " </div>"
+    assert "Texas" in find_violations(old)
+    new, left = scrub(old)
+    assert left == [] and new == CLEAN                        # only the footer changed
+
+
+def test_costco_and_texas_wording_rewritten_in_place():
+    cases = {
+        "Costco's trusted CoQ10 at a clinical 300mg dose — sealed, fresh, and shipped fast from Texas.":
+            "The trusted CoQ10 at a clinical 300mg dose — sealed, fresh, and shipped fast.",
+        "— Costco's premium private label brand with rigorous standards":
+            "— the premium private label brand with rigorous standards",
+        "New in original Costco packaging": "New in original packaging",
+        "Ships from Texas": "Ships",
+        "Ships from Texas in original packaging": "Ships in original packaging",
+        "— ships fast from our Texas warehouse, backed by eBay Money Back Guarantee":
+            "— ships fast, backed by eBay Money Back Guarantee",
+        "Commercial lumber — Costco quality at a sharp price.": "Commercial lumber — premium quality at a sharp price.",
+        "Patio Lounge Chair — UV-Stable, Costco Quality": "Patio Lounge Chair — UV-Stable, Premium Quality",
+        "Bone Health Supplement Costco": "Bone Health Supplement",
+        "Originally retailed at Costco for $999.99 — authentic 14kt gold.": "Retail value $999.99 — authentic 14kt gold.",
+        "— new in original box, ships from Texas, quick no-tool assembly": "— new in original box, quick no-tool assembly",
+        "— sourced directly from Costco and shipped from Texas with full eBay buyer protection":
+            "— shipped with full eBay buyer protection",
+        "— built to endure Texas heat and humidity": "— built to endure summer heat and humidity",
+    }
+    for before, after in cases.items():
+        new, changes = strip_retailer(f"<p>{before}</p>")
+        assert new == f"<p>{after}</p>", before
+        assert not find_violations(new)
+
+
+def test_emptied_label_is_removed_with_its_dash():
+    html = "<li>✓ <b>Sourced direct from Costco</b> — Henredon collection, new in original packaging</li>"
+    new, _ = strip_retailer(html)
+    assert new == "<li>✓ Henredon collection, new in original packaging</li>"
+
+
+def test_texas_toast_is_not_a_violation():
+    html = "<li>✓ Extra-wide slots fit bagels and Texas toast</li>"
+    assert find_violations(html) == []
+    assert strip_retailer(html) == (html, [])
+
+
+def test_scrub_rewrites_costco_body_and_sets_new_footer():
+    html = ('<div><h3>Kirkland Calcium 500 Tablets Costco</h3><p>Calcium with D3 — Costco quality.</p>'
+            '<ul><li>✓ <b>Ships from Texas</b> in original Costco packaging</li></ul>' + OLD_FOOTER + "</div>")
+    new, left = scrub(html)
+    assert left == [] and "Costco" not in new and "Texas" not in new
+    assert "<h3>Kirkland Calcium 500 Tablets</h3>" in new
+    assert "<li>✓ <b>Ships</b> in original packaging</li>" in new
+    assert new.count(FOOTER) == 1
