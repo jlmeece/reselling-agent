@@ -45,13 +45,16 @@ Generate SEO-optimized eBay listing copy, ad copy, and site meta descriptions fo
 
 ---
 
-## The Redirect Message (Column O) — Most Important Field
+## ⛔ DEPRECATED — Redirect Message (Column O) — DO NOT USE ⛔
 
-Every eBay listing must include the redirect message in the listing description. It directs buyers to your WooCommerce site for 10% off. Example:
+This field is a DIRECT eBay policy violation ("Offering to buy or sell outside of eBay").
+The old copy tool embedded a "Save 10% buying direct at [site] — no eBay fees" line into every
+description; it got the Henredon listing (item 318910864177) hidden under policy 21920397.
 
-> "Save 10% buying direct at coming-soon.com/jewelry with code SAVE10 — same product, no eBay fees."
+The CURRENT `tools/listing_copy.py` no longer generates this field — descriptions end with the
+clean footer: "Sold by JA_Liquidations — Ships from Texas. eBay Money Back Guarantee applies."
 
-This is your retention moat. Never skip this field.
+Do NOT re-add a redirect message, external link, or off-eBay contact info to any description.
 
 ---
 
