@@ -240,6 +240,7 @@ def _parse_listing(item) -> dict | None:
     return {
         "item_id":       item_id,
         "title":         _text(item, "Title"),
+        "listing_type":  _text(item, "ListingType"),
         "price":         price,
         "quantity":      _num(_text(item, "Quantity"), int, 0),
         "quantity_sold": qty_sold,
@@ -511,6 +512,103 @@ def revise_picture(item_id, main_url, gallery_urls=(), listing_type=None) -> dic
     out["message"] = "; ".join(warnings)
     logger.info(f"revise_picture: item {iid} -> {len(urls)} picture(s) OK"
                 + (f" (warnings: {out['message']})" if warnings else ""))
+    return out
+
+
+def _cdata(text: str) -> str:
+    """Wrap text in CDATA (splitting any ']]>' so it can't close the section early)."""
+    return "<![CDATA[" + str(text).replace("]]>", "]]]]><![CDATA[>") + "]]>"
+
+
+def _build_description_xml(token: str, item_id: str, description: str) -> str:
+    """ReviseFixedPriceItem body that replaces ONLY Item.Description."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"<Description>{_cdata(description)}</Description></Item>"
+        "</ReviseFixedPriceItemRequest>"
+    )
+
+
+def revise_description(item_id, new_description, listing_type=None) -> dict:
+    """
+    Replace a live listing's HTML description via ReviseFixedPriceItem (in place, no re-list).
+    listing_type (from GetItem / ActiveList), when given, must be "FixedPriceItem". Same return
+    shape as revise_fixed_price. Never raises; a refused guard sends nothing (error_kind "invalid").
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
+           "error_kind": None, "error_code": "", "message": ""}
+    desc = str(new_description or "").strip()
+    why = None
+    if not iid:
+        why = f"bad item id {item_id!r}"
+    elif listing_type is not None and listing_type != "FixedPriceItem":
+        why = f"listing type {listing_type or 'unknown'!r} is not FixedPriceItem"
+    elif not desc:
+        why = "empty description"
+    if why:
+        out.update(error_kind="invalid", message=f"refused — {why}")
+        logger.error(f"revise_description: item {out['item_id']} {out['message']}")
+        return out
+    try:
+        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_description_xml(tok, iid, desc))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        level = logger.critical if err["error_kind"] == "auth" else logger.error
+        level(f"revise_description: item {iid} FAILED [{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    out["ok"] = True
+    warnings = [f"{_text(e, 'ErrorCode')}: {_text(e, 'ShortMessage')}"
+                for e in root.findall("{*}Errors") if _text(e, "SeverityCode") == "Warning"]
+    out["message"] = "; ".join(warnings)
+    logger.info(f"revise_description: item {iid} OK" + (f" (warnings: {out['message']})" if warnings else ""))
+    return out
+
+
+def fetch_item_description(item_id) -> dict:
+    """GetItem (DetailLevel ReturnAll) -> {ok, item_id, description, listing_type, listing_status,
+    has_variations, error_kind, error_code, message}. Never raises."""
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "description": "", "listing_type": "",
+           "listing_status": "", "has_variations": False,
+           "error_kind": None, "error_code": "", "message": ""}
+    if not iid:
+        out.update(error_kind="invalid", message=f"bad item id {item_id!r}")
+        return out
+    selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
+        "Item.ItemID", "Item.Description", "Item.ListingType", "Item.SellingStatus", "Item.Variations"))
+
+    def body(tok):
+        return ('<?xml version="1.0" encoding="utf-8"?>'
+                f'<GetItemRequest xmlns="{_NS}">'
+                f"<RequesterCredentials><eBayAuthToken>{_xml_escape(tok)}</eBayAuthToken></RequesterCredentials>"
+                "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+                f"<ItemID>{_xml_escape(iid)}</ItemID><DetailLevel>ReturnAll</DetailLevel>{selectors}"
+                "</GetItemRequest>")
+    try:
+        root, err = _call("GetItem", body)
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        return out
+    item = _child(root, "Item")
+    if item is None:
+        out.update(error_kind="api", message="GetItem returned no Item")
+        return out
+    out["description"] = _text(item, "Description")
+    out["listing_type"] = _text(item, "ListingType")
+    status = _child(item, "SellingStatus")
+    out["listing_status"] = _text(status, "ListingStatus") if status is not None else ""
+    variations = _child(item, "Variations")
+    out["has_variations"] = variations is not None and variations.find("{*}Variation") is not None
+    out["ok"] = True
     return out
 
 

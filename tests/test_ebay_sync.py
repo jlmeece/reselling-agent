@@ -186,7 +186,7 @@ def test_fetch_parses_pages_and_sends_correct_request(monkeypatch, creds):
     out = fetch_active_listings()
 
     assert [l["item_id"] for l in out] == ["111111111111", "222222222222"]  # deduped, both pages
-    assert out[0] == {"item_id": "111111111111", "title": "A & B", "price": 29.99, "quantity": 5,
+    assert out[0] == {"item_id": "111111111111", "title": "A & B", "listing_type": "", "price": 29.99, "quantity": 5,
                       "quantity_sold": 2, "watch_count": 2, "view_count": 10}
     assert out[1]["price"] == 9.5
     assert ebay_sync.get_last_error()["kind"] is None
@@ -1961,3 +1961,39 @@ def test_revise_picture_caps_at_24(monkeypatch, creds):
     gallery = [f"https://i.ebayimg.com/00/s/x/z/G{i}/$_1.JPG" for i in range(30)]
     out = ebay_sync.revise_picture("123456789012", EPS_MAIN, gallery)
     assert len(out["pictures"]) == 24 and out["pictures"][0] == EPS_MAIN
+
+
+# ── revise_description (off-eBay scrub) ──────────────────────────────────────
+
+def test_revise_description_sends_cdata_description_only(monkeypatch, creds):
+    sent = []
+    ok = '<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>'
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(ok))
+    html = '<div><p style="x">A & B ]]> tricky</p></div>'
+    out = ebay_sync.revise_description("123456789012", html, listing_type="FixedPriceItem")
+    assert out["ok"]
+    body = sent[0].data.decode()
+    assert "<Description><![CDATA[<div><p style=\"x\">A & B ]]]]><![CDATA[> tricky</p></div>]]></Description>" in body
+    assert "StartPrice" not in body and "PictureDetails" not in body
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(sent[0].data)
+    assert root.find(".//{*}Description").text == html                   # round-trips exactly
+
+
+@pytest.mark.parametrize("desc,ltype,why", [("", None, "empty description"),
+                                            ("<p>x</p>", "Chinese", "not FixedPriceItem")])
+def test_revise_description_guards_never_post(monkeypatch, creds, desc, ltype, why):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.revise_description("123456789012", desc, listing_type=ltype)
+    assert out["ok"] is False and out["error_kind"] == "invalid" and why in out["message"]
+
+
+def test_fetch_item_description(monkeypatch, creds):
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            "<Description>&lt;p&gt;Hi&lt;/p&gt;</Description><ListingType>FixedPriceItem</ListingType>"
+            "<SellingStatus><ListingStatus>Active</ListingStatus></SellingStatus></Item></GetItemResponse>")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", lambda req, **k: FakeResp(body))
+    out = ebay_sync.fetch_item_description("123456789012")
+    assert out["ok"] and out["description"] == "<p>Hi</p>" and out["listing_type"] == "FixedPriceItem"
