@@ -76,7 +76,9 @@ def harness(monkeypatch):
         "error_kind": None, "error_code": "", "message": "", **(state_end["info"] or {})})
     monkeypatch.setattr(sch, "log_revise", lambda svc, res, **k: calls["revise_log"].append((res, k)))
     monkeypatch.setattr(sch, "_notify", lambda text: calls["notify"].append(text) or True)
-    state = {"rows": [], "scrape": None}
+    state = {"rows": [], "scrape": None, "live_ids": None}
+    # eBay ActiveList: None = unavailable (col Q + status fallback) unless a test sets a set
+    monkeypatch.setattr(sch, "live_item_ids", lambda: state["live_ids"])
 
     monkeypatch.setattr(sch, "read_sheet", lambda *a, **k: state["rows"])
 
@@ -99,10 +101,11 @@ def harness(monkeypatch):
     monkeypatch.setattr(sch, "save_pending", lambda item: calls["pending"].append(item))
     monkeypatch.setattr(sch, "datetime", _FixedDT)
 
-    def run(rows, scrape, only_rows=None, config=CONFIG, end_results=(), item_info=None):
+    def run(rows, scrape, only_rows=None, config=CONFIG, end_results=(), item_info=None,
+            live_ids=None):
         for key in calls:
             calls[key].clear()
-        state["rows"], state["scrape"] = rows, scrape
+        state["rows"], state["scrape"], state["live_ids"] = rows, scrape, live_ids
         state_end["results"], state_end["info"] = list(end_results), item_info
         sch.run_active_monitor(config, COL, object(), "Product Tracker", START_ROW, 500,
                                only_rows=only_rows)
@@ -295,11 +298,12 @@ def test_no_prompt_on_sale_start(harness):
     assert calls["prompts"] == [] and calls["pending"] == []
 
 
-def test_no_prompt_for_non_active_row(harness):
+def test_ready_row_promoted_with_live_listing_gets_prompt(harness):
+    # READY + eBay URL is promoted to ACTIVE this run and its listing is live -> prompted
     calls = harness([_energy_row(31.99, badge="🔥 -$8 ends 10/14/26", ebay_price="41.48",
                                  ebay_url=EBAY_URL, status="READY")],
                     _scrape(39.99, False))
-    assert calls["prompts"] == []
+    assert len(calls["prompts"]) == 1
 
 
 def test_no_prompt_when_listing_already_covers_margin(harness):
@@ -505,7 +509,6 @@ def test_live_listing_on_non_active_row_is_hidden_on_oos(harness, status):
     assert w[COL["status"]] == "PAUSED_OOS"
     assert w[COL["stock_status"]] == "OUT OF STOCK"
     assert w[COL["tier_summary"]] == f"[AUDIT_REVIEW] stale 45 days | {sch.OOS_HIDDEN_NOTE}"
-    assert COL["costco_cost"] not in w and COL["price_change"] not in w   # no sale/margin logic
     assert calls["urgent"] == [] and calls["prompts"] == []
     assert "hid 1 eBay listing" in calls["notify"][0]
     assert sched.get_oos_hidden("123456789012")["prev_status"] == status
@@ -531,14 +534,99 @@ def test_delisted_product_on_active_row_is_hidden(harness):
     assert calls["urgent"] == []
 
 
-def test_non_active_row_in_stock_only_refreshes_stock(harness):
+def test_non_active_row_in_stock_gets_full_pass_and_keeps_status(harness):
+    # in stock, cost $31.99 -> $32.10 (drift), eBay $59.99 = still profitable: quiet, status kept
     calls = harness([_orphan_row("AUDIT_REVIEW", notes="[AUDIT_REVIEW] x | OUT OF STOCK — old")],
-                    _scrape(39.99, False, stock_source="inventory_api"))
+                    _scrape(32.10, False, stock_source="inventory_api"))
     assert calls["ended"] == [] and calls["urgent"] == [] and calls["prompts"] == []
     _, w = _written(calls)
-    assert COL["status"] not in w and COL["costco_cost"] not in w
-    assert w[COL["tier_summary"]] == "[AUDIT_REVIEW] x"   # stale OOS line dropped
+    assert COL["status"] not in w
+    assert w[COL["costco_cost"]] == 32.10                 # cost tracked like ACTIVE
+    assert w[COL["tier_summary"]] == "[AUDIT_REVIEW] x"   # stale OOS line dropped, reason kept
     assert w[COL["stock_status"]] == "In Stock"
+
+
+# ── every live listing is fully monitored, whatever its sheet status ─────────
+
+def _paused_sale_row(status, ebay_url=EBAY_URL, notes="[PAUSED_MARGIN] set by hand"):
+    row = _energy_row(31.99, badge="🔥 -$8 ends 10/14/26", regular="39.99", ebay_price="41.48",
+                      ebay_url=ebay_url, status=status)
+    idx = sch.col_to_idx(COL["tier_summary"])
+    while len(row) <= idx:
+        row.append("")
+    row[idx] = notes
+    return row
+
+
+@pytest.mark.parametrize("status", ["PAUSED_MARGIN", "AUDIT_REVIEW", "WATCH"])
+def test_live_non_active_row_gets_cost_change_prompt_margin_and_sale_end(harness, status):
+    calls = harness([_paused_sale_row(status)], _scrape(39.99, False, stock_source="inventory_api"))
+    (prompt,) = calls["prompts"]                              # reprice prompt like ACTIVE
+    assert prompt["item_id"] == "123456789012" and prompt["target"] == 51.99
+    _, w = _written(calls)
+    assert w[COL["costco_cost"]] == 39.99                     # Costco cost re-scraped + written
+    assert w[COL["price_change"]] == "YES — update listing"   # sale-end flag
+    assert w[COL["sale_info"]] == ""                          # sale badge cleared at sale end
+    assert COL["status"] not in w                             # workflow status untouched
+    assert w[COL["tier_summary"]].startswith("[PAUSED_MARGIN] set by hand")
+    (_, items), = calls["urgent"]
+    assert "$51.99" in items[0]["reason"]
+
+
+def test_live_non_active_row_losing_money_alerts(harness):
+    # small drift $31.99 -> $32.20 (no sale event) on a listing priced $30 = margin < 0
+    row = _energy_row(31.99, ebay_price="30.00", ebay_url=EBAY_URL, status="PAUSED_MARGIN")
+    calls = harness([row], _scrape(32.20, False, stock_source="inventory_api"))
+    (_, items), = calls["urgent"]
+    assert "losing money" in items[0]["reason"].lower()
+    assert len(calls["prompts"]) == 1
+    _, w = _written(calls)
+    assert "Monitor: " in w[COL["tier_summary"]]              # monitor lines are tagged
+
+
+def test_monitor_lines_are_replaced_not_piled_up():
+    once = sch._merge_monitor_notes("[AUDIT_REVIEW] x", "Low stock at Costco")
+    assert once == "[AUDIT_REVIEW] x | Monitor: Low stock at Costco"
+    assert sch._merge_monitor_notes(once, "All clear") == "[AUDIT_REVIEW] x"
+    assert (sch._merge_monitor_notes(once, sch.OOS_HIDDEN_NOTE)
+            == f"[AUDIT_REVIEW] x | {sch.OOS_HIDDEN_NOTE}")
+
+
+def test_live_non_active_row_sale_expiry_countdown(harness):
+    calls = harness([_paused_sale_row("PAUSED_MARGIN")],
+                    _scrape(31.99, True, original=39.99, savings=8.0, expires="9/25/26",
+                            stock_source="inventory_api"))
+    (products, _), = calls["expiry"]
+    assert products[0]["status"] == "PAUSED_MARGIN"
+
+
+def test_paused_demand_row_without_live_listing_is_untouched(harness, monkeypatch):
+    scraped = []
+    monkeypatch.setattr(sch, "scrape_costco", lambda url, page=None: scraped.append(url))
+    calls = harness([_paused_sale_row("PAUSED_DEMAND", ebay_url="")], _scrape(39.99, False))
+    assert scraped == [] and calls["writes"] == [] and calls["prompts"] == []
+    assert calls["expiry"] == [] and calls["urgent"] == []
+
+
+def test_live_ids_decide_when_ebay_list_is_known(harness, monkeypatch):
+    scraped = []
+    monkeypatch.setattr(sch, "scrape_costco",
+                        lambda url, page=None: scraped.append(url) or _scrape(39.99, False))
+    # col Q item id NOT live on eBay (ended / qty 0) -> a PAUSED_MARGIN row is not monitored
+    harness([_paused_sale_row("PAUSED_MARGIN")], None, live_ids={"999999999999"})
+    assert scraped == []
+    # ...and an ENDED row whose listing IS still live on eBay is monitored (status never un-monitors)
+    calls = harness([_paused_sale_row("ENDED")], None, live_ids={"123456789012"})
+    assert len(scraped) == 1 and len(calls["prompts"]) == 1
+
+
+def test_oos_hide_on_paused_oos_row_keeps_original_prev_status(harness):
+    # Jay raised the quantity by hand on a hidden PAUSED_OOS row (live again), then OOS again
+    sched.record_oos_hidden("123456789012", title="t", row=4, prev_qty=5, hidden=True,
+                            prev_status="WATCH")
+    calls = harness([_orphan_row("PAUSED_OOS")], _oos(), live_ids={"123456789012"})
+    assert calls["ended"] == ["123456789012"]
+    assert sched.get_oos_hidden("123456789012")["prev_status"] == "WATCH"
 
 
 def test_non_active_row_oos_hide_failure_is_urgent(harness):

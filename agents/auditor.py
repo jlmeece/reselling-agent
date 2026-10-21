@@ -103,9 +103,10 @@ def _days_since(timestamp_str: str) -> int:
 
 
 def _live_listing(url) -> bool:
-    """Col Q holds a URL with a parseable eBay item id (the active monitor's own test)."""
-    from tools.ebay_sync import extract_item_id
-    return str(url).startswith("http") and extract_item_id(url) is not None
+    """Col Q holds a URL with a parseable eBay item id (ebay_sync.is_live_listing, the active
+    monitor's own test; no status — a row the auditor would delete is never ENDED-protected)."""
+    from tools.ebay_sync import is_live_listing
+    return is_live_listing(url)
 
 
 def _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes=""):

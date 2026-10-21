@@ -215,6 +215,13 @@ def test_row_no_longer_active_drops(env):
     assert "dropped" in env["notes"][0]
 
 
+def test_due_reprice_on_live_paused_margin_row_is_applied(env):
+    _schedule()
+    env["rows"] = [_row(status="PAUSED_MARGIN")]
+    env["run"]()
+    assert env["calls"] == [("revise", ITEM, 50.99)]
+
+
 def test_lock_busy_keeps_action_for_next_tick(env):
     _schedule()
     env["lock"] = False

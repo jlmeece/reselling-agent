@@ -61,7 +61,8 @@ from tools.sale_monitor import (
 )
 from tools.sale_digest import select_sale_items, format_digest
 from tools.ebay_sync import (extract_item_id, fetch_item_price, revise_fixed_price,
-                             set_quantity, set_quantity_zero, compute_net)
+                             set_quantity, set_quantity_zero, compute_net, is_live_listing,
+                             live_item_ids)
 from tools.reprice import (log_revise, pop_pending, restore_margin_price, save_pending,
                            schedule_keyboard, send_reprice_prompt)
 from tools import sale_schedule as sched
@@ -109,12 +110,11 @@ def _set_cell(row, idx, value):
 def _reprice_prompt(row, COL, categories, status, title, category, sheet_row,
                     old, new_price, ebay_f, fee_f, ship_f):
     """
-    One-tap reprice prompt dict for a cost rise, or None. Only for ACTIVE rows with a valid
-    eBay item ID in col Q and a computable restore-margin price above the current eBay price.
+    One-tap reprice prompt dict for a cost rise, or None. For any row with a live eBay listing
+    (valid item ID in col Q — the caller already decided the row is monitored; sheet status
+    doesn't matter) and a computable restore-margin price above the current eBay price.
     Fee: col AB, else the category's fee_rate; ad: the category's ad_rate (col AE = H*ad_rate).
     """
-    if status != "ACTIVE":
-        return None
     item_id = extract_item_id(safe_get(row, col_to_idx(COL["ebay_listing_url"])))
     if not item_id:
         return None
@@ -153,6 +153,21 @@ def _merge_oos_note(existing, note):
     if note:
         parts.append(note)
     return " | ".join(parts)
+
+
+MONITOR_NOTE_PREFIX = "Monitor: "
+
+
+def _merge_monitor_notes(existing, notes):
+    """Col T for a live listing on a non-ACTIVE row: keep the row's own reason, drop the lines an
+    earlier monitor run wrote (OOS lines + "Monitor: ..." lines), append this run's notes. OOS
+    lines stay unprefixed (the daily sweep and _merge_oos_note key on "OUT OF STOCK")."""
+    keep = [p for p in (existing or "").split(" | ")
+            if p and not p.startswith("OUT OF STOCK") and not p.startswith(MONITOR_NOTE_PREFIX)]
+    for p in (notes or "").split(" | "):
+        if p and p != "All clear":
+            keep.append(p if p.startswith("OUT OF STOCK") else MONITOR_NOTE_PREFIX + p)
+    return " | ".join(keep)
 
 
 def _auto_hide_oos(service, item_id, costco_data, title, sheet_row, prev_status=None):
@@ -299,7 +314,11 @@ def _restore_oos_listing(service, row, COL, categories, costco_data, title, cate
 
 def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, only_rows=None):
     """
-    Checks all ACTIVE listings every run.
+    Checks every ACTIVE row AND every row with a live eBay listing (is_live_listing: col Q item
+    id that is Active on eBay with quantity > 0 — whatever the sheet status) every run. Sheet
+    status drives the workflow, never whether a live listing is protected: a live PAUSED_MARGIN /
+    AUDIT_REVIEW / WATCH row gets the same stock / cost / margin / sale-end / reprice pass as
+    ACTIVE; only the OOS hide changes its status (-> PAUSED_OOS), and its own col T reason is kept.
     - Detects stock changes -> PAUSED_OOS; an OOS live listing (col Q) is hidden on eBay
       (qty 0, _auto_hide_oos — business.ebay_sync.auto_end_oos)
     - Detects Costco SALE START (cost dropped + on_sale) -> writes G / AW / X, keeps the eBay
@@ -327,15 +346,23 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
     oos_handled = []        # listings hidden (qty 0) / found already off on eBay this run
     stop_auto_hide = False  # token rejected -> don't hit the same auth error on every OOS row
 
-    def _live_listing(url):
-        return url.startswith("http") and extract_item_id(url) is not None
+    # Which item ids are really live on eBay (one ActiveList call). None = eBay unreachable ->
+    # is_live_listing falls back to col Q + status (ENDED / PAUSED_OOS = not live).
+    live_ids = live_item_ids()
+    if live_ids is None:
+        logger.warning("Active monitor: eBay ActiveList unavailable — live listings judged by col Q")
 
-    def _oos_safety_only(st, url):
-        # A live eBay listing on a row the monitor otherwise ignores (AUDIT_REVIEW, PAUSED_MARGIN,
-        # WATCH, ...) still sells — stock-check it and hide it on OOS. ENDED is terminal and
-        # PAUSED_OOS is already hidden + watched by the daily sweep.
-        return (_live_listing(url) and st not in ACTIVE_MONITOR_STATUSES
-                and st not in ("READY", "APPROVED", "ENDED", "PAUSED_OOS"))
+    def _is_live(r):
+        return is_live_listing(safe_get(r, col_to_idx(COL["ebay_listing_url"])),
+                               safe_get(r, col_to_idx(COL["status"])), live_ids)
+
+    def _live_non_active(st, r):
+        # A live listing on a row whose status isn't ACTIVE (and isn't a READY row being
+        # promoted) gets the full pass, status-neutral (see the docstring).
+        url = safe_get(r, col_to_idx(COL["ebay_listing_url"]))
+        return (st not in ACTIVE_MONITOR_STATUSES
+                and not (st == "READY" and url.startswith("http"))
+                and _is_live(r))
 
     # Pre-scan: skip Chrome entirely if there are no ACTIVE/READY-with-URL/APPROVED rows and no
     # other row with a live eBay listing.
@@ -345,8 +372,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
         or safe_get(r, col_to_idx(COL["status"])) == "APPROVED"
         or (safe_get(r, col_to_idx(COL["status"])) == "READY"
             and safe_get(r, col_to_idx(COL["ebay_listing_url"])).startswith("http"))
-        or _oos_safety_only(safe_get(r, col_to_idx(COL["status"])),
-                            safe_get(r, col_to_idx(COL["ebay_listing_url"])))
+        or _is_live(r)
         for r in all_data if r
     )
     if not has_active:
@@ -364,14 +390,14 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             status    = safe_get(row, col_to_idx(COL["status"]))
             ebay_url  = safe_get(row, col_to_idx(COL["ebay_listing_url"]))
 
-            # Process ACTIVE rows, READY rows with eBay URL, APPROVED rows (stock watch), and any
-            # other row with a live eBay listing (stock check + OOS hide only)
-            is_approved_check = (status == "APPROVED")
-            is_oos_safety_only = _oos_safety_only(status, ebay_url)
+            # Process ACTIVE rows, READY rows with eBay URL, any other row with a live eBay
+            # listing (full pass, status-neutral), and APPROVED rows without one (stock watch)
+            live_other = _live_non_active(status, row)
+            is_approved_check = (status == "APPROVED" and not live_other)
             if (status not in ACTIVE_MONITOR_STATUSES
                     and not (status == "READY" and ebay_url.startswith("http"))
                     and not is_approved_check
-                    and not is_oos_safety_only):
+                    and not live_other):
                 continue
 
             title       = safe_get(row, col_to_idx(COL["title"]))
@@ -427,56 +453,6 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                 time.sleep(2)
                 continue
 
-            # Live eBay listing on a non-ACTIVE row: stock check + OOS hide ONLY. No sale /
-            # reprice / margin logic — the row's status says it isn't being actively managed.
-            if is_oos_safety_only:
-                new_status = status
-                oos_note = None
-                if stock_status == "OUT OF STOCK":
-                    oos_iid = extract_item_id(ebay_url)
-                    if auto_end_oos and not stop_auto_hide:
-                        outcome, oos_note = _auto_hide_oos(service, oos_iid, costco_data, title,
-                                                           sheet_row, prev_status=status)
-                    else:
-                        outcome, oos_note = "off", OOS_PAUSE_NOTE
-                    if outcome in OOS_HANDLED:
-                        new_status = "PAUSED_OOS"
-                        oos_handled.append({"title": title, "item_id": oos_iid, "row": sheet_row,
-                                            "outcome": outcome,
-                                            "removed": bool(costco_data.get("removed"))})
-                        logger.info(f"  OOS listing {outcome} on {status} row: {title[:50]} (eBay {oos_iid})")
-                    else:
-                        if outcome == "auth":
-                            stop_auto_hide = True
-                            _notify("🚨 <b>eBay token rejected</b> while hiding an OOS listing — renew "
-                                    "EBAY_AUTH_TOKEN in .env. Remaining OOS listings this run were NOT "
-                                    "hidden; set their eBay quantity to 0 by hand.")
-                        # Still selling on eBay with nothing behind it — Jay must act now
-                        urgent_items.append({
-                            "title":        title,
-                            "row":          sheet_row,
-                            "category":     category,
-                            "reason":       f"LIVE eBay listing on a {status or 'blank-status'} row — {oos_note}",
-                            "reprice_note": "",
-                        })
-                        logger.warning(f"  OOS live listing NOT hidden on {status} row: {title[:50]}")
-                updates = [
-                    (COL["stock_status"], stock_status),
-                    (COL["last_checked"], run_time),
-                    (COL["tier_summary"], _merge_oos_note(
-                        safe_get(row, col_to_idx(COL["tier_summary"])), oos_note)),
-                ]
-                if image_urls:   # a removed product's page has none — keep the old col AT
-                    updates.append((COL["image_urls"], image_urls))
-                if new_status != status:
-                    updates.append((COL["status"], new_status))
-                    logger.info(f"  Status: {status} -> {new_status}")
-                write_row_partial(service, sheet_name, sheet_row, updates)
-                for _col, _val in updates:
-                    _set_cell(row, col_to_idx(_col), _val)
-                time.sleep(2)
-                continue
-
             # ── Cost change — sale-aware ──────────────────────────────────────────
             # SALE START (cost dropped + on_sale): keep the eBay price, pocket the margin.
             # SALE END / cost rise: flag col P + urgent reprice-up alert.
@@ -507,12 +483,17 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                 demand_int = None
 
             # price_changed is retired as a generic trigger — the sale events below own it.
+            # A live listing on a non-ACTIVE row is judged as a live listing (determine_status's
+            # ACTIVE branch: OOS / low stock / check failed / losing money), but its status only
+            # changes when the OOS hide below succeeds.
             new_status, reason_code, notes = determine_status(
-                status, stock_status, margin, False, demand_int,
+                "ACTIVE" if live_other else status, stock_status, margin, False, demand_int,
                 ebay_url=ebay_url,
                 min_margin=business["min_margin_threshold"],
                 min_demand=business["min_demand_score"],
             )
+            if live_other:
+                new_status = status
 
             # Append price delta note if Jordan has manually lowered price >5% below recommendation
             suggested_price_raw = safe_get(row, col_to_idx(COL["suggested_price"]))
@@ -532,11 +513,20 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             if reason_code == "oos" and auto_end_oos and not stop_auto_hide:
                 oos_iid = extract_item_id(ebay_url)
                 if oos_iid:
-                    outcome, oos_note = _auto_hide_oos(service, oos_iid, costco_data, title, sheet_row)
+                    prev_status = None
+                    if live_other:
+                        # restock puts the row back to this status; a PAUSED_OOS row the sweep
+                        # already tracks keeps the status recorded when it was first hidden
+                        prev_status = ((sched.get_oos_hidden(oos_iid) or {}).get("prev_status")
+                                       if status == "PAUSED_OOS" else status)
+                    outcome, oos_note = _auto_hide_oos(service, oos_iid, costco_data, title,
+                                                       sheet_row, prev_status=prev_status)
                     notes = (notes.replace(OOS_PAUSE_NOTE, oos_note) if OOS_PAUSE_NOTE in notes
                              else f"{oos_note} | {notes}" if notes else oos_note)
                     if outcome in OOS_HANDLED:
                         oos_done = True
+                        if live_other:
+                            new_status = "PAUSED_OOS"
                         oos_handled.append({"title": title, "item_id": oos_iid, "row": sheet_row,
                                             "outcome": outcome,
                                             "removed": bool(costco_data.get("removed"))})
@@ -582,7 +572,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             # it wasn't a clean "sale ended" event (stale sale badge, small cost drift).
             # Without this, a negative margin only wrote a col T note and could sit
             # unnoticed for days — the exact gap that let a listing go negative for a week.
-            if (status == "ACTIVE" and margin is not None and margin < 0
+            if ((status == "ACTIVE" or live_other) and margin is not None and margin < 0
                     and flag_update != PRICE_FLAG_YES and sale_item is None and new_price):
                 flag_update = PRICE_FLAG_YES
                 prompt = _reprice_prompt(row, COL, categories, status, title, category,
@@ -599,13 +589,17 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             if sale_note:
                 notes = sale_note if notes in ("", "All clear") else f"{notes} | {sale_note}"
 
-            # Build updates
+            # Build updates. A live non-ACTIVE row keeps its own col T reason ("[AUDIT_REVIEW] ...");
+            # the monitor's lines are merged in and replaced on later runs (_merge_monitor_notes).
+            col_t = (_merge_monitor_notes(safe_get(row, col_to_idx(COL["tier_summary"])), notes)
+                     if live_other else notes)
             updates = [
                 (COL["stock_status"],  stock_status),
                 (COL["last_checked"],  run_time),
-                (COL["tier_summary"],         notes),
-                (COL["image_urls"],    image_urls),
+                (COL["tier_summary"],  col_t),
             ]
+            if image_urls or not live_other:   # a removed product's page has none — keep col AT
+                updates.append((COL["image_urls"], image_urls))
             updates += sale_updates
             if flag_update is not None:
                 updates.append((COL["price_change"], flag_update))
@@ -631,6 +625,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                 if sale_item:
                     urgent_items.append(sale_item)
             elif reason_code not in ("ok", "ebay_url_detected"):
+                if live_other:   # say why a non-ACTIVE row is in an urgent alert at all
+                    notes = f"LIVE eBay listing on a {status or 'blank-status'} row — {notes}"
                 if sale_item:
                     sale_item["reason"] = f"{sale_item['reason']} | {notes}"
                     urgent_items.append(sale_item)
@@ -685,6 +681,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
     # counts this run. Two tiers (SALE_WARN_HOURS / SALE_URGENT_HOURS), each alerted once.
     SALE_WARN_HOURS   = int(business.get("sale_warn_hours",   48))
     SALE_URGENT_HOURS = int(business.get("sale_urgent_hours", 24))
+    # Pre-listing workflow statuses keep their countdown; a live listing gets one whatever its status.
     SALE_EXPIRY_STATUSES = {"ACTIVE", "READY", "APPROVED", "LISTED"}
 
     alert_state = load_alert_state()
@@ -697,7 +694,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
             continue
         status    = safe_get(row, col_to_idx(COL["status"]))
         sale_info = safe_get(row, col_to_idx(COL["sale_info"]))
-        if status not in SALE_EXPIRY_STATUSES or not sale_info:
+        if (status not in SALE_EXPIRY_STATUSES and not _is_live(row)) or not sale_info:
             continue
 
         try:
@@ -815,10 +812,12 @@ def _apply_one(a, page, service, COL, sheet_name, start_row, end_row, threshold,
     rows = read_sheet(service, f"'{sheet_name}'!A{start_row}:BB{end_row}")
     matches = _rows_by_item_id(rows, COL, item_id, start_row)
     status_i = col_to_idx(COL["status"])
-    if len(matches) != 1 or safe_get(matches[0][1], status_i) != "ACTIVE":
+    url_i = col_to_idx(COL["ebay_listing_url"])
+    if len(matches) != 1 or not is_live_listing(safe_get(matches[0][1], url_i),
+                                                 safe_get(matches[0][1], status_i)):
         why = ("not in col Q of any row" if not matches else
                f"in col Q of {len(matches)} rows" if len(matches) > 1 else
-               f"status is {safe_get(matches[0][1], status_i) or 'blank'}, not ACTIVE")
+               f"status is {safe_get(matches[0][1], status_i) or 'blank'} (listing not live)")
         sched.cancel_action(item_id)
         log_revise(service, {"ok": False, "item_id": item_id, "price": a.get("target_price"),
                              "error_kind": "refused", "message": why},

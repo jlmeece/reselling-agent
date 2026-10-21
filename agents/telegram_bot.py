@@ -53,7 +53,7 @@ from tools.sale_priority import sale_end_sort_key
 from tools.spot_price import get_spot_price, parse_gold_weight
 from tools.ebay_sync import (
     _cost_basis, _to_float, _to_rate, apply_target_prices, compute_net, extract_item_id,
-    fetch_item_price, format_target_summary, revise_fixed_price,
+    fetch_item_price, format_target_summary, is_live_listing, revise_fixed_price,
 )
 from tools.reprice import (
     cancel_keyboard, competitive_target, format_reprice_prompt, get_pending, log_ignore,
@@ -1933,9 +1933,10 @@ async def cb_listed_confirm(update, context, arg):
 #
 # A dedicated "Active Listings" screen (sorted by net profit, descending) so Jay
 # can see every live listing's price + net + margin + units at a glance, then
-# End (ACTIVE -> ENDED) from the detail card. ENDED is terminal: the active
-# monitor stops tracking it (ACTIVE_MONITOR_STATUSES), the audit leaves it alone
-# (PROTECTED), and the row stays in the sheet for history.
+# End (ACTIVE -> ENDED) from the detail card. ENDED is a sheet status only: while the
+# eBay listing is still live the active monitor keeps protecting it (is_live_listing —
+# status never un-monitors a live listing); once it's ended on eBay the monitor drops it.
+# The audit leaves ENDED alone (PROTECTED), and the row stays in the sheet for history.
 
 _ACTIVE_LISTING_FIELDS = (
     "status", "title", "category", "costco_cost", "ebay_price",
@@ -2165,7 +2166,8 @@ async def cb_ended_start(update, context, arg):
     await _send_screen(
         update,
         f"🔴 End '{(p.get('title') or '(untitled)')}'?\n\n"
-        "Status ACTIVE → ENDED. The active monitor stops tracking it, and the row stays in the sheet for history.",
+        "Status ACTIVE → ENDED. End the listing on eBay too — while it's live there the monitor "
+        "keeps checking it. The row stays in the sheet for history.",
         reply_markup=_ended_confirm_kb(row_num),
     )
 
@@ -2192,7 +2194,7 @@ async def cb_ended_confirm(update, context, arg):
         return
     safe_write_row(service, sheet_name, row_num, [(col_map["status"], "ENDED")])
     await _send_screen(
-        update, f"✅ Ended — monitoring stopped\n{(p.get('title') or '(untitled)')}",
+        update, f"✅ Marked ENDED — end it on eBay too\n{(p.get('title') or '(untitled)')}",
         reply_markup=_home_inline_kb(),
     )
 
@@ -2282,10 +2284,12 @@ async def _reprice_apply(item_id, target, manual=False):
     p = matches[0]
     row, title = p["row_num"], p.get("title") or "(untitled)"
     t = html.escape(title[:80])
-    if (p.get("status") or "").strip() != "ACTIVE":
+    # Any status with a live listing (the monitor prompts for every live listing); GetItem
+    # below still refuses a listing that isn't Active on eBay.
+    if not is_live_listing(p.get("ebay_listing_url"), p.get("status")):
         log_revise(service, _refusal(item_id, target, f"status {p.get('status')!r}"),
                    title=title, row=row, source="bot")
-        return (f"<b>{t}</b> is no longer ACTIVE ({html.escape(p.get('status') or 'blank')}) "
+        return (f"<b>{t}</b> is no longer live ({html.escape(p.get('status') or 'blank')}) "
                 "— nothing changed."), None
 
     live = await asyncio.to_thread(fetch_item_price, item_id)
@@ -2400,8 +2404,8 @@ def _schedule_guard(item_id):
     matches = _rows_for_item_id(rows, col_map, item_id, start)
     if len(matches) != 1:
         return None, (f"eBay item {item_id} is not in col Q of exactly one row — nothing scheduled.")
-    if (matches[0].get("status") or "").strip() != "ACTIVE":
-        return None, "This listing is no longer ACTIVE — nothing was scheduled."
+    if not is_live_listing(matches[0].get("ebay_listing_url"), matches[0].get("status")):
+        return None, "This listing is no longer live — nothing was scheduled."
     return prompt, None
 
 

@@ -1881,10 +1881,13 @@ def test_mirror_fills_a_blank_col_h(writes):
     assert writes == [(4, [("H", 40.0)])]
 
 
-def test_mirror_skips_non_active_rows(writes):
-    rep = _sync([_row(4, "111111111111", status="PAUSED_OOS", price="$29.99")],
+@pytest.mark.parametrize("status", ["PAUSED_MARGIN", "AUDIT_REVIEW", "PAUSED_OOS"])
+def test_mirror_covers_every_live_listing_not_just_active(writes, status):
+    # every matched row is on eBay's ActiveList; the active monitor's margin reads col H
+    rep = _sync([_row(4, "111111111111", status=status, price="$29.99")],
                 [_listing("111111111111", price=40.0)], dry_run=True)
-    assert _mirror(rep) == [] and writes == []
+    (m,) = _mirror(rep)
+    assert m["new_price"] == 40.0 and m["outcome"] == "mirrored" and len(writes) == 1
 
 
 def test_mirror_skips_items_repriced_this_run(writes):
@@ -2052,3 +2055,34 @@ def test_revise_sku_guards_never_post(monkeypatch, creds, sku, ltype, why):
                         lambda *a, **k: pytest.fail("must not hit the network"))
     out = ebay_sync.revise_sku("123456789012", sku, listing_type=ltype)
     assert out["ok"] is False and out["error_kind"] == "invalid" and why in out["message"]
+
+
+# ── is_live_listing / live_item_ids: the one "has a live eBay listing" test ──
+
+@pytest.mark.parametrize("url,status,live_ids,expected", [
+    ("https://www.ebay.com/itm/123456789012", "PAUSED_MARGIN", None, True),
+    ("https://www.ebay.com/itm/123456789012", "AUDIT_REVIEW", None, True),
+    ("123456789012", "WATCH", None, True),                                  # bare id in col Q
+    ("https://www.ebay.com/itm/123456789012", "ENDED", None, False),        # fallback: ended
+    ("https://www.ebay.com/itm/123456789012", "PAUSED_OOS", None, False),   # fallback: hidden
+    ("", "ACTIVE", None, False),
+    ("https://www.ebay.com/sch/i.html?_nkw=x", "ACTIVE", None, False),
+    ("https://www.ebay.com/itm/123456789012", "ENDED", {"123456789012"}, True),   # eBay decides
+    ("https://www.ebay.com/itm/123456789012", "ACTIVE", {"999999999999"}, False),
+])
+def test_is_live_listing(url, status, live_ids, expected):
+    assert ebay_sync.is_live_listing(url, status, live_ids) is expected
+
+
+def test_live_item_ids_excludes_hidden_and_returns_none_on_failure(monkeypatch):
+    monkeypatch.setattr(ebay_sync, "fetch_active_listings", lambda: [
+        _listing("111111111111", qty=5, sold=1), _listing("222222222222", qty=3, sold=3)])
+    ebay_sync._set_error(None)
+    assert ebay_sync.live_item_ids() == {"111111111111"}         # qty 0 left = can't sell
+
+    def _fail():
+        ebay_sync._set_error("network", "down")
+        return []
+    monkeypatch.setattr(ebay_sync, "fetch_active_listings", _fail)
+    assert ebay_sync.live_item_ids() is None
+    ebay_sync._set_error(None)

@@ -145,6 +145,41 @@ def extract_item_id(value) -> str | None:
     return m.group(1) if m else None
 
 
+# Fallback "not live" statuses, used only when eBay's ActiveList is unknown: ENDED = Jay ended it,
+# PAUSED_OOS = hidden at quantity 0 and watched by the daily sweep.
+NOT_LIVE_STATUSES = frozenset({"ENDED", "PAUSED_OOS"})
+
+
+def is_live_listing(ebay_url, status="", live_ids=None) -> bool:
+    """
+    The ONE test for "this row has a live eBay listing that must be monitored", whatever its
+    sheet status. Col Q must hold a parseable item id (extract_item_id: eBay URL or bare id). With live_ids (item ids that are
+    Active on eBay with quantity > 0 — live_item_ids()) membership decides; without it (eBay not
+    reachable / not fetched) the row counts as live unless its status is in NOT_LIVE_STATUSES.
+    """
+    item_id = extract_item_id(ebay_url)
+    if not item_id:
+        return False
+    if live_ids is not None:
+        return item_id in live_ids
+    return str(status or "").strip().upper() not in NOT_LIVE_STATUSES
+
+
+def live_item_ids() -> set[str] | None:
+    """Item ids on eBay's ActiveList that can sell (quantity − sold > 0; a listing hidden at
+    quantity 0 can't). None when the list couldn't be fetched — callers fall back to col Q +
+    status (is_live_listing without live_ids). One GetMyeBaySelling call (paged)."""
+    try:
+        listings = fetch_active_listings()
+    except Exception as e:   # contract says never raises — belt and braces
+        logger.warning(f"live_item_ids: ActiveList fetch failed ({e})")
+        return None
+    if not listings and get_last_error().get("kind"):
+        return None
+    return {l["item_id"] for l in listings
+            if (l.get("quantity") or 0) - (l.get("quantity_sold") or 0) > 0}
+
+
 # ── eBay Trading API ──────────────────────────────────────────────────────────
 
 def _build_request_xml(token: str, page: int) -> str:
@@ -1395,7 +1430,8 @@ def _dedupe_alert(alert, dry_run=False, now=None):
 def mirror_live_prices(report: dict, service, COL, sheet_name: str, *, skip_ids=(),
                        title_reader=None, dry_run: bool = False) -> list[dict]:
     """
-    Col H follows eBay: for every matched ACTIVE row whose col H differs from eBay's live
+    Col H follows eBay: for every matched row (any status — every matched row is on eBay's
+    ActiveList, and the active monitor's margin check reads col H) whose col H differs from eBay's live
     Buy It Now price (by >= $0.005, or is blank), write col H = the eBay price. Runs LAST in
     run_ebay_sync. skip_ids = items whose price changed this run (auto-repriced, col BD
     applied): they already have col H written, and the listings data is pre-revision, so
@@ -1410,7 +1446,7 @@ def mirror_live_prices(report: dict, service, COL, sheet_name: str, *, skip_ids=
     todo = []
     for m in report.get("matched", []):
         price = m.get("price")
-        if (m.get("status") != "ACTIVE" or price is None or m.get("item_id") in skip):
+        if price is None or m.get("item_id") in skip:
             continue
         old = m.get("sheet_price")
         if old is not None and abs(old - price) < 0.005:

@@ -79,6 +79,22 @@ def test_happy_path_revises_writes_h_and_clears_p(env):
     assert result["ok"] and kw["old_price"] == 41.48 and kw["row"] == 4
 
 
+@pytest.mark.parametrize("status", ["PAUSED_MARGIN", "AUDIT_REVIEW", "WATCH"])
+def test_tap_on_live_non_active_row_reprices(env, status):
+    # the monitor now prompts for every live listing, so the tap must not refuse it
+    env["rows"] = [_row(status=status)]
+    _tap(f"{ITEM_ID}:5099")
+    assert env["revise"] == [(ITEM_ID, 50.99)]
+    assert env["writes"] == [(4, {"H": 50.99, "P": ""})]
+
+
+def test_tap_on_live_non_active_row_not_active_on_ebay_is_not_revised(env):
+    env["rows"] = [_row(status="PAUSED_MARGIN")]
+    env["live"] = _live(status="Completed")
+    text, _ = _final(_tap(f"{ITEM_ID}:5099"))
+    assert "Completed" in text and env["revise"] == [] and env["writes"] == []
+
+
 def test_row_resolved_by_item_id_not_row_number(env):
     env["rows"] = [_row(title="Other", url="https://www.ebay.com/itm/999999999999"), [], _row()]
     _tap(f"{ITEM_ID}:5099")
@@ -115,7 +131,7 @@ def test_api_failure_offers_retry_and_writes_nothing(env):
 
 
 @pytest.mark.parametrize("rows,needle", [
-    ([_row(status="ENDED")], "no longer ACTIVE"),
+    ([_row(status="ENDED")], "no longer live"),
     ([_row(url="")], "not in col Q"),
     ([_row(), _row()], "2 rows"),
 ])
@@ -247,7 +263,7 @@ def test_sched_refuses_without_prompt_or_after_end(env):
 
 
 @pytest.mark.parametrize("rows,needle", [
-    ([_row(status="ENDED")], "no longer ACTIVE"),
+    ([_row(status="ENDED")], "no longer live"),
     ([_row(url="")], "exactly one row"),
 ])
 def test_sched_row_guards(env, rows, needle):

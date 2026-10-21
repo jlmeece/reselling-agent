@@ -342,19 +342,21 @@ def prestage_candidates(rows, COL, categories, sale_ends, store, now=None, start
                         lead_hours=PRESTAGE_LEAD_HOURS):
     """
     Pre-stage prompts due now -> list of prompt dicts (the format_reprice_prompt / schedule
-    shape plus sale_end_ts, costco_pid, costco_url). A row qualifies when it is ACTIVE, has a
-    valid eBay item id in col Q, its Costco product has a known sale end with
+    shape plus sale_end_ts, costco_pid, costco_url). A row qualifies when it has a live eBay
+    listing (ebay_sync.is_live_listing on col Q + status — any sheet status but ENDED /
+    PAUSED_OOS; no eBay call here, the apply step re-checks the listing), its Costco product has a known sale end with
     now < end <= now + lead_hours (first seen with less left -> at once), it hasn't been prompted
     for THIS end, has no pending action, and restore_margin_price gives a raise
     (sale price G -> regular price AW, else the store's regular price) AND the eBay price is
     below suggest_reprice's 20%-margin price at the regular cost (the reactive path's gate).
     """
-    from tools.ebay_sync import extract_item_id
+    from tools.ebay_sync import extract_item_id, is_live_listing
     now = now or utcnow()
     horizon = now + timedelta(hours=lead_hours)
     out = []
     for offset, row in enumerate(rows):
-        if not row or _cell(row, COL, "status").strip() != "ACTIVE":
+        if not row or not is_live_listing(_cell(row, COL, "ebay_listing_url"),
+                                          _cell(row, COL, "status")):
             continue
         item_id = extract_item_id(_cell(row, COL, "ebay_listing_url"))
         pid = costco_product_id(_cell(row, COL, "costco_url"))

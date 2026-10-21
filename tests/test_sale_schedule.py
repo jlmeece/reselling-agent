@@ -129,12 +129,19 @@ def test_already_prompted_for_this_end_but_not_for_a_new_end():
     assert len(_cands(store=store, ends=_ends(later))) == 1
 
 
+@pytest.mark.parametrize("status", ["PAUSED_MARGIN", "AUDIT_REVIEW", "WATCH", "READY"])
+def test_live_listing_on_any_status_is_prestaged(status):
+    (c,) = _cands(rows=[_row(status=status)])
+    assert c["item_id"] == "123456789012" and c["target"] == 51.99
+
+
 def test_pending_action_blocks_prompt():
     assert _cands(store={"actions": {"123456789012": {}}, "prompted": {}}) == []
 
 
 @pytest.mark.parametrize("row", [
-    _row(status="READY"), _row(ebay=""), _row(ebay="https://example.com/x"), _row(url=""),
+    _row(status="ENDED"), _row(status="PAUSED_OOS"),   # not live (fallback rule, no eBay call)
+    _row(ebay=""), _row(ebay="https://example.com/x"), _row(url=""),
     _row(AW=""),                       # no regular price anywhere -> can't compute
     _row(H="79.99"),                   # eBay price already restores the margin
 ])
