@@ -154,3 +154,10 @@ def test_badge_verified():
     assert badge_verified("🔥 -$8", "31.99", "39.99", now) is False                    # undated
     assert badge_verified("🔥 -$8 ends 7/19/26", "31.99", "39.99", now) is False       # expired
     assert badge_verified("🔥 -$100 ends 9/30/26", "", "14.99", now) is False          # no price
+
+
+def test_losing_alert_with_blank_previous_cost_does_not_crash():
+    # col G blank (hand-added row): old is None — used to raise TypeError and abort the run
+    item = sale_end_alert("Grand Leisure", None, 3999.99, 0.115, 0.0, 3461.99, row=95, kind="losing")
+    assert item["reason"].startswith("losing money — net $")
+    assert "cost $" not in item["reason"]

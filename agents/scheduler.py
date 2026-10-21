@@ -469,6 +469,13 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
 
             ebay_f = to_float(ebay_price)
             fee_f  = parse_rate(fee_rate)
+            # Blank col AB (a hand-added row, e.g. Grand Leisure rows 95/96 on 10/20): use the
+            # category's fee rate and write it once — otherwise this margin check and ebay_sync's
+            # stay "unknown" forever. A filled AB is never overwritten.
+            fee_fill = None
+            if fee_f is None and not str(fee_rate).strip():
+                fee_fill = parse_rate((categories.get(category) or {}).get("fee_rate"))
+                fee_f = fee_fill
             ship_f = to_float(ship_cost) or 0.0
 
             # Compute margin inline (avoid formula column)
@@ -605,6 +612,8 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                 updates.append((COL["price_change"], flag_update))
             if new_price:
                 updates.append((COL["costco_cost"], new_price))
+            if fee_fill is not None:
+                updates.append((COL["fee_rate"], fee_fill))
             if new_status != status:
                 updates.append((COL["status"], new_status))
                 logger.info(f"  Status: {status} -> {new_status}")

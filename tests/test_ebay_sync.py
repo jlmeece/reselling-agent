@@ -575,7 +575,9 @@ def test_suggestion_text_is_html_escaped_in_alert(writes):
 # ── report formatting ─────────────────────────────────────────────────────────
 
 def test_alert_message_none_when_clean(writes):
-    rep = _sync([_row(4, "111111111111", sold="0")], [_listing("111111111111", sold=1)])
+    # healthy margin inputs: a row with NO cost/fee is not "clean" — it alerts as unchecked
+    rep = _sync([_row(4, "111111111111", sold="0", costco_cost="$10", fee_rate="0.10")],
+                [_listing("111111111111", sold=1)])
     assert alert_message(rep) is None                    # only units changed -> silent
     assert rep["on_ebay_not_in_sheet"] == [] and rep["active_not_on_ebay"] == []
 
@@ -587,6 +589,28 @@ def test_alert_message_fires_on_orphans_alone(writes):
     assert "Stray &lt;Patio&gt; &amp; Set" in msg and "999999999999" in msg
     assert "no matching sheet row, end it or link it by hand" in msg
     assert writes == []
+
+
+def test_alert_message_fires_on_margin_unchecked_alone(writes):
+    # Grand Leisure rows 95/96 (10/21): live at $3,461.99, blank col G + col AB -> no margin check
+    rows = [_row(95, "860049380044", title="Grand Leisure <City> Heights"),             # no G, no AB
+            _row(96, "860049380043", title="Las Palmas", costco_cost="$2799.99")]       # no AB
+    rep = _sync(rows, [_listing("860049380044", price=3461.99),
+                       _listing("860049380043", price=3461.99)])
+    assert rep["margin_breach"] == [] and len(rep["margin_unchecked"]) == 2
+    msg = alert_message(rep)
+    assert msg and "No margin check — live listing missing cost/fee (2)" in msg
+    assert "Grand Leisure &lt;City&gt; Heights — missing col G (cost), col AB (fee rate)" in msg
+    assert "eBay 860049380044" in msg and "(row 95)" in msg
+    assert "Las Palmas — missing col AB (fee rate)" in msg and "(row 96)" in msg
+    assert writes == []
+
+
+def test_margin_unchecked_hidden_listing_does_not_alert(writes):
+    # quantity 0 (hidden / sold out) can't sell at a loss -> no alert, same rule as orphans
+    rep = _sync([_row(95, "860049380044")], [_listing("860049380044", qty=5, sold=5)])
+    assert len(rep["margin_unchecked"]) == 1
+    assert alert_message(rep) is None
 
 
 def test_orphan_with_exact_match_gets_fill_col_q_hint(writes):

@@ -1077,7 +1077,12 @@ def _check_margin(row, listing, report, floor_price=FLOOR_PRICE, floor_margin_pc
     severity = margin_flag(price, cost, fee, ship, ad, sold,
                            floor_price=floor_price, floor_margin_pct=floor_margin_pct)
     if price is None or cost is None or fee is None:
-        report["margin_unchecked"].append(base)
+        # what's missing + whether it can sell (alert_message alerts only those that can)
+        missing = [label for val, label in ((cost, "col G (cost)"), (fee, "col AB (fee rate)"),
+                                            (price, "live eBay price")) if val is None]
+        available = (listing.get("quantity") or 0) - (listing.get("quantity_sold") or 0)
+        report["margin_unchecked"].append({**base, "missing": missing,
+                                           "can_sell": available > 0})
     elif severity:
         net = round(compute_net(price, cost, fee, ship, ad), 2)
         report["margin_breach"].append({
@@ -1314,7 +1319,10 @@ def alert_message(report: dict) -> str | None:
     orphans = [o for o in report["on_ebay_not_in_sheet"]
                if (o.get("quantity") or 0) - (o.get("quantity_sold") or 0) > 0]
     hidden_orphans = len(report["on_ebay_not_in_sheet"]) - len(orphans)
-    if not losing and not floor and not gone and not orphans:
+    # A live listing with no cost / fee can't be margin-checked: it could sell at a loss
+    # unseen (Grand Leisure rows 95/96, 10/21). Hidden at quantity 0 = can't sell, no alert.
+    unchecked = [u for u in report.get("margin_unchecked", []) if u.get("can_sell", True)]
+    if not losing and not floor and not gone and not orphans and not unchecked:
         return None
     msg = ["🛒 <b>eBay sync</b>" + (" (dry run)" if report.get("dry_run") else "")]
     if losing:
@@ -1335,6 +1343,13 @@ def alert_message(report: dict) -> str | None:
                     f"{mgn} (net ${m['net']:.2f}) (row {m['row_num']})")
         msg += _section(f"\n📉 <b>Below {floor_pct:.0%} margin floor — ≥ ${floor_price:.0f} "
                         f"({len(floor)})</b>", [_fline(m) for m in floor])
+    if unchecked:
+        def _uline(u):
+            missing = ", ".join(u.get("missing") or ["cost / fee"])
+            return (f"• {html.escape(_truncate(u['title']))} — missing {missing} "
+                    f"(eBay {u['item_id']}) (row {u['row_num']})")
+        msg += _section(f"\n❓ <b>No margin check — live listing missing cost/fee "
+                        f"({len(unchecked)})</b>", [_uline(u) for u in unchecked])
     if gone:
         msg += _section(f"\n⚠️ <b>ACTIVE but not on eBay ({len(gone)})</b>", [
             f"• {html.escape(_truncate(g['title']))} — {html.escape(g['reason'])} (row {g['row_num']})"

@@ -665,3 +665,48 @@ def test_no_browser_when_only_rows_are_ended_or_unlisted(harness, monkeypatch):
         raise AssertionError("Chrome launched")
     monkeypatch.setattr(sch, "make_browser", _no_browser)
     harness([_orphan_row("ENDED"), _orphan_row("AUDIT_REVIEW", ebay_url="")], _oos())
+
+
+# ── blank col G / col AB (Grand Leisure rows 95/96, 10/21) ──────────────────────────────────
+
+GL_CONFIG = {**CONFIG, "categories": {"Outdoor Furniture": {"fee_rate": 0.115}}}
+
+
+def _grand_leisure_row(fee_rate=""):
+    return _row(status="ACTIVE", title="Grand Leisure City Heights 6-piece", category="Outdoor Furniture",
+                ebay_listing_url="https://www.ebay.com/itm/860049380044",
+                costco_url="https://www.costco.com/.product.100404264.html",
+                costco_cost="", ebay_price="3461.99", fee_rate=fee_rate, ship_cost="",
+                stock_status="")
+
+
+def test_blank_cost_and_fee_filled_from_scrape_and_category(harness):
+    calls = harness([_grand_leisure_row()], _scrape(2799.99, False), config=GL_CONFIG,
+                    live_ids={"860049380044"})
+    _, w = _written(calls)
+    assert w[COL["costco_cost"]] == 2799.99
+    assert w[COL["fee_rate"]] == 0.115                   # category rate written once
+    assert calls["urgent"] == []                         # $3,461.99 vs $2,799.99 + 11.5% = profitable
+
+
+def test_blank_fee_lets_the_losing_check_fire(harness):
+    # same row at a cost above the eBay price: with AB blank the margin used to be None (silent)
+    calls = harness([_grand_leisure_row()], _scrape(3999.99, False), config=GL_CONFIG,
+                    live_ids={"860049380044"})
+    _, w = _written(calls)
+    assert w[COL["fee_rate"]] == 0.115
+    assert "losing money" in w[COL["tier_summary"]]
+    assert calls["urgent"]
+
+
+def test_filled_fee_rate_is_never_overwritten(harness):
+    calls = harness([_grand_leisure_row(fee_rate="0.12")], _scrape(2799.99, False),
+                    config=GL_CONFIG, live_ids={"860049380044"})
+    _, w = _written(calls)
+    assert COL["fee_rate"] not in w
+
+
+def test_blank_fee_with_no_category_rate_stays_blank(harness):
+    calls = harness([_grand_leisure_row()], _scrape(2799.99, False), live_ids={"860049380044"})
+    _, w = _written(calls)
+    assert COL["fee_rate"] not in w

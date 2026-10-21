@@ -133,7 +133,7 @@ def sale_end_alert(title, old, new, fee_rate, ship_cost, ebay_price, row=None, c
     if kind == "losing":
         head = (f"losing money — net ${net:.2f} at ${ebay_price:.2f}" if net is not None
                 else "losing money at the current eBay price")
-        if abs(new - old) >= 0.005:
+        if old is not None and abs(new - old) >= 0.005:   # old None = col G was blank
             head += f" (cost ${old:.2f}→${new:.2f})"
     else:
         head = f"sale ended — cost ${old:.2f}→${new:.2f}"
