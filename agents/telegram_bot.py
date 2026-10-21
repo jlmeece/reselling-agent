@@ -60,6 +60,7 @@ from tools.reprice import (
     log_ignore, log_revise, pop_pending, reprice_keyboard,
 )
 from tools import sale_schedule as sched
+from tools.ebay_analytics import cached_views as _cached_views
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -2152,7 +2153,10 @@ async def cb_activelist_pick(update, context, arg):
             logger.warning(f"activelist:pick views fetch failed: {e}")
             live = {}
         parts = []
-        if live.get("view_count") is not None:
+        views = _cached_views(item_id)   # Sell Analytics, refreshed ~daily by ebay_sync
+        if views is not None:
+            parts.append(f"👁️ {views} views (30d)")
+        elif live.get("view_count") is not None:
             parts.append(f"👁️ {live['view_count']} views")
         if live.get("watch_count") is not None:
             parts.append(f"⭐ {live['watch_count']} watchers")

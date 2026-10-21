@@ -2255,5 +2255,13 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         result["status"] = "error"
         result["errors"] = "; ".join(
             f"row {w['row_num']}: {w['error']}" for w in report["write_errors"])[:300]
+    # 30-day view counts (Sell Analytics, user OAuth token) -> data/listing_views.json, at most
+    # once per ~24h; a failure keeps the stale cache and never fails the sync.
+    if not dry_run:
+        try:
+            from tools.ebay_analytics import refresh_views_cache
+            result["notes"] += ", " + refresh_views_cache()
+        except Exception as e:
+            logger.warning(f"ebay_sync: views refresh skipped: {e}")
     logger.info(f"ebay_sync: {result['notes']}")
     return result

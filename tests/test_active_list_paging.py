@@ -145,3 +145,16 @@ def test_card_shows_watchers_alone_when_views_unknown(monkeypatch):
 def test_card_omits_engagement_when_fetch_fails(monkeypatch, live):
     text, _ = _pick(monkeypatch, live)
     assert "👁️" not in text and "⭐" not in text and "Energy Shot" in text
+
+
+def test_card_shows_cached_30d_views_before_watchers(monkeypatch):
+    from tools import ebay_analytics as ea
+    ea._write_json(ea.VIEWS_PATH, {"fetched_at": "2026-10-21T00:00:00+00:00", "days": 30,
+                                   "views": {"123456789012": 57}})
+    text, _ = _pick(monkeypatch, {"ok": True, "view_count": None, "watch_count": 2})
+    assert "👁️ 57 views (30d) · ⭐ 2 watchers" in text
+
+
+def test_card_without_view_cache_shows_watchers_alone(monkeypatch):
+    text, _ = _pick(monkeypatch, {"ok": True, "view_count": None, "watch_count": 2})
+    assert "⭐ 2 watchers" in text and "👁️" not in text

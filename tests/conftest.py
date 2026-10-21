@@ -53,6 +53,20 @@ def _isolated_reprice_state(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_live_ebay_analytics(monkeypatch, tmp_path):
+    """No test may reach live Sell Analytics or touch data/.ebay_user_token.json /
+    data/listing_views.json; analytics tests re-patch _http_json with a fake."""
+    from tools import ebay_analytics as ea
+
+    def _blocked(req):
+        raise urllib.error.URLError("live eBay calls are blocked in tests")
+
+    monkeypatch.setattr(ea, "_http_json", _blocked)
+    monkeypatch.setattr(ea, "TOKEN_PATH", tmp_path / "ebay_user_token.json")
+    monkeypatch.setattr(ea, "VIEWS_PATH", tmp_path / "listing_views.json")
+
+
+@pytest.fixture(autouse=True)
 def _isolated_hosted_photos(monkeypatch, tmp_path):
     """No test may read/write the real data/hosted_photos.json or data/listing_photos/."""
     from tools import ebay_export, upload_photos
