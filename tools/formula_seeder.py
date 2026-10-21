@@ -23,6 +23,14 @@ def _col_idx(col: str) -> int:
     return idx - 1
 
 
+def net_profit_formula(r: int) -> str:
+    """Col I (net profit) = H - G - AC - AD - AE - AF, blank while col H (eBay price) is blank.
+    Unguarded, an un-priced row computes about -cost and the auditor deletes it as
+    "Negative net profit"; blank reads as un-priced (auditor._parse_net -> None). Same guard as
+    setup_sheet.py."""
+    return f'=IF(H{r}="","",H{r}-G{r}-AC{r}-AD{r}-AE{r}-AF{r})'
+
+
 def seed_formula_row(service, sheet_name: str, row_num: int, ad_rate: float = 0.0):
     """
     Writes formula cells and static defaults for row_num.
@@ -49,7 +57,7 @@ def seed_formula_row(service, sheet_name: str, row_num: int, ad_rate: float = 0.
         # AF (Costco tax) = 8.25% sales tax on Jay's own Costco purchase.
         #   Re-verified 2026-10-08 against a real sale ($24.75 tax on $299.99 =
         #   8.25%) — the earlier "8%" was a misread of the air-fryer numbers.
-        "I":  f"=H{r}-G{r}-AC{r}-AD{r}-AE{r}-AF{r}",
+        "I":  net_profit_formula(r),   # blank while H is blank (un-priced)
         "J":  f"=IF(H{r}>0,I{r}/H{r},0)",
         "Z":  f"=IFERROR(G{r}+AD{r},G{r})",
         "AC": f"=H{r}*AB{r}*1.08+0.30",
