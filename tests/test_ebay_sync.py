@@ -1087,6 +1087,35 @@ def test_fetch_item_price_missing_quantity_fields_are_unknown(monkeypatch, creds
     assert out["listing_duration"] == "" and out["out_of_stock_control"] is None
 
 
+def test_fetch_item_price_reads_views_and_watchers(monkeypatch, creds):
+    sent = []
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            "<ItemID>123456789012</ItemID><HitCount>214</HitCount><WatchCount>3</WatchCount>"
+            '<SellingStatus><CurrentPrice currencyID="USD">41.48</CurrentPrice>'
+            "<ListingStatus>Active</ListingStatus></SellingStatus></Item></GetItemResponse>")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, timeout=None: sent.append(req) or FakeResp(body))
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["view_count"] == 214 and out["watch_count"] == 3
+    for sel in (b"Item.HitCount", b"Item.WatchCount"):
+        assert b"<OutputSelector>" + sel + b"</OutputSelector>" in sent[0].data
+    assert b"<IncludeWatchCount>true</IncludeWatchCount>" in sent[0].data
+
+
+def test_fetch_item_price_absent_views_unknown_watchers_zero(monkeypatch, creds):
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            '<SellingStatus><CurrentPrice currencyID="USD">41.48</CurrentPrice>'
+            "<ListingStatus>Active</ListingStatus></SellingStatus></Item></GetItemResponse>")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", lambda *a, **k: FakeResp(body))
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["view_count"] is None and out["watch_count"] == 0
+
+
+def test_fetch_item_price_failure_leaves_engagement_none():
+    out = ebay_sync.fetch_item_price("not an id")
+    assert out["ok"] is False and out["view_count"] is None and out["watch_count"] is None
+
+
 # ── auto-reprice hard breaches to break-even ──────────────────────────────────
 
 @pytest.fixture

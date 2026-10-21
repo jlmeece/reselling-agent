@@ -99,3 +99,49 @@ def test_page_arg_clamps(monkeypatch, arg, page):
 def test_empty_message_only_when_no_live_listings(monkeypatch):
     text, _ = _show(monkeypatch, [_row("ENDED", "Gone", "$1.00", "100000000004")])
     assert text == "No active listings right now."
+
+
+# ── detail card: live views / watchers ──────────────────────────────────────
+
+def _pick(monkeypatch, live):
+    import yaml
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "config", "col_map.yaml")) as f:
+        col = yaml.safe_load(f)["columns"]
+    row = [""] * 60
+    row[tb.col_to_idx(col["status"])] = "AUDIT_REVIEW"
+    row[tb.col_to_idx(col["title"])] = "Energy Shot"
+    row[tb.col_to_idx(col["ebay_listing_url"])] = "https://www.ebay.com/itm/123456789012"
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (col, "svc", "Tab", 4, [row]))
+    monkeypatch.setattr(tb, "get_pending", lambda item_id: None)
+    calls = []
+
+    def fetch(item_id):
+        calls.append(item_id)
+        if isinstance(live, Exception):
+            raise live
+        return live
+    monkeypatch.setattr(tb, "fetch_item_price", fetch)
+    q = SimpleNamespace(edit_message_text=AsyncMock())
+    asyncio.run(tb.cb_activelist_pick(SimpleNamespace(callback_query=q, message=None),
+                                      SimpleNamespace(user_data={}, bot_data={}), "4"))
+    return q.edit_message_text.call_args.args[0], calls
+
+
+def test_card_shows_live_views_and_watchers(monkeypatch):
+    text, calls = _pick(monkeypatch, {"ok": True, "view_count": 214, "watch_count": 3})
+    assert calls == ["123456789012"]
+    assert "👁️ 214 views · ⭐ 3 watchers" in text
+    assert "Net: " in text and "reserve" not in text.lower()
+
+
+def test_card_shows_watchers_alone_when_views_unknown(monkeypatch):
+    text, _ = _pick(monkeypatch, {"ok": True, "view_count": None, "watch_count": 0})
+    assert "⭐ 0 watchers" in text and "views" not in text
+
+
+@pytest.mark.parametrize("live", [{"ok": False, "view_count": None, "watch_count": None},
+                                  {}, RuntimeError("eBay down")])
+def test_card_omits_engagement_when_fetch_fails(monkeypatch, live):
+    text, _ = _pick(monkeypatch, live)
+    assert "👁️" not in text and "⭐" not in text and "Energy Shot" in text

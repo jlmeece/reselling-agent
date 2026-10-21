@@ -632,14 +632,8 @@ def format_product_detail(p, now=None):
         fee_line += f" ({fee_pct})"
     lines.append(fee_line)
 
-    ad_budget = _parse_currency(p.get("ad_budget"))
-    if ad_budget is not None and ad_budget > 0:
-        lines.append(f"Profit reserve ${_format_price(p.get('ad_budget'))} (15% of net profit)")
-
-    lines.append(_format_net_fragment(p.get("net_profit"), p.get("net_margin"), label="Net before reserve:"))
-    net_with_ads_line = _format_net_with_ads_line(p.get("net_profit"), p.get("ad_budget"), p.get("ebay_price"))
-    if net_with_ads_line:
-        lines.append(net_with_ads_line)
+    # base net only — no ads are running, so col AH ad_budget stays in the sheet, unrendered
+    lines.append(_format_net_fragment(p.get("net_profit"), p.get("net_margin"), label="Net:"))
 
     comps_line = _format_comps_line(p.get("lowest_active"), p.get("comp_count"), p.get("avg_price"))
     if comps_line:
@@ -2151,6 +2145,19 @@ async def cb_activelist_pick(update, context, arg):
         lines.append((p.get("ebay_listing_url") or "").strip())
     item_id = extract_item_id(p.get("ebay_listing_url"))
     pending = item_id if (item_id and get_pending(item_id)) else None
+    if item_id:   # live engagement — one GetItem per card open (views aren't in the bulk sync)
+        try:
+            live = await asyncio.to_thread(fetch_item_price, item_id)
+        except Exception as e:            # never let a views fetch break the card
+            logger.warning(f"activelist:pick views fetch failed: {e}")
+            live = {}
+        parts = []
+        if live.get("view_count") is not None:
+            parts.append(f"👁️ {live['view_count']} views")
+        if live.get("watch_count") is not None:
+            parts.append(f"⭐ {live['watch_count']} watchers")
+        if parts:
+            lines.append(" · ".join(parts))
     scheduled = sched.get_action(item_id) if item_id else None
     if scheduled:
         what = (f"reprice to ${float(scheduled['target_price']):.2f}" if scheduled["action"] == "reprice"

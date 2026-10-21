@@ -393,7 +393,7 @@ def _build_get_item_xml(token: str, item_id: str) -> str:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "Item.ItemID", "Item.ListingType", "Item.SellingStatus", "Item.Title",
         "Item.Quantity", "Item.ListingDuration", "Item.OutOfStockControl", "Item.Variations",
-        "Item.PictureDetails", "Item.SKU",
+        "Item.PictureDetails", "Item.SKU", "Item.HitCount", "Item.WatchCount",
     ))
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
@@ -401,6 +401,7 @@ def _build_get_item_xml(token: str, item_id: str) -> str:
         f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        "<IncludeWatchCount>true</IncludeWatchCount>"   # WatchCount is only sent when asked for
         f"{selectors}"
         "</GetItemRequest>"
     )
@@ -870,7 +871,9 @@ def fetch_item_price(item_id) -> dict:
     Live Buy It Now price of one listing via GetItem — the reprice guard reads this rather
     than col H, which Jay edits by hand and can be stale.
     Returns {ok, item_id, price, listing_status, listing_type, quantity_available,
-    listing_duration, out_of_stock_control, has_variations, error_kind, error_code, message}.
+    listing_duration, out_of_stock_control, has_variations, picture_urls, sku, view_count,
+    watch_count, error_kind, error_code, message}. view_count = HitCount (None = unknown);
+    watch_count = WatchCount (absent tag = 0 watchers, like ActiveList; None on a failed call).
     quantity_available = Quantity - QuantitySold (None if unknown); listing_duration e.g. "GTC";
     out_of_stock_control True/False, None when eBay didn't send it; has_variations True for a
     multi-variation listing (ReviseFixedPriceItem can't set its price without a SKU). Never raises.
@@ -880,6 +883,7 @@ def fetch_item_price(item_id) -> dict:
            "listing_status": "", "listing_type": "",
            "quantity_available": None, "listing_duration": "", "out_of_stock_control": None,
            "has_variations": False, "picture_urls": [], "sku": "",
+           "view_count": None, "watch_count": None,
            "error_kind": None, "error_code": "", "message": ""}
     if not iid:
         out.update(error_kind="invalid", message=f"bad item id {item_id!r}")
@@ -901,6 +905,8 @@ def fetch_item_price(item_id) -> dict:
         out["listing_type"] = _text(item, "ListingType")
         out["sku"] = _text(item, "SKU")
         out["listing_duration"] = _text(item, "ListingDuration")
+        out["view_count"] = _num(_text(item, "HitCount"), int, None)
+        out["watch_count"] = _num(_text(item, "WatchCount"), int, 0)
         oosc = _text(item, "OutOfStockControl").lower()
         out["out_of_stock_control"] = {"true": True, "false": False}.get(oosc)
         variations = _child(item, "Variations")
