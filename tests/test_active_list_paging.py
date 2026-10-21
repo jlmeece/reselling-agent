@@ -219,3 +219,71 @@ def test_pick_last_item_has_prev_only(monkeypatch):
 def test_pick_not_live_or_lone_item_has_no_nav(monkeypatch):
     assert _pick_nav(monkeypatch, _THREE, 7) == []
     assert _pick_nav(monkeypatch, [("ACTIVE", "Only", "$3.00", "100000000001")], 4) == []
+
+
+# ── 30-day views inline + sort toggle ────────────────────────────────────────
+
+def _cache_views(views):
+    from tools import ebay_analytics as ea
+    ea._write_json(ea.VIEWS_PATH, {"fetched_at": "2026-10-21T00:00:00+00:00", "days": 30,
+                                   "views": views})
+
+
+_MIXED = [_row("ACTIVE", "High net", "$9.00", "100000000001"),     # 5 views
+          _row("ACTIVE", "No views", "$8.00", "100000000002"),     # not cached
+          _row("ACTIVE", "Most viewed", "$1.00", "100000000003"),  # 80 views
+          _row("ACTIVE", "Also uncached", "$7.00", "100000000004")]
+
+
+def test_views_sort_puts_most_viewed_first_and_unknown_last(monkeypatch):
+    _cache_views({"100000000001": 5, "100000000003": 80})
+    text, kb = _show(monkeypatch, _MIXED, "1:views")
+    assert [b.text for b in _picks(kb)] == ["1. Most viewed · 👁️ 80", "2. High net · 👁️ 5",
+                                            "3. No views", "4. Also uncached"]   # unknown: net tie-break
+    assert "Sorted by views" in text
+
+
+def test_net_sort_unchanged_and_shows_views_inline(monkeypatch):
+    _cache_views({"100000000001": 5, "100000000003": 80})
+    _text, kb = _show(monkeypatch, _MIXED)
+    assert [b.text for b in _picks(kb)] == ["1. High net · 👁️ 5", "2. No views",
+                                            "3. Also uncached", "4. Most viewed · 👁️ 80"]
+
+
+def test_no_cache_keeps_plain_labels(monkeypatch):
+    _text, kb = _show(monkeypatch, _MIXED, "1:views")
+    assert [b.text for b in _picks(kb)] == ["1. High net", "2. No views", "3. Also uncached",
+                                            "4. Most viewed"]                     # all unknown -> net
+
+
+def test_sort_toggle_flips_label_and_callback(monkeypatch):
+    _text, kb = _show(monkeypatch, _MIXED)
+    toggle = [b for b in _buttons(kb) if b.text.startswith("↕️")]
+    assert [(b.text, b.callback_data) for b in toggle] == [("↕️ Sort: Views", "activelist:show:1:views")]
+    _text, kb = _show(monkeypatch, _MIXED, "1:views")
+    toggle = [b for b in _buttons(kb) if b.text.startswith("↕️")]
+    assert [(b.text, b.callback_data) for b in toggle] == [("↕️ Sort: Net", "activelist:show:1:net")]
+    refresh = [b for b in _buttons(kb) if b.text == "🔄 Refresh"][0]
+    assert refresh.callback_data == "activelist:show:1:views"      # Refresh keeps the sort
+
+
+def test_views_sort_survives_paging(monkeypatch):
+    _text, kb = _show(monkeypatch, _many(45), "2:views")
+    datas = [b.callback_data for b in _buttons(kb)]
+    assert "activelist:show:1:views" in datas and "activelist:show:2:net" in datas
+
+
+@pytest.mark.parametrize("arg,expected", [(None, (None, "net")), ("", (None, "net")),
+                                          ("2", (2, "net")), ("2:views", (2, "views")),
+                                          ("2:net", (2, "net")), ("2:junk", (2, "net")),
+                                          ("abc:views", (None, "views"))])
+def test_parse_activelist_arg_back_compat(arg, expected):
+    assert tb._parse_activelist_arg(arg) == expected
+
+
+def test_format_active_line_appends_views_only_when_given():
+    p = {"title": "Shot", "ebay_price": "$10.00", "net_profit": "$2.00", "net_margin": "20%",
+         "units_sold": "1"}
+    assert "👁️" not in tb._format_active_line(p)
+    assert tb._format_active_line(p, views=12).endswith("📦 sold 1 · 👁️ 12")
+    assert tb._format_active_line(p, views=0).endswith(" · 👁️ 0")

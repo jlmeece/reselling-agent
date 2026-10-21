@@ -61,6 +61,7 @@ from tools.reprice import (
 )
 from tools import sale_schedule as sched
 from tools.ebay_analytics import cached_views as _cached_views
+from tools.ebay_analytics import load_views_cache as _load_views_cache
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -2028,7 +2029,8 @@ _CATEGORY_EMOJI = {
 }
 
 
-def _format_active_line(p):
+def _format_active_line(p, views=None):
+    """views = the cached 30-day view count; appended as `· 👁️ N` only when supplied."""
     cat = (p.get("category") or "").strip()
     emoji = _CATEGORY_EMOJI.get(cat, "📦")
     title = (p.get("title") or "(untitled)").strip()
@@ -2036,7 +2038,40 @@ def _format_active_line(p):
     price = _format_price(p.get("ebay_price"))
     net = _format_net_fragment(p.get("net_profit"), p.get("net_margin"))
     units = str(_parse_sold(p.get("units_sold")))
-    return f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
+    line = f"{emoji} {title}{_sku_tag(p.get('sku'))}\n   🛒 ${cost} → 🏷️ ${price} · 💰 {net} · 📦 sold {units}"
+    return line + (f" · 👁️ {views}" if views is not None else "")
+
+
+def _active_views_lookup():
+    """{item_id: 30-day views} from data/listing_views.json (no eBay call); {} when unavailable."""
+    try:
+        out = {}
+        for iid, n in (_load_views_cache().get("views") or {}).items():
+            try:
+                out[str(iid)] = int(n)
+            except (TypeError, ValueError):
+                continue
+        return out
+    except Exception as e:            # a broken cache must never take the list down
+        logger.warning(f"activelist: views cache unavailable: {e}")
+        return {}
+
+
+def _sort_active_items(items, sort, views):
+    """sort 'net' = _active_net_key (net desc); 'views' = views desc, unknown last, net tie-break."""
+    if sort == "views":
+        items.sort(key=lambda p: (-views.get(extract_item_id(p.get("ebay_listing_url")) or "", -1),
+                                  _active_net_key(p)))
+    else:
+        items.sort(key=_active_net_key)
+    return items
+
+
+def _parse_activelist_arg(arg):
+    """'<page>[:<net|views>]' -> (page or None, sort). Bare/garbage = page None, net sort."""
+    page_s, _, sort_s = (arg or "").strip().partition(":")
+    page = max(1, int(page_s)) if page_s.isdigit() else None
+    return page, ("views" if sort_s == "views" else "net")
 
 
 def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None,
@@ -2089,7 +2124,9 @@ async def cb_activelist_show(update, context, arg):
     fields = tuple(f for f in _ACTIVE_LISTING_FIELDS + ("ebay_listing_url",) if f in col_map)
     items = _extract_rows_by_field(rows, col_map, fields, data_start_row=start)
     items = [p for p in items if is_live_listing(p.get("ebay_listing_url"), p.get("status"))]
-    items.sort(key=_active_net_key)
+    page, sort = _parse_activelist_arg(arg)
+    views = _active_views_lookup()      # cached Sell Analytics counts, refreshed ~daily by ebay_sync
+    _sort_active_items(items, sort, views)
 
     if not items:
         await _send_screen(update, "No active listings right now.", reply_markup=_home_inline_kb())
@@ -2100,30 +2137,39 @@ async def cb_activelist_show(update, context, arg):
     except Exception as e:   # a broken log must never take the screen down — fall back to the sheet
         logger.warning(f"activelist: sales log unavailable: {e}")
         log_summary = {"sales": 0}
-    page = max(1, int(arg)) if (arg or "").strip().isdigit() else 1
     total_pages = max(1, -(-len(items) // _ACTIVE_LIST_PAGE))
-    page = min(page, total_pages)
+    page = min(page or 1, total_pages)
     first = (page - 1) * _ACTIVE_LIST_PAGE
     page_items = items[first:first + _ACTIVE_LIST_PAGE]
 
     text = _active_summary_text(items, log_summary)      # summary = the FULL live set
+    if sort == "views":
+        text += "\n\n↕️ Sorted by views (30d)"
     if total_pages > 1:
         text += f"\n\nPage {page} of {total_pages}"
 
+    def _label(i, p):
+        n = views.get(extract_item_id(p.get("ebay_listing_url")) or "")
+        return f"{i}. {(p.get('title') or '(untitled)')[:34]}" + (f" · 👁️ {n}" if n is not None else "")
+
+    suffix = ":views" if sort == "views" else ""      # net = the plain (back-compat) callback
     kb_rows = [
-        [InlineKeyboardButton(f"{i}. {(p.get('title') or '(untitled)')[:34]}",
-                              callback_data=f"activelist:pick:{p['row_num']}")]
+        [InlineKeyboardButton(_label(i, p), callback_data=f"activelist:pick:{p['row_num']}")]
         for i, p in enumerate(page_items, start=first + 1)
     ]
     nav = []
     if page > 1:
-        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"activelist:show:{page - 1}"))
+        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"activelist:show:{page - 1}{suffix}"))
     if page < total_pages:
-        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"activelist:show:{page + 1}"))
+        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"activelist:show:{page + 1}{suffix}"))
     if nav:
         kb_rows.append(nav)
+    toggle = (InlineKeyboardButton("↕️ Sort: Net", callback_data=f"activelist:show:{page}:net")
+              if sort == "views" else
+              InlineKeyboardButton("↕️ Sort: Views", callback_data=f"activelist:show:{page}:views"))
+    kb_rows.append([toggle])
     kb_rows.append([
-        InlineKeyboardButton("🔄 Refresh", callback_data=f"activelist:show:{page}"),
+        InlineKeyboardButton("🔄 Refresh", callback_data=f"activelist:show:{page}{suffix}"),
         InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard"),
     ])
     await _send_screen(update, text, reply_markup=InlineKeyboardMarkup(kb_rows))
