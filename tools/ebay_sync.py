@@ -661,6 +661,60 @@ def revise_sku(item_id, sku, listing_type=None) -> dict:
     return out
 
 
+def _build_title_xml(token: str, item_id: str, title: str) -> str:
+    """ReviseFixedPriceItem body that changes ONLY Item.Title."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"<Title>{_xml_escape(title)}</Title></Item>"
+        "</ReviseFixedPriceItemRequest>"
+    )
+
+
+MAX_TITLE_LEN = 80   # eBay's title limit
+
+
+def revise_title(item_id, title, listing_type=None) -> dict:
+    """
+    Set a live listing's title via ReviseFixedPriceItem (in place, no re-list). listing_type, when
+    given, must be "FixedPriceItem". Same return shape as revise_fixed_price. Never raises; a
+    refused guard sends nothing (error_kind "invalid").
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
+           "error_kind": None, "error_code": "", "message": ""}
+    title = " ".join(str(title or "").split())
+    why = None
+    if not iid:
+        why = f"bad item id {item_id!r}"
+    elif listing_type is not None and listing_type != "FixedPriceItem":
+        why = f"listing type {listing_type or 'unknown'!r} is not FixedPriceItem"
+    elif not title or len(title) > MAX_TITLE_LEN:
+        why = f"bad title {title!r} ({len(title)} chars, max {MAX_TITLE_LEN})"
+    if why:
+        out.update(error_kind="invalid", message=f"refused — {why}")
+        logger.error(f"revise_title: item {out['item_id']} {out['message']}")
+        return out
+    try:
+        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_title_xml(tok, iid, title))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        level = logger.critical if err["error_kind"] == "auth" else logger.error
+        level(f"revise_title: item {iid} FAILED [{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    out["ok"] = True
+    warnings = [f"{_text(e, 'ErrorCode')}: {_text(e, 'ShortMessage')}"
+                for e in root.findall("{*}Errors") if _text(e, "SeverityCode") == "Warning"]
+    out["message"] = "; ".join(warnings)
+    logger.info(f"revise_title: item {iid} -> {title!r} OK" + (f" (warnings: {out['message']})" if warnings else ""))
+    return out
+
+
 def fetch_item_description(item_id) -> dict:
     """GetItem (DetailLevel ReturnAll) -> {ok, item_id, description, listing_type, listing_status,
     has_variations, error_kind, error_code, message}. Never raises."""

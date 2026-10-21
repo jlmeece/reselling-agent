@@ -2081,6 +2081,28 @@ def test_revise_sku_guards_never_post(monkeypatch, creds, sku, ltype, why):
     assert out["ok"] is False and out["error_kind"] == "invalid" and why in out["message"]
 
 
+# ── revise_title ─────────────────────────────────────────────────────────────
+
+def test_revise_title_sends_title_only(monkeypatch, creds):
+    sent = []
+    ok = '<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>'
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(ok))
+    out = ebay_sync.revise_title("123456789012", "Ninja  Oven & Toaster", listing_type="FixedPriceItem")
+    body = sent[0].data.decode()
+    assert out["ok"] and "<Title>Ninja Oven &amp; Toaster</Title>" in body
+    assert "StartPrice" not in body and "Description" not in body and "<SKU>" not in body
+
+
+@pytest.mark.parametrize("title,ltype,why", [("", None, "bad title"), ("x" * 81, None, "bad title"),
+                                             ("Oven", "Chinese", "not FixedPriceItem")])
+def test_revise_title_guards_never_post(monkeypatch, creds, title, ltype, why):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.revise_title("123456789012", title, listing_type=ltype)
+    assert out["ok"] is False and out["error_kind"] == "invalid" and why in out["message"]
+
+
 # ── is_live_listing / live_item_ids: the one "has a live eBay listing" test ──
 
 @pytest.mark.parametrize("url,status,live_ids,expected", [
