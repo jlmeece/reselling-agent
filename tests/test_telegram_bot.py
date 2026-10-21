@@ -1400,3 +1400,56 @@ def test_review_compete_preview_shows_target(monkeypatch):
     assert "cheapest $2150.00" in text
     go = kb.inline_keyboard[0][0]
     assert go.callback_data.startswith("review:compete_go:4:")
+
+
+# ── search also reports Graveyard hits ───────────────────────────────────────
+
+def _gy(title, date="2026-10-17", reason="Zero velocity + net < $5", sku="", url=""):
+    return {"title": title, "date_removed": date, "reason": reason, "sku": sku, "costco_url": url}
+
+
+_GY_ROWS = [
+    _gy("Grand Leisure City Heights 6-piece Outdoor Patio Seating Set",
+        url="https://www.costco.com/.product.100404264.html", sku="100404264"),
+    _gy("Kirkland Signature Calcium 600 mg", date="2026-10-09", reason="Below floor"),
+]
+
+
+def test_lookup_graveyard_only_match_shows_section_not_no_products():
+    gy = _tb.search_graveyard(_GY_ROWS, "city heights")
+    text = format_lookup_reply([], "city heights", graveyard=gy)
+    assert "No products found" not in text
+    assert text.startswith("🪦 Graveyard (1)")
+
+
+def test_lookup_both_tabs_tracker_first_then_graveyard():
+    matches = search_products([_make_row()], _COL, "pamp")
+    gy = [_gy("PAMP Suisse 1oz Gold Bar (old)", reason="Duplicate")]
+    text = format_lookup_reply(matches, "pamp", graveyard=gy)
+    assert text.startswith("📦 PAMP Suisse 1oz Gold Bar")
+    assert text.index("📦") < text.index("🪦 Graveyard (1)")
+
+
+def test_lookup_neither_tab_still_no_products():
+    gy = _tb.search_graveyard(_GY_ROWS, "zzz")
+    assert gy == []
+    assert format_lookup_reply([], "zzz", graveyard=gy) == "No products found matching 'zzz'."
+
+
+def test_graveyard_line_has_date_reason_pid_and_sku():
+    line = _tb.format_graveyard_section(_tb.search_graveyard(_GY_ROWS, "city heights")).splitlines()[1]
+    assert "removed 2026-10-17 · Zero velocity + net < $5" in line
+    assert "(100404264)" in line and line.endswith("#100404264")
+    assert line.startswith("🪦 Grand Leisure City Heights 6-piece Outdoor Pa")
+
+
+def test_graveyard_search_matches_sku_and_product_id():
+    assert len(_tb.search_graveyard(_GY_ROWS, "100404264")) == 1
+    assert _tb.search_graveyard(_GY_ROWS, "calcium")[0]["reason"] == "Below floor"
+
+
+def test_graveyard_section_capped_at_five():
+    rows = [_gy(f"Widget {i}") for i in range(8)]
+    lines = _tb.format_graveyard_section(_tb.search_graveyard(rows, "widget")).splitlines()
+    assert lines[0] == "🪦 Graveyard (8)"
+    assert len(lines) == 7 and lines[-1] == "…and 3 more in Graveyard"

@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
 
 from tools.ebay_export import export_approved_products
-from tools.graveyard_writer import write_to_graveyard
+from tools.graveyard_writer import read_graveyard, write_to_graveyard
 from tools.sheet_writer import (
     PROTECTED_COLS,
     get_sheets_service,
@@ -726,27 +726,82 @@ def _lookup_summary_line(p):
     return f"• {p.get('title') or '(untitled)'} — {p.get('category') or '—'} · {p.get('status') or '—'}"
 
 
-def format_lookup_reply(matches, term, now=None):
+_GRAVEYARD_SEARCH_CAP = 5
+_SKU_LIKE_RE = re.compile(r"^[A-Za-z]?\d{4,}[A-Za-z0-9]*$")
+
+
+def search_graveyard(gy_rows, term):
+    """
+    Graveyard rows (tools.graveyard_writer.read_graveyard dicts) whose title contains the term
+    (case-insensitive, same rule as search_products). A SKU/number-like term also matches the
+    row's sku or the Costco product id in its costco_url.
+    """
+    term_lc = (term or "").strip().lower()
+    if not term_lc:
+        return []
+    sku_like = bool(_SKU_LIKE_RE.match(term_lc))
+    out = []
+    for g in gy_rows or []:
+        if term_lc in (g.get("title") or "").lower():
+            out.append(g)
+        elif sku_like and (term_lc in (g.get("sku") or "").lower()
+                           or term_lc in (sched.costco_product_id(g.get("costco_url")) or "")):
+            out.append(g)
+    return out
+
+
+def _graveyard_line(g):
+    title = (g.get("title") or "(untitled)").strip()
+    if len(title) > 48:
+        title = title[:47] + "…"
+    reason = (g.get("reason") or "").strip() or "no reason recorded"
+    if len(reason) > 40:
+        reason = reason[:39] + "…"
+    line = f"🪦 {title} — removed {(g.get('date_removed') or '?').strip()} · {reason}"
+    pid = sched.costco_product_id(g.get("costco_url"))
+    if pid:
+        line += f" ({pid})"
+    if (g.get("sku") or "").strip():
+        line += f" #{g['sku'].strip()}"
+    return line
+
+
+def format_graveyard_section(gy_matches):
+    """'🪦 Graveyard (N)' + up to 5 lines (+ '…and N more in Graveyard'); '' when no matches."""
+    if not gy_matches:
+        return ""
+    lines = [f"🪦 Graveyard ({len(gy_matches)})"]
+    lines += [_graveyard_line(g) for g in gy_matches[:_GRAVEYARD_SEARCH_CAP]]
+    extra = len(gy_matches) - _GRAVEYARD_SEARCH_CAP
+    if extra > 0:
+        lines.append(f"…and {extra} more in Graveyard")
+    return "\n".join(lines)
+
+
+def format_lookup_reply(matches, term, now=None, graveyard=None):
     """
     Build the full /lookup reply for any match count:
-      0    -> "No products found matching '<term>'."
+      0    -> "No products found matching '<term>'." (only when Graveyard has none either)
       1    -> format_product_detail() full card
       2-5  -> one summary line per match + "be more specific"
       >5   -> "Too many matches — be more specific."
+    Graveyard matches (search_graveyard) follow as a '🪦 Graveyard (N)' section; with no
+    Product Tracker match the section is the whole reply.
     """
+    gy_section = format_graveyard_section(graveyard)
     if not matches:
-        return f"No products found matching '{term}'."
+        return gy_section or f"No products found matching '{term}'."
 
     if len(matches) == 1:
-        return format_product_detail(matches[0], now=now)
-
-    if len(matches) <= 5:
+        text = format_product_detail(matches[0], now=now)
+    elif len(matches) <= 5:
         header = f"Found {len(matches)} matches for '{term}':"
         lines = [header] + [_lookup_summary_line(p) for p in matches]
         lines.append("Be more specific.")
-        return "\n".join(lines)
-
-    return "Too many matches — be more specific."
+        text = "\n".join(lines)
+    else:
+        text = "Too many matches — be more specific."
+    return f"{text}\n\n{gy_section}" if gy_section else text
 
 
 # ── Dashboard helpers ────────────────────────────────────────────────────────
@@ -1402,7 +1457,8 @@ async def cmd_lookup(update, context):
         return
 
     matches = search_products(rows, col_map, term, data_start_row=start)
-    text = format_lookup_reply(matches, term)
+    gy_matches = search_graveyard(read_graveyard(service), term)
+    text = format_lookup_reply(matches, term, graveyard=gy_matches)
     if len(text) > _MAX_MSG:
         text = text[:_MAX_MSG - 20] + "\n[truncated]"
     # A single-match card gets the same action buttons as the Search screen
@@ -1808,20 +1864,25 @@ async def _handle_search_term(update, context, term):
         return
 
     matches = search_products(rows, col_map, term, data_start_row=start)
+    gy_section = format_graveyard_section(search_graveyard(read_graveyard(service), term))
+    tail = f"\n\n{gy_section}" if gy_section else ""
     if not matches:
-        await update.message.reply_text(f"No products found matching '{term}'.", reply_markup=_home_inline_kb())
+        await update.message.reply_text(gy_section or f"No products found matching '{term}'.",
+                                        reply_markup=_home_inline_kb())
     elif len(matches) == 1:
         p = matches[0]
         await update.message.reply_text(
-            format_product_detail(p),
+            format_product_detail(p) + tail,
             reply_markup=_search_action_kb(p["row_num"], (p.get("status") or "").strip()),
         )
     elif len(matches) <= 5:
         await update.message.reply_text(
-            f"Found {len(matches)} matches for '{term}':", reply_markup=_search_match_buttons_kb(matches)
+            f"Found {len(matches)} matches for '{term}':" + tail,
+            reply_markup=_search_match_buttons_kb(matches)
         )
     else:
-        await update.message.reply_text("Too many matches — be more specific.", reply_markup=_home_inline_kb())
+        await update.message.reply_text("Too many matches — be more specific." + tail,
+                                        reply_markup=_home_inline_kb())
 
 
 async def cb_search_pick(update, context, arg):
