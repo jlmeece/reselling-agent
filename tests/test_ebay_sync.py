@@ -1123,10 +1123,43 @@ def test_auto_reprice_ignores_soft_breach(ebay, writes):
     assert _auto(rep) == [] and ebay["revise"] == []
 
 
-def test_auto_reprice_ignores_non_active_rows(ebay, writes):
-    rep = _breach_report((_row(4, "111111111111", status="PAUSED_OOS", **_HARD), 29.0))
+def test_auto_reprice_paused_margin_live_listing_losing_money_is_repriced(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", status="PAUSED_MARGIN", **_HARD), 29.0))
     assert rep["margin_breach"][0]["severity"] == "hard"
+    (r,) = _auto(rep)
+    assert ebay["revise"] == [("111111111111", 36.99)]
+    assert r["outcome"] == "repriced" and writes == [(4, [("H", 36.99)])]
+    assert rep["margin_breach"][0]["auto"] == "repriced"
+
+
+@pytest.mark.parametrize("status", ["AUDIT_REVIEW", "WATCH", "PAUSED_OOS"])
+def test_auto_reprice_any_status_with_live_listing_is_repriced(ebay, writes, status):
+    rep = _breach_report((_row(4, "111111111111", status=status, **_HARD), 29.0))
+    (r,) = _auto(rep)
+    assert r["outcome"] == "repriced" and ebay["revise"] == [("111111111111", 36.99)]
+
+
+def test_auto_reprice_paused_margin_not_losing_is_left_alone(ebay, writes):
+    # eBay $45, cost $30, fee 10% -> net > 0
+    rep = _breach_report((_row(4, "111111111111", status="PAUSED_MARGIN", costco_cost="$30",
+                               fee_rate="0.10", sold_90d="4"), 45.0))
+    assert not any(m["severity"] == "hard" for m in rep["margin_breach"])
+    assert _auto(rep) == [] and ebay["revise"] == [] and writes == []
+
+
+def test_auto_reprice_row_without_live_listing_is_skipped(ebay, writes):
+    # blank col Q -> never matched to an eBay listing -> no breach, nothing repriced
+    rows = [_row(4, "", status="PAUSED_MARGIN", **_HARD)]
+    rep = _sync(rows, [_listing("111111111111", price=29.0)], dry_run=True)
+    assert rep["margin_breach"] == []
     assert _auto(rep) == [] and ebay["revise"] == []
+
+
+def test_auto_reprice_manual_price_on_paused_margin_row_is_skipped(ebay, writes):
+    rep = _breach_report((_row(4, "111111111111", status="PAUSED_MARGIN",
+                               manual_cost="$30", **_HARD), 29.0))
+    assert _auto(rep) == [] and ebay["revise"] == [] and writes == []
+    assert rep["margin_breach"][0]["auto"] == "manual"
 
 
 def test_auto_reprice_dry_run_never_calls_ebay(ebay, writes):

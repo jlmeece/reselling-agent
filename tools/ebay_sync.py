@@ -1475,12 +1475,14 @@ def auto_reprice_breaches(report: dict, service, COL, sheet_name: str, *, title_
                           dry_run: bool = False, enabled: bool = True,
                           max_jump_pct: float = AUTO_MAX_JUMP_PCT) -> list[dict]:
     """
-    Push every HARD breach (net < 0) on an ACTIVE row to round_up_99(break_even) via
+    Push every HARD breach (net < 0) on a LIVE listing to round_up_99(break_even) via
     revise_fixed_price, then write the new price to col H. Marks each handled breach
     m["auto"] = "repriced" | "held" | "failed" | "dry_run" (alert_message drops "repriced").
 
     Returns [{item_id, title, row_num, old_price, new_price, ok, outcome, error, sheet_note,
-    rearmed}]. Skipped silently: soft breaches, non-ACTIVE rows, missing item id / price /
+    rearmed}]. Any sheet status qualifies (PAUSED_MARGIN, AUDIT_REVIEW, WATCH, ...): every
+    margin_breach entry is a row matched by col Q to a listing on eBay's ActiveList, so it is
+    live and can sell at a loss. Skipped silently: soft breaches, missing item id / price /
     break-even, break-even already <= the live price. Skipped as "manual" (not in the result):
     col BE filled and col G == BE, or G unknown (can't tell the cost moved). rearmed = BE was
     filled but stale (G != BE) — BE is cleared together with col H. Never raises for eBay errors; an auth error stops
@@ -1492,7 +1494,9 @@ def auto_reprice_breaches(report: dict, service, COL, sheet_name: str, *, title_
         return []
     results, titles = [], None
     for m in report.get("margin_breach", []):
-        if m.get("severity") != "hard" or m.get("status") != "ACTIVE":
+        # No status gate: a live listing on a non-ACTIVE row (PAUSED_MARGIN, AUDIT_REVIEW, ...)
+        # loses money just the same. margin_breach only holds rows matched to ActiveList.
+        if m.get("severity") != "hard":
             continue
         item_id, be, old_price = m.get("item_id"), m.get("break_even"), m.get("ebay_price")
         title, row_num = m.get("title", ""), m.get("row_num")
