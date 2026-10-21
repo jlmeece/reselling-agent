@@ -3,8 +3,8 @@ Telegram Status Bot
 ===================
 WAT Framework: Persistent Telegram bot for agent monitoring. Runs as a
 systemd service on the Hermes VPS or as a Windows Startup-folder process.
-Responds to /help, /status, /logs, /lookup, and /dashboard commands from
-the authorized TELEGRAM_CHAT_ID only.
+Button-driven (persistent tray + inline screens); the only text commands are /start, /status,
+/restart and /help. Answers the authorized TELEGRAM_CHAT_ID only.
 """
 
 import asyncio
@@ -1366,16 +1366,12 @@ async def cmd_help(update, context):
         return
     text = (
         "<b>WAT Reselling Agent — Commands</b>\n\n"
-        "/menu — Dashboard (home screen; the button tray below has Review, Alerts, Sales, Run a Mode, Search)\n"
         "/start — show the persistent button keyboard\n"
         "/status — last run time, pass/fail, cookie age\n"
-        "/logs [mode] — recent log lines (modes: active, audit, daily, research, rotation, discovery, refresh-notes, recheck, ebay_sync, sale-digest, savings, telegram_bot)\n"
-        "/lookup &lt;term&gt; — search Product Tracker by title or category\n"
-        "/dashboard — funnel, top Ready opportunities, profit reserve, sale urgency, category health\n"
-        "/restart — reload bot after a code update\n"
-        "/help — this message"
+        "/restart — reload bot after a code update\n\n"
+        "Everything else is a button below."
     )
-    await update.message.reply_text(text, parse_mode="HTML")
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=_HOME_KEYBOARD)
 
 
 async def cmd_status(update, context):
@@ -1397,113 +1393,6 @@ async def cmd_status(update, context):
     parts.append(f"\n{cookie_line}")
 
     await update.message.reply_text("\n".join(parts))
-
-
-async def cmd_logs(update, context):
-    if not _authorized(update, context.bot_data["chat_id"]):
-        return
-
-    arg = " ".join(context.args) if context.args else None
-    mode, err = parse_logs_arg(arg)
-
-    if err:
-        await update.message.reply_text(err)
-        return
-
-    if mode:
-        lines = read_tail(LOG_FILES[mode], 30)
-        if lines is None:
-            await update.message.reply_text(f"{mode}.log: not found")
-            return
-        safe_lines = [html.escape(l) for l in lines]
-        text = f"<pre>{mode}.log (last 30 lines):\n" + "\n".join(safe_lines) + "</pre>"
-        if len(text) > _MAX_MSG:
-            text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
-        await update.message.reply_text(text, parse_mode="HTML")
-        return
-
-    sections = []
-    for m, path in LOG_FILES.items():
-        lines = read_tail(path, 10)
-        body = "\n".join(html.escape(l) for l in lines) if lines is not None else "not found"
-        sections.append(f"--- {m}.log ---\n{body}")
-    text = "<pre>" + "\n\n".join(sections) + "</pre>"
-    if len(text) > _MAX_MSG:
-        text = text[:_MAX_MSG - 30] + "\n[truncated]</pre>"
-    await update.message.reply_text(text, parse_mode="HTML")
-
-
-async def cmd_lookup(update, context):
-    if not _authorized(update, context.bot_data["chat_id"]):
-        return
-
-    term = " ".join(context.args).strip() if context.args else ""
-    if not term:
-        await update.message.reply_text("Usage: /lookup <search term>")
-        return
-
-    try:
-        col_map = _load_col_map()
-        cfg = _load_business_cfg()
-        service = get_sheets_service()
-        sheet_name = cfg["sheet_name"]
-        start, end = cfg["data_start_row"], cfg["data_end_row"]
-        rows = read_sheet(service, f"'{sheet_name}'!A{start}:BA{end}")
-    except Exception as e:
-        logger.warning(f"/lookup sheet read failed: {e}")
-        await update.message.reply_text(
-            "Couldn't reach the product sheet right now — try again in a bit."
-        )
-        return
-
-    matches = search_products(rows, col_map, term, data_start_row=start)
-    gy_matches = search_graveyard(read_graveyard(service), term)
-    text = format_lookup_reply(matches, term, graveyard=gy_matches)
-    if len(text) > _MAX_MSG:
-        text = text[:_MAX_MSG - 20] + "\n[truncated]"
-    # A single-match card gets the same action buttons as the Search screen
-    # (Mark Listed on READY items); multi-match/no-match replies stay text-only.
-    markup = None
-    if len(matches) == 1:
-        p = matches[0]
-        markup = _search_action_kb(p["row_num"], (p.get("status") or "").strip())
-    await update.message.reply_text(text, reply_markup=markup)
-
-
-async def cmd_dashboard(update, context):
-    if not _authorized(update, context.bot_data["chat_id"]):
-        return
-
-    try:
-        col_map = _load_col_map()
-        cfg = _load_business_cfg()
-        service = get_sheets_service()
-        sheet_name = cfg["sheet_name"]
-        start, end = cfg["data_start_row"], cfg["data_end_row"]
-        rows = read_sheet(service, f"'{sheet_name}'!A{start}:BA{end}")
-    except Exception as e:
-        logger.warning(f"/dashboard sheet read failed: {e}")
-        await update.message.reply_text(
-            "Couldn't reach the product sheet right now — try again in a bit."
-        )
-        return
-
-    counts, total = count_statuses(rows)
-    products = extract_dashboard_products(rows, col_map, data_start_row=start)
-
-    blocks = [format_dashboard_reply(counts, total)]
-    for section in (
-        format_top_opportunities(products),
-        format_sale_urgency_section(products),
-        format_category_breakdown(products),
-    ):
-        if section:
-            blocks.append(section)
-
-    text = "\n\n".join(blocks)
-    if len(text) > _MAX_MSG:
-        text = text[:_MAX_MSG - 20] + "\n[truncated]"
-    await update.message.reply_text(text)
 
 
 async def cmd_restart(update, context):
@@ -1603,12 +1492,6 @@ async def cmd_start(update, context):
         "👋 Welcome to the WAT Reselling Agent. Tap a button below to get started.",
         reply_markup=_HOME_KEYBOARD,
     )
-
-
-async def cmd_menu(update, context):
-    if not _authorized(update, context.bot_data["chat_id"]):
-        return
-    await cb_menu_dashboard(update, context, None)
 
 
 # ── Callback data scheme + router ───────────────────────────────────────────
@@ -3406,7 +3289,7 @@ async def _await_job(context, mode, proc):
     if proc.returncode == 0:
         await context.bot.send_message(chat_id, f"✅ {mode} completed ({elapsed:.0f}s)")
     else:
-        await context.bot.send_message(chat_id, f"❌ {mode} failed (exit {proc.returncode}) — see /logs {mode}")
+        await context.bot.send_message(chat_id, f"❌ {mode} failed (exit {proc.returncode}) — see ⚙️ Run a Mode → 📋 Logs")
 
 
 async def cb_job_export(update, context, arg):
@@ -3493,7 +3376,7 @@ async def cb_menu_spot(update, context, arg):
     await _send_screen(update, text, reply_markup=kb)
 
 
-# ── Logs screen (thin wrapper around the existing /logs body) ───────────────
+# ── Logs screen (under ⚙️ Run a Mode) ────────────────────────────────────────
 
 def _format_log_tail(mode):
     lines = read_tail(LOG_FILES[mode], 30)
@@ -3717,7 +3600,7 @@ async def on_text(update, context):
         return
 
     await update.message.reply_text(
-        "Use the buttons below, or /help for text commands.", reply_markup=_HOME_KEYBOARD
+        "Use the buttons below.", reply_markup=_HOME_KEYBOARD
     )
 
 
@@ -3898,12 +3781,8 @@ def _main_body():
 
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("logs", cmd_logs))
-    app.add_handler(CommandHandler("lookup", cmd_lookup))
-    app.add_handler(CommandHandler("dashboard", cmd_dashboard))
     app.add_handler(CommandHandler("restart", cmd_restart))
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("menu", cmd_menu))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))

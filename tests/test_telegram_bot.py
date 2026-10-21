@@ -1453,3 +1453,26 @@ def test_graveyard_section_capped_at_five():
     lines = _tb.format_graveyard_section(_tb.search_graveyard(rows, "widget")).splitlines()
     assert lines[0] == "🪦 Graveyard (8)"
     assert len(lines) == 7 and lines[-1] == "…and 3 more in Graveyard"
+
+
+# ── buttons only: /help lists just the summon/admin commands ─────────────────
+
+def test_help_lists_only_start_status_restart(monkeypatch):
+    msg = SimpleNamespace(reply_text=AsyncMock())
+    update = SimpleNamespace(message=msg, effective_chat=SimpleNamespace(id=1))
+    monkeypatch.setattr(_tb, "_authorized", lambda u, c: True)
+    asyncio.run(_tb.cmd_help(update, SimpleNamespace(bot_data={"chat_id": 1})))
+    text = msg.reply_text.call_args.args[0]
+    for cmd in ("/start", "/status", "/restart"):
+        assert cmd in text
+    for gone in ("/lookup", "/dashboard", "/logs", "/menu"):
+        assert gone not in text
+    assert "Everything else is a button below." in text
+    assert msg.reply_text.call_args.kwargs["reply_markup"] is _tb._HOME_KEYBOARD
+
+
+def test_removed_text_commands_are_gone():
+    for name in ("cmd_lookup", "cmd_dashboard", "cmd_logs", "cmd_menu"):
+        assert not hasattr(_tb, name)
+    for name in ("cmd_start", "cmd_status", "cmd_restart", "cmd_help"):
+        assert hasattr(_tb, name)
