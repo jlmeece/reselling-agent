@@ -241,6 +241,7 @@ def _parse_listing(item) -> dict | None:
         "item_id":       item_id,
         "title":         _text(item, "Title"),
         "listing_type":  _text(item, "ListingType"),
+        "sku":           _text(item, "SKU"),
         "price":         price,
         "quantity":      _num(_text(item, "Quantity"), int, 0),
         "quantity_sold": qty_sold,
@@ -357,7 +358,7 @@ def _build_get_item_xml(token: str, item_id: str) -> str:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "Item.ItemID", "Item.ListingType", "Item.SellingStatus", "Item.Title",
         "Item.Quantity", "Item.ListingDuration", "Item.OutOfStockControl", "Item.Variations",
-        "Item.PictureDetails",
+        "Item.PictureDetails", "Item.SKU",
     ))
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
@@ -571,6 +572,60 @@ def revise_description(item_id, new_description, listing_type=None) -> dict:
     return out
 
 
+def _build_sku_xml(token: str, item_id: str, sku: str) -> str:
+    """ReviseFixedPriceItem body that changes ONLY Item.SKU."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"<SKU>{_xml_escape(sku)}</SKU></Item>"
+        "</ReviseFixedPriceItemRequest>"
+    )
+
+
+MAX_SKU_LEN = 50   # eBay's SKU field limit
+
+
+def revise_sku(item_id, sku, listing_type=None) -> dict:
+    """
+    Set a live listing's SKU via ReviseFixedPriceItem (in place, no re-list). listing_type, when
+    given, must be "FixedPriceItem". Same return shape as revise_fixed_price. Never raises; a
+    refused guard sends nothing (error_kind "invalid").
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
+           "error_kind": None, "error_code": "", "message": ""}
+    sku = str(sku or "").strip()
+    why = None
+    if not iid:
+        why = f"bad item id {item_id!r}"
+    elif listing_type is not None and listing_type != "FixedPriceItem":
+        why = f"listing type {listing_type or 'unknown'!r} is not FixedPriceItem"
+    elif not sku or len(sku) > MAX_SKU_LEN:
+        why = f"bad SKU {sku!r}"
+    if why:
+        out.update(error_kind="invalid", message=f"refused — {why}")
+        logger.error(f"revise_sku: item {out['item_id']} {out['message']}")
+        return out
+    try:
+        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_sku_xml(tok, iid, sku))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        level = logger.critical if err["error_kind"] == "auth" else logger.error
+        level(f"revise_sku: item {iid} -> {sku} FAILED [{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    out["ok"] = True
+    warnings = [f"{_text(e, 'ErrorCode')}: {_text(e, 'ShortMessage')}"
+                for e in root.findall("{*}Errors") if _text(e, "SeverityCode") == "Warning"]
+    out["message"] = "; ".join(warnings)
+    logger.info(f"revise_sku: item {iid} -> {sku} OK" + (f" (warnings: {out['message']})" if warnings else ""))
+    return out
+
+
 def fetch_item_description(item_id) -> dict:
     """GetItem (DetailLevel ReturnAll) -> {ok, item_id, description, listing_type, listing_status,
     has_variations, error_kind, error_code, message}. Never raises."""
@@ -735,7 +790,7 @@ def fetch_item_price(item_id) -> dict:
     out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
            "listing_status": "", "listing_type": "",
            "quantity_available": None, "listing_duration": "", "out_of_stock_control": None,
-           "has_variations": False, "picture_urls": [],
+           "has_variations": False, "picture_urls": [], "sku": "",
            "error_kind": None, "error_code": "", "message": ""}
     if not iid:
         out.update(error_kind="invalid", message=f"bad item id {item_id!r}")
@@ -755,6 +810,7 @@ def fetch_item_price(item_id) -> dict:
         out["listing_status"] = _text(status, "ListingStatus")
     if item is not None:
         out["listing_type"] = _text(item, "ListingType")
+        out["sku"] = _text(item, "SKU")
         out["listing_duration"] = _text(item, "ListingDuration")
         oosc = _text(item, "OutOfStockControl").lower()
         out["out_of_stock_control"] = {"true": True, "false": False}.get(oosc)

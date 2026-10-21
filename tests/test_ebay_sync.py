@@ -186,7 +186,7 @@ def test_fetch_parses_pages_and_sends_correct_request(monkeypatch, creds):
     out = fetch_active_listings()
 
     assert [l["item_id"] for l in out] == ["111111111111", "222222222222"]  # deduped, both pages
-    assert out[0] == {"item_id": "111111111111", "title": "A & B", "listing_type": "", "price": 29.99, "quantity": 5,
+    assert out[0] == {"item_id": "111111111111", "title": "A & B", "listing_type": "", "sku": "", "price": 29.99, "quantity": 5,
                       "quantity_sold": 2, "watch_count": 2, "view_count": 10}
     assert out[1]["price"] == 9.5
     assert ebay_sync.get_last_error()["kind"] is None
@@ -1997,3 +1997,25 @@ def test_fetch_item_description(monkeypatch, creds):
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", lambda req, **k: FakeResp(body))
     out = ebay_sync.fetch_item_description("123456789012")
     assert out["ok"] and out["description"] == "<p>Hi</p>" and out["listing_type"] == "FixedPriceItem"
+
+
+# ── revise_sku ───────────────────────────────────────────────────────────────
+
+def test_revise_sku_sends_sku_only(monkeypatch, creds):
+    sent = []
+    ok = '<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>'
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(ok))
+    out = ebay_sync.revise_sku("123456789012", "100404264", listing_type="FixedPriceItem")
+    body = sent[0].data.decode()
+    assert out["ok"] and "<SKU>100404264</SKU>" in body
+    assert "StartPrice" not in body and "Description" not in body and "PictureDetails" not in body
+
+
+@pytest.mark.parametrize("sku,ltype,why", [("", None, "bad SKU"), ("x" * 51, None, "bad SKU"),
+                                           ("A1", "Chinese", "not FixedPriceItem")])
+def test_revise_sku_guards_never_post(monkeypatch, creds, sku, ltype, why):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.revise_sku("123456789012", sku, listing_type=ltype)
+    assert out["ok"] is False and out["error_kind"] == "invalid" and why in out["message"]
