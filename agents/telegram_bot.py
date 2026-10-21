@@ -2496,7 +2496,9 @@ _PRICE_FIELDS = ("status", "title", "costco_cost", "ebay_price", "fee_rate",
 
 
 def _price_row_for_item(item_id, rows, col_map, start):
-    """(row_dict, None) for the unique ACTIVE row owning item_id in col Q, else (None, msg)."""
+    """(row_dict, None) for the unique row whose listing is live on eBay owning item_id in col Q,
+    else (None, msg). Sheet status is a workflow label: any live status passes (is_live_listing,
+    the executor's own test); _reprice_apply's GetItem check stays the authoritative double-check."""
     items = _extract_rows_by_field(rows, col_map, _PRICE_FIELDS, data_start_row=start)
     matches = [p for p in items if extract_item_id(p.get("ebay_listing_url")) == item_id]
     if len(matches) != 1:
@@ -2504,8 +2506,8 @@ def _price_row_for_item(item_id, rows, col_map, start):
                else f"is in col Q of {len(matches)} rows — fix the duplicate first")
         return None, f"eBay item {item_id} {why}."
     p = matches[0]
-    if (p.get("status") or "").strip() != "ACTIVE":
-        return None, f"this listing is no longer ACTIVE ({p.get('status') or 'blank'})."
+    if not is_live_listing(p.get("ebay_listing_url"), p.get("status")):
+        return None, f"this listing isn't live on eBay (status {p.get('status') or 'blank'})."
     return p, None
 
 
@@ -2551,7 +2553,7 @@ async def cb_reprice_set(update, context, arg):
         return
     p, err = _price_row_for_item(item_id, rows, col_map, start)
     if err:
-        await _send_screen(update, html.escape(err), reply_markup=_home_inline_kb())
+        await _send_screen(update, html.escape(err), parse_mode="HTML", reply_markup=_home_inline_kb())
         return
     context.user_data["awaiting_price"] = {
         "item_id": item_id, "row_num": p["row_num"],
@@ -2604,7 +2606,7 @@ async def _handle_price_input(update, context, text):
         return
     p, err = _price_row_for_item(item_id, rows, col_map, start)
     if err:
-        await update.message.reply_text(html.escape(err))
+        await update.message.reply_text(html.escape(err), parse_mode="HTML")
         return
     net, margin = _price_metrics(p, target)
     title = html.escape((p.get("title") or "(untitled)")[:80])
@@ -2668,7 +2670,7 @@ async def cb_reprice_compete(update, context, arg):
         return
     p, err = _price_row_for_item(item_id, rows, col_map, start)
     if err:
-        await _send_screen(update, html.escape(err), reply_markup=_home_inline_kb())
+        await _send_screen(update, html.escape(err), parse_mode="HTML", reply_markup=_home_inline_kb())
         return
     title = p.get("title") or "(untitled)"
     comp = _competitive_for(p, _cost_basis(p.get("buy_cost"), p.get("costco_cost")))
@@ -2802,7 +2804,7 @@ async def _stepper_row(query, item_id, sheet=None):
         return None
     p, err = _price_row_for_item(item_id, rows, col_map, start)
     if err:
-        await query.edit_message_text(html.escape(err), reply_markup=_STEPPER_BACK_KB)
+        await query.edit_message_text(html.escape(err), parse_mode="HTML", reply_markup=_STEPPER_BACK_KB)
         return None
     return p
 
@@ -2861,7 +2863,7 @@ async def cb_reprice_cheapest(update, context, arg):
     if p is None:
         await query.answer()
         await query.edit_message_text(html.escape(err) if err else _SHEET_UNREACHABLE_MSG,
-                                      reply_markup=_STEPPER_BACK_KB)
+                                      parse_mode="HTML", reply_markup=_STEPPER_BACK_KB)
         return
     title = p.get("title") or "(untitled)"
     comp = _competitive_for(p, _cost_basis(p.get("buy_cost"), p.get("costco_cost")))

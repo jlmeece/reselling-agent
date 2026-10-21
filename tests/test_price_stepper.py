@@ -1,5 +1,6 @@
 """Tap-stepper price editor for ACTIVE listings (agents/telegram_bot.py, 🎚️ Adjust)."""
 import asyncio
+import html
 import os
 import sys
 from types import SimpleNamespace
@@ -166,7 +167,33 @@ def test_nudge_refuses_non_active_row(sheet, monkeypatch):
     sheet["rows"] = [_sheet_row("ENDED", "Energy Shot", "5.00", URL)]
     seen = _screens(monkeypatch)
     q = _tap(tb.cb_reprice_nudge, f"{ITEM_ID}:4999:100")
-    assert seen == [] and "no longer ACTIVE" in q.edit_message_text.call_args.args[0]
+    call = q.edit_message_text.call_args
+    # escaped text is only correct when Telegram parses it as HTML (else "isn&#x27;t" shows)
+    assert seen == [] and call.kwargs.get("parse_mode") == "HTML"
+    assert "isn't live on eBay" in html.unescape(call.args[0])
+
+
+@pytest.mark.parametrize("status", ["AUDIT_REVIEW", "PAUSED_MARGIN", "WATCH"])
+def test_live_non_active_row_passes_the_gate(sheet, monkeypatch, status):
+    sheet["rows"] = [_sheet_row(status, "Energy Shot", "5.00", URL, price="41.48")]
+    p, err = tb._price_row_for_item(ITEM_ID, sheet["rows"], COL, 4)
+    assert err is None and p["row_num"] == 4
+    seen = _screens(monkeypatch)
+    q = _tap(tb.cb_reprice_stepper, ITEM_ID)
+    assert seen == [(4148, ITEM_ID)] and "Adjust price" in q.edit_message_text.call_args.args[0]
+
+
+@pytest.mark.parametrize("status", ["ENDED", "PAUSED_OOS"])
+def test_not_live_statuses_still_refused(sheet, status):
+    sheet["rows"] = [_sheet_row(status, "Energy Shot", "5.00", URL)]
+    p, err = tb._price_row_for_item(ITEM_ID, sheet["rows"], COL, 4)
+    assert p is None and "isn't live on eBay" in err
+
+
+def test_row_without_item_id_is_not_live(sheet):
+    sheet["rows"] = [_sheet_row("ACTIVE", "Energy Shot", "5.00", "not a url")]
+    p, err = tb._price_row_for_item(ITEM_ID, sheet["rows"], COL, 4)
+    assert p is None and "not in col Q" in err
 
 
 def test_stepapply_calls_manual_executor(sheet, monkeypatch):
