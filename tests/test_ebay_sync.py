@@ -1905,3 +1905,59 @@ def test_run_mirrors_bulk_edited_ebay_price(monkeypatch, creds, writes):
     monkeypatch.setattr(ebay_sync, "_read_titles", lambda *a, **k: {4: "Widget"})
     res = run_ebay_sync(_ALERT_ONLY, COL, "svc", "Product Tracker", 4, 500)
     assert writes == [(4, [("H", 44.99)])] and "h_mirrored 1" in res["notes"]
+
+
+# ── revise_picture (branded-photo backfill) ──────────────────────────────────
+
+EPS_MAIN = "https://i.ebayimg.com/00/s/MTI4MFgxMjAw/z/EBIAAeSw~6pqxut7/$_1.JPG?set_id=2"
+EPS_G1 = "https://i.ebayimg.com/00/s/NzI3WDcyNw==/z/AWIAAeSw--5qyQiF/$_1.JPG?set_id=2"
+
+
+def test_fetch_item_price_returns_picture_urls(monkeypatch, creds):
+    sent = []
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            '<SellingStatus><CurrentPrice currencyID="USD">41.48</CurrentPrice>'
+            "<ListingStatus>Active</ListingStatus></SellingStatus>"
+            f"<PictureDetails><PictureURL>{EPS_MAIN.replace('&', '&amp;')}</PictureURL>"
+            f"<PictureURL>{EPS_G1}</PictureURL></PictureDetails></Item></GetItemResponse>")
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(body))
+    out = ebay_sync.fetch_item_price("123456789012")
+    assert out["picture_urls"] == [EPS_MAIN, EPS_G1]
+    assert b"<OutputSelector>Item.PictureDetails</OutputSelector>" in sent[0].data
+
+
+def test_revise_picture_sends_main_then_gallery_only(monkeypatch, creds):
+    sent = []
+    ok = '<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>'
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(ok))
+    out = ebay_sync.revise_picture("123456789012", EPS_MAIN, [EPS_G1, EPS_MAIN],
+                                   listing_type="FixedPriceItem")
+    assert out["ok"] and out["pictures"] == [EPS_MAIN, EPS_G1]          # deduped, main first
+    body = sent[0].data.decode()
+    assert {k.lower(): v for k, v in sent[0].header_items()}["x-ebay-api-call-name"] == "ReviseFixedPriceItem"
+    assert body.index("z/EBIAAeSw") < body.index("z/AWIAAeSw")
+    assert "<PictureDetails>" in body and "StartPrice" not in body and "<Quantity>" not in body
+
+
+@pytest.mark.parametrize("main,gallery,ltype,why", [
+    ("https://www.costco.com/x.jpg", [], None, "main picture must be EPS"),
+    (EPS_MAIN, ["https://images.costco-static.com/a.jpg"], None, "non-EPS"),
+    (EPS_MAIN, [], "Chinese", "not FixedPriceItem"),
+])
+def test_revise_picture_guards_never_post(monkeypatch, creds, main, gallery, ltype, why):
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    out = ebay_sync.revise_picture("123456789012", main, gallery, listing_type=ltype)
+    assert out["ok"] is False and out["error_kind"] == "invalid" and why in out["message"]
+
+
+def test_revise_picture_caps_at_24(monkeypatch, creds):
+    sent = []
+    ok = '<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>'
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(ok))
+    gallery = [f"https://i.ebayimg.com/00/s/x/z/G{i}/$_1.JPG" for i in range(30)]
+    out = ebay_sync.revise_picture("123456789012", EPS_MAIN, gallery)
+    assert len(out["pictures"]) == 24 and out["pictures"][0] == EPS_MAIN

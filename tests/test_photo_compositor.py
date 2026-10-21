@@ -219,3 +219,9 @@ def test_main_missing_template_exits_1(tmp_path, capsys):
     rc = pc.main(["--mode", "sheet", "--template", str(tmp_path / "nope.png")])
     assert rc == 1
     assert pc.TEMPLATE_MISSING_MSG in capsys.readouterr().out
+
+
+def test_build_jobs_include_active_adds_active_rows():
+    rows = [_row("READY", "A"), _row("ACTIVE", "B"), _row("SCORED", "C")]
+    jobs = pc.build_jobs(rows, 4, COLS, include_active=True)
+    assert [j["sku"] for j in jobs] == ["A", "B"]

@@ -101,8 +101,11 @@ def safe_sku(sku: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", sku.strip())
 
 
-def build_jobs(rows: list[list], start_row: int, cols: dict, sku: str | None = None) -> list[dict]:
-    """Rows → jobs. sheet mode: APPROVED/READY only. single mode (sku given): any status."""
+def build_jobs(rows: list[list], start_row: int, cols: dict, sku: str | None = None,
+               include_active: bool = False) -> list[dict]:
+    """Rows → jobs. sheet mode: APPROVED/READY (+ ACTIVE with include_active). single mode
+    (sku given): any status."""
+    eligible = ELIGIBLE_STATUSES | ({"ACTIVE"} if include_active else set())
     jobs = []
     for offset, row in enumerate(rows):
         if not row:
@@ -112,9 +115,9 @@ def build_jobs(rows: list[list], start_row: int, cols: dict, sku: str | None = N
         if sku is not None:
             if row_sku != sku:
                 continue
-            if status not in ELIGIBLE_STATUSES:
+            if status not in eligible:
                 logger.warning(f"SKU {sku} is {status or 'blank'}, not APPROVED/READY — processing anyway")
-        elif status not in ELIGIBLE_STATUSES:
+        elif status not in eligible:
             continue
         jobs.append({
             "row":    start_row + offset,
@@ -420,6 +423,8 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="list what would be processed; download nothing")
     ap.add_argument("--force", action="store_true", help="re-render photos that already exist")
     ap.add_argument("--limit", type=int, help="process at most N photos")
+    ap.add_argument("--include-active", action="store_true",
+                    help="sheet mode: also build photos for ACTIVE rows (backfill live listings)")
     ap.add_argument("--template", type=Path, default=TEMPLATE_PATH, help=argparse.SUPPRESS)
     ap.add_argument("--output-dir", type=Path, default=OUTPUT_DIR, help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
@@ -441,7 +446,8 @@ def main(argv=None) -> int:
             return 1
 
     rows, start = read_rows()
-    jobs = build_jobs(rows, start, _load_columns(), sku=args.sku if args.mode == "single" else None)
+    jobs = build_jobs(rows, start, _load_columns(), sku=args.sku if args.mode == "single" else None,
+                      include_active=args.include_active)
     if args.mode == "single" and not jobs:
         print(f"SKU {args.sku} not found in col AA")
         return 1

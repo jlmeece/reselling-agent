@@ -356,6 +356,7 @@ def _build_get_item_xml(token: str, item_id: str) -> str:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "Item.ItemID", "Item.ListingType", "Item.SellingStatus", "Item.Title",
         "Item.Quantity", "Item.ListingDuration", "Item.OutOfStockControl", "Item.Variations",
+        "Item.PictureDetails",
     ))
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
@@ -435,6 +436,80 @@ def revise_fixed_price(item_id, new_price) -> dict:
                 for e in root.findall("{*}Errors") if _text(e, "SeverityCode") == "Warning"]
     out["message"] = "; ".join(warnings)
     logger.info(f"revise_fixed_price: item {iid} -> ${price:.2f} OK"
+                + (f" (warnings: {out['message']})" if warnings else ""))
+    return out
+
+
+MAX_LISTING_PICTURES = 24         # eBay's per-listing picture cap
+
+
+def is_eps_url(url) -> bool:
+    """True for an eBay Picture Services URL (i.ebayimg.com) — eBay forbids mixing these with
+    self-hosted pictures in one listing (error 20004)."""
+    m = re.match(r"^https?://([^/]+)/", str(url or "").strip())
+    return bool(m) and (m.group(1) == "ebayimg.com" or m.group(1).endswith(".ebayimg.com"))
+
+
+def _build_picture_xml(token: str, item_id: str, urls: list) -> str:
+    """ReviseFixedPriceItem body that replaces ONLY Item.PictureDetails.PictureURL (in order)."""
+    pics = "".join(f"<PictureURL>{_xml_escape(u)}</PictureURL>" for u in urls)
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
+        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
+        f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
+        f"<PictureDetails>{pics}</PictureDetails></Item>"
+        "</ReviseFixedPriceItemRequest>"
+    )
+
+
+def revise_picture(item_id, main_url, gallery_urls=(), listing_type=None) -> dict:
+    """
+    Replace a live listing's pictures via ReviseFixedPriceItem: PictureURL = [main_url] +
+    gallery_urls (deduped, capped at 24). The set is REPLACED, so the caller must pass the
+    listing's existing gallery to keep it. Every URL must be EPS-hosted (i.ebayimg.com) —
+    eBay rejects a self-hosted/EPS mix (20004). listing_type (from GetItem), when given, must be
+    "FixedPriceItem". Same return shape as revise_fixed_price, plus "pictures" (the URLs sent).
+    Never raises; nothing is sent when a guard refuses (error_kind "invalid").
+    """
+    iid = extract_item_id(item_id)
+    out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None, "pictures": [],
+           "error_kind": None, "error_code": "", "message": ""}
+    urls = []
+    for u in [main_url, *(gallery_urls or [])]:
+        u = str(u or "").strip()
+        if u and u not in urls:
+            urls.append(u)
+    urls = urls[:MAX_LISTING_PICTURES]
+    why = None
+    if not iid:
+        why = f"bad item id {item_id!r}"
+    elif listing_type is not None and listing_type != "FixedPriceItem":
+        why = f"listing type {listing_type or 'unknown'!r} is not FixedPriceItem"
+    elif not main_url or not is_eps_url(main_url):
+        why = f"main picture must be EPS-hosted, got {str(main_url)[:80]!r}"
+    elif any(not is_eps_url(u) for u in urls):
+        why = "gallery has a non-EPS picture (eBay error 20004 forbids mixing)"
+    if why:
+        out.update(error_kind="invalid", message=f"refused — {why}")
+        logger.error(f"revise_picture: item {out['item_id']} {out['message']}")
+        return out
+    out["pictures"] = urls
+    try:
+        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_picture_xml(tok, iid, urls))
+    except Exception as e:  # contract: never raises
+        root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
+    if err:
+        out.update(err)
+        level = logger.critical if err["error_kind"] == "auth" else logger.error
+        level(f"revise_picture: item {iid} FAILED [{err['error_kind']} {err['error_code']}] {err['message']}")
+        return out
+    out["ok"] = True
+    warnings = [f"{_text(e, 'ErrorCode')}: {_text(e, 'ShortMessage')}"
+                for e in root.findall("{*}Errors") if _text(e, "SeverityCode") == "Warning"]
+    out["message"] = "; ".join(warnings)
+    logger.info(f"revise_picture: item {iid} -> {len(urls)} picture(s) OK"
                 + (f" (warnings: {out['message']})" if warnings else ""))
     return out
 
@@ -562,7 +637,8 @@ def fetch_item_price(item_id) -> dict:
     out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
            "listing_status": "", "listing_type": "",
            "quantity_available": None, "listing_duration": "", "out_of_stock_control": None,
-           "has_variations": False, "error_kind": None, "error_code": "", "message": ""}
+           "has_variations": False, "picture_urls": [],
+           "error_kind": None, "error_code": "", "message": ""}
     if not iid:
         out.update(error_kind="invalid", message=f"bad item id {item_id!r}")
         return out
@@ -587,6 +663,9 @@ def fetch_item_price(item_id) -> dict:
         variations = _child(item, "Variations")
         out["has_variations"] = (variations is not None
                                  and variations.find("{*}Variation") is not None)
+        pics = _child(item, "PictureDetails")
+        out["picture_urls"] = ([(e.text or "").strip() for e in pics.findall("{*}PictureURL")
+                                if (e.text or "").strip()] if pics is not None else [])
         total = _num(_text(item, "Quantity"), int, None)
         sold = _num(_text(status, "QuantitySold"), int, 0) if status is not None else 0
         if total is not None:
