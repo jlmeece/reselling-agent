@@ -2076,6 +2076,188 @@ def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
     return {"status": "ok", "notes": notes}
 
 
+STALE_DAYS = 7                 # health: last_checked older than this (or blank) = stale
+HEALTH_GRAVEYARD_RECENT = 20   # health: most recent Graveyard removals listed
+HEALTH_COST_MISMATCH = 0.50    # health --check-costs: live vs col G difference that counts
+_TG_CHUNK = 3800               # Telegram caps a message at 4096 chars
+
+
+def _parse_checked(value):
+    """col O 'YYYY-MM-DD[ HH:MM]' -> datetime, None when blank/unparseable."""
+    raw = str(value or "").strip()
+    for fmt, n in (("%Y-%m-%d %H:%M", 16), ("%Y-%m-%d", 10)):
+        try:
+            return datetime.strptime(raw[:n], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _chunk_text(lines, max_chars=_TG_CHUNK):
+    """Split lines into message-sized chunks on line boundaries."""
+    chunks, cur, size = [], [], 0
+    for line in lines:
+        if cur and size + len(line) + 1 > max_chars:
+            chunks.append("\n".join(cur))
+            cur, size = [], 0
+        cur.append(line)
+        size += len(line) + 1
+    if cur:
+        chunks.append("\n".join(cur))
+    return chunks
+
+
+def build_health_report(rows, graveyard, COL, start_row, now=None, stale_days=STALE_DAYS,
+                        cost_mismatches=None):
+    """
+    Read-only ground truth of the Product Tracker + Graveyard -> list of HTML-safe lines.
+    Sections in order: status counts, AUDIT_REVIEW, PAUSED_*, stale, blank critical fields,
+    Graveyard (count + most recent removals), then — when cost_mismatches is not None (the
+    --check-costs pass ran) — the cost mismatch list (count shown even when 0).
+    """
+    now = now or datetime.now()
+    esc = html.escape
+
+    def get(row, key):
+        return str(safe_get(row, col_to_idx(COL[key])) or "").strip()
+
+    items, filler = [], 0
+    for idx, row in enumerate(rows):
+        if not row or not any(str(c).strip() for c in row):
+            continue
+        if not (get(row, "status") or get(row, "title")):
+            filler += 1     # e.g. a lone col U "0" below the data — not a product
+            continue
+        items.append({"row": idx + start_row, "status": get(row, "status") or "(blank)",
+                      "title": get(row, "title") or "(untitled)", "checked": get(row, "last_checked"),
+                      "reason": get(row, "tier_summary"), "cost": get(row, "costco_cost"),
+                      "price": get(row, "ebay_price"), "url_q": get(row, "ebay_listing_url")})
+
+    def t(it):
+        title = it["title"] if len(it["title"]) <= 60 else it["title"][:59] + "…"
+        return f"r{it['row']} {esc(title)}"
+
+    def checked(it):
+        return esc(it["checked"]) if it["checked"] else "never"
+
+    lines = [f"🩺 <b>Sheet health</b> — {now.strftime('%Y-%m-%d %H:%M')} · {len(items)} rows"
+             + (f" (ignored {filler} rows with no title or status)" if filler else "")]
+
+    counts = {}
+    for it in items:
+        counts[it["status"]] = counts.get(it["status"], 0) + 1
+    lines += ["", "<b>By status</b>",
+              " · ".join(f"{esc(s)} {n}" for s, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+              or "(empty sheet)"]
+
+    audit = [it for it in items if it["status"] == "AUDIT_REVIEW"]
+    lines += ["", f"<b>🟡 AUDIT_REVIEW ({len(audit)})</b>"]
+    lines += [f"{t(it)} · {esc(it['reason'] or 'no reason')} · {checked(it)}" for it in audit] or ["none"]
+
+    paused = [it for it in items if it["status"].startswith("PAUSED_")]
+    lines += ["", f"<b>⏸ PAUSED ({len(paused)})</b>"]
+    lines += [f"{t(it)} · {esc(it['status'])} · {checked(it)}" for it in paused] or ["none"]
+
+    cutoff = now - timedelta(days=stale_days)
+    stale = [it for it in items
+             if (_parse_checked(it["checked"]) is None or _parse_checked(it["checked"]) < cutoff)]
+    lines += ["", f"<b>🕰 Stale — not checked in {stale_days}d ({len(stale)})</b>"]
+    lines += [f"{t(it)} · {esc(it['status'])} · {checked(it)}" for it in stale] or ["none"]
+
+    blanks = []
+    for it in items:
+        missing = [label for label, bad in (("cost G", not it["cost"]), ("eBay price H", not it["price"]),
+                                            ("col Q (unlinked live listing)",
+                                             it["status"] == "ACTIVE" and not it["url_q"])) if bad]
+        if missing:
+            blanks.append(f"{t(it)} · {esc(it['status'])} · blank {', '.join(missing)}")
+    lines += ["", f"<b>⚠️ Blank critical fields ({len(blanks)})</b>"] + (blanks or ["none"])
+
+    recent = sorted(graveyard or [], key=lambda g: (g.get("date_removed") or "", g.get("row_num") or 0),
+                    reverse=True)[:HEALTH_GRAVEYARD_RECENT]
+    lines += ["", f"<b>🪦 Graveyard ({len(graveyard or [])})</b> — most recent {len(recent)}"]
+    for g in recent:
+        title = (g.get("title") or "(untitled)").strip()
+        title = title if len(title) <= 60 else title[:59] + "…"
+        lines.append(f"{esc(title)} · removed {esc(g.get('date_removed') or '?')} · "
+                     f"{esc(g.get('reason') or 'no reason')}")
+    if not recent:
+        lines.append("none")
+
+    if cost_mismatches is not None:
+        lines += ["", f"<b>⚠️ Cost mismatch ({len(cost_mismatches)})</b>"]
+        lines += [f"r{m['row']} {esc(m['title'][:60])} · sheet ${m['sheet']:.2f} → live ${m['live']:.2f} · "
+                  f"last-checked {esc(m['checked'] or 'never')}" for m in cost_mismatches] or ["none"]
+    return lines
+
+
+def _health_cost_mismatches(rows, COL, start_row):
+    """Scrape every row with an http Costco URL (one Chrome page) -> rows whose live price differs
+    from col G by >= HEALTH_COST_MISMATCH. Read-only. Returns (mismatches, scraped, failed)."""
+    import random
+    targets = []
+    for idx, row in enumerate(rows):
+        url = str(safe_get(row, col_to_idx(COL["costco_url"])) or "").strip() if row else ""
+        if url.startswith("http"):
+            targets.append((idx + start_row, row, url))
+    mismatches, failed = [], 0
+    with make_browser() as page:
+        for n, (sheet_row, row, url) in enumerate(targets):
+            if n:
+                time.sleep(random.uniform(1, 2))
+            title = str(safe_get(row, col_to_idx(COL["title"])) or "").strip()
+            try:
+                data = scrape_costco(url, page=page)
+            except Exception as e:
+                logger.warning(f"  [health] row {sheet_row} scrape failed: {e}")
+                failed += 1
+                continue
+            live = data.get("price")
+            if not live or data.get("stock_status") == "CHECK FAILED":
+                failed += 1
+                continue
+            sheet = ebay_sync._to_float(safe_get(row, col_to_idx(COL["costco_cost"])))
+            if sheet is None or abs(float(live) - sheet) >= HEALTH_COST_MISMATCH:
+                mismatches.append({"row": sheet_row, "title": title or "(untitled)",
+                                   "sheet": sheet or 0.0, "live": float(live),
+                                   "checked": str(safe_get(row, col_to_idx(COL["last_checked"])) or "").strip()})
+    return mismatches, len(targets), failed
+
+
+def run_health(config, COL, service, sheet_name, start_row, end_row, check_costs=False,
+               dry_run=False) -> dict:
+    """
+    health mode: ONE read-only report of the whole sheet (status counts, AUDIT_REVIEW, PAUSED_*,
+    stale, blank critical fields, Graveyard) — and with check_costs, a live Costco price check
+    against col G (Chrome). Never writes. --dry-run prints instead of sending to Telegram.
+    """
+    from tools.graveyard_writer import read_graveyard
+    rows = read_sheet(service, f"'{sheet_name}'!A{start_row}:BF{end_row}")
+    graveyard = read_graveyard(service)
+    mismatches, cost_note = None, ""
+    if check_costs:
+        mismatches, scraped, failed = _health_cost_mismatches(rows, COL, start_row)
+        cost_note = f", costs checked {scraped} ({failed} failed), mismatches {len(mismatches)}"
+    lines = build_health_report(rows, graveyard, COL, start_row, cost_mismatches=mismatches)
+    chunks = _chunk_text(lines)
+    if dry_run:
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        print("\n\n".join(chunks))
+    else:
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if not (token and chat_id):
+            return {"status": "error", "notes": "health: Telegram not configured"}
+        if not all(_send_telegram(token, chat_id, c) for c in chunks):
+            return {"status": "error", "notes": f"health: Telegram send failed{cost_note}"}
+    return {"status": "ok",
+            "notes": f"health: {len(rows)} rows read, {len(graveyard)} graveyard, "
+                     f"{len(chunks)} message(s){cost_note}{' (dry run)' if dry_run else ''}"}
+
+
 BACKFILL_LOWEST_STATUSES = {"SCORED", "READY", "APPROVED", "ACTIVE"}
 
 
@@ -2687,7 +2869,7 @@ def main():
         "--mode",
         choices=["active", "daily", "research", "discovery", "rotation", "refresh-notes", "recheck", "recheck-audit", "rescore", "audit", "ebay_sync",
                  "sale-digest", "sale-refresh", "savings", "apply_scheduled", "export", "graveyard-sweep",
-                 "discovery-stats", "apply_prices", "backfill_lowest"],
+                 "discovery-stats", "apply_prices", "backfill_lowest", "health"],
         default="active",
         help=(
             "active:         Check ACTIVE listings for stock/price changes (3x/day)\n"
@@ -2709,6 +2891,7 @@ def main():
             "graveyard-sweep: re-check ~10 un-checked Graveyard items' Costco pages (dead / revive / alive)\n"
             "discovery-stats: print per-category discovery cadence + EXHAUSTED? flag (read-only)\n"
             "backfill_lowest: re-scrape eBay active comps for SCORED/READY/APPROVED/ACTIVE rows -> col BF only\n"
+            "health:         read-only full-sheet report (status counts, stale, Graveyard); --check-costs adds a live Costco price check\n"
         ),
     )
     parser.add_argument("--category", type=str, default=None,
@@ -2723,6 +2906,8 @@ def main():
                         help="(active only) Check just this sheet row — live testing")
     parser.add_argument("--dry-run", action="store_true",
                         help="(ebay_sync / apply_prices / sale-digest / savings / export / graveyard-sweep) Report without writing / print instead of sending")
+    parser.add_argument("--check-costs", action="store_true",
+                        help="(health only) Scrape every Costco URL and list rows whose live price differs from col G")
     parser.add_argument("--queue", action="store_true",
                         help="(sale-refresh only) Scrape SCORED + AUDIT_REVIEW rows, including blank sale badges")
     args = parser.parse_args()
@@ -2746,7 +2931,8 @@ def main():
     if not _acquire_lock(args.mode):
         return
 
-    if args.mode not in ("sale-digest", "export", "apply_prices"):   # Chrome-free: a cookie refresh/alert is irrelevant
+    if args.mode not in ("sale-digest", "export", "apply_prices") and not (
+            args.mode == "health" and not args.check_costs):   # Chrome-free: a cookie refresh/alert is irrelevant
         _check_cookie_age()
 
     config     = load_config()
@@ -2814,6 +3000,9 @@ def main():
             _run_results.update(run_graveyard_sweep(config, COL, service, sheet_name,
                                                     start_row, end_row,
                                                     dry_run=args.dry_run, limit=args.limit))
+        elif args.mode == "health":
+            _run_results.update(run_health(config, COL, service, sheet_name, start_row, end_row,
+                                           check_costs=args.check_costs, dry_run=args.dry_run))
         elif args.mode == "backfill_lowest":
             _run_results.update(run_backfill_lowest(config, COL, service, sheet_name,
                                                     start_row, end_row,
