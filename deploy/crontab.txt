@@ -1,3 +1,11 @@
+# ⛔ DEPRECATED (Oct 21 2026) — STALE. DO NOT USE. ⛔
+# This file describes an OLD architecture (pre-Docker) and misled an audit: it
+# implies a VPS cron runs `--mode audit` every odd day from /home/hermes/reselling-agent.
+# That path and cron DO NOT exist. The live schedule is deploy/crontab + deploy/README.md:
+#   VPS runs ONLY the Friday `rotation` digest. audit/research/daily/active/discovery
+#   run on Windows via Task Scheduler (Chrome + Sheets creds are Windows-only).
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── Reselling Agent — VPS Cron Schedule ─────────────────────────────────────
 # All times UTC. Agent is in Central Time — UTC offsets:
 #   CDT (Mar-Nov): Central = UTC-5  →  9 AM Central = 14:00 UTC
