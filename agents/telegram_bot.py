@@ -56,8 +56,8 @@ from tools.ebay_sync import (
     fetch_item_price, format_target_summary, is_live_listing, revise_fixed_price,
 )
 from tools.reprice import (
-    cancel_keyboard, competitive_target, format_reprice_prompt, get_pending, log_ignore,
-    log_revise, pop_pending, reprice_keyboard,
+    break_even_price, cancel_keyboard, competitive_target, format_reprice_prompt, get_pending,
+    log_ignore, log_revise, pop_pending, reprice_keyboard,
 )
 from tools import sale_schedule as sched
 
@@ -1509,9 +1509,9 @@ async def on_callback(update, context):
     if not _authorized(update, context.bot_data["chat_id"]):
         await query.answer()
         return
-    await query.answer()  # ack immediately so Telegram clears the tap spinner
-
     parts = (query.data or "").split(":", 2)
+    if tuple(parts[:2]) not in _SELF_ANSWER_ROUTES:
+        await query.answer()  # ack immediately so Telegram clears the tap spinner
     if len(parts) < 2:
         logger.warning(f"Malformed callback_data: {query.data!r}")
         return
@@ -2047,7 +2047,7 @@ def _format_active_line(p):
 def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None):
     rows = []
     if item_id:   # always offer a manual reprice on an ACTIVE listing with a live item ID
-        rows.append([InlineKeyboardButton("💲 Set Price", callback_data=f"reprice:set:{item_id}"),
+        rows.append([InlineKeyboardButton("🎚️ Adjust", callback_data=f"reprice:stepper:{item_id}"),
                      InlineKeyboardButton("⚡ Competitive", callback_data=f"reprice:compete:{item_id}")])
     if reprice_item_id:   # a one-tap reprice prompt is pending for this listing
         rows.append([InlineKeyboardButton("💲 Reprice", callback_data=f"reprice:offer:{reprice_item_id}")])
@@ -2487,6 +2487,9 @@ async def cb_reprice_offer(update, context, arg):
 # existing one-tap executor) / "❌ Cancel". The target can't ride in callback_data
 # (64-byte cap + free text), so the pending item_id is stashed in user_data and the
 # typed price is re-read against the sheet (row numbers shift when the auditor deletes).
+#
+# Unreachable from any current button since the 🎚️ Adjust tap-stepper replaced "💲 Set Price"
+# (2026-10-21) — kept as a back-compat fallback so Set Price buttons on old messages still work.
 
 _PRICE_FIELDS = ("status", "title", "costco_cost", "ebay_price", "fee_rate",
                  "ship_cost", "ad_cost", "buy_cost", "ebay_listing_url", "lowest_active")
@@ -2680,6 +2683,248 @@ async def cb_reprice_compete(update, context, arg):
         lines.insert(2, f"eBay now: ${cur:.2f}")
     await _send_screen(update, "\n".join(lines), parse_mode="HTML",
                        reply_markup=_price_confirm_kb(item_id, comp["target"]))
+
+
+# ── Tap-stepper price editor (ACTIVE listings) ───────────────────────────────
+#
+# "🎚️ Adjust" (reprice:stepper:<item_id>) -> one message edited in place: six nudge buttons,
+# "⚡ cheapest" quick-set, ✓ Apply, prev/next through the ACTIVE list. The proposed price rides
+# in callback_data as cents. Nudges only re-render (never write); ✓ Apply goes through
+# _reprice_apply(manual=True): col H + col BE = col G, col P cleared, lowering allowed.
+# Below break-even only relabels Apply (a deliberate tap still applies it).
+
+_STEP_SIZES = (-500, -100, -25, 25, 100, 500)   # cents
+_STEPPER_CEILING_GAP = 20.0                      # $ over the cheapest competitor = soft note
+# Handlers that answer the callback themselves (with a toast), so on_callback must not ack first:
+# Telegram accepts one answerCallbackQuery per tap.
+_SELF_ANSWER_ROUTES = {("reprice", "cheapest"), ("reprice", "nav")}
+
+
+def _parse_step_arg(arg):
+    """'<item_id>:<cents>' or '<item_id>:<cents>:<delta>' -> (item_id, cents, delta or None);
+    None when malformed, not an eBay item id, or not integers."""
+    parts = (arg or "").split(":")
+    if len(parts) not in (2, 3):
+        return None
+    item_id = parts[0]
+    if not item_id or extract_item_id(item_id) != item_id:
+        return None
+    try:
+        cents = int(parts[1])
+        delta = int(parts[2]) if len(parts) == 3 else None
+    except ValueError:
+        return None
+    return item_id, cents, delta
+
+
+def _stepper_break_even(p):
+    """Price where net = 0 (rounded up to .99) for row p, or None if cost/fee are unknown."""
+    return break_even_price(_cost_basis(p.get("buy_cost"), p.get("costco_cost")),
+                            _to_rate(p.get("fee_rate")), _to_float(p.get("ship_cost")) or 0.0)
+
+
+def _active_stepper_order(sheet=None):
+    """[(row_num, item_id, title)] of ACTIVE rows with a live item id in col Q, in Active List
+    order (_active_net_key, net desc). sheet = a _read_product_rows() result to reuse.
+    [] on any sheet-read error (callers treat it as "no navigation")."""
+    try:
+        col_map, _service, _sheet_name, start, rows = sheet or _read_product_rows()
+        fields = tuple(f for f in ("status", "title", "ebay_listing_url", "net_profit") if f in col_map)
+        items = _extract_rows_by_field(rows, col_map, fields, data_start_row=start)
+    except Exception as e:
+        logger.warning(f"stepper order: sheet read failed: {e}")
+        return []
+    items = [p for p in items if (p.get("status") or "").strip() == "ACTIVE"
+             and extract_item_id(p.get("ebay_listing_url"))]
+    items.sort(key=_active_net_key)
+    return [(p["row_num"], extract_item_id(p.get("ebay_listing_url")), p.get("title") or "(untitled)")
+            for p in items]
+
+
+def _stepper_start_cents(p):
+    """Starting price: live col H, else break-even, else 0."""
+    start = _parse_currency(p.get("ebay_price")) or _stepper_break_even(p)
+    return int(round(start * 100)) if start else 0
+
+
+def _stepper_screen(p, cents, item_id):
+    """-> (html_text, InlineKeyboardMarkup) for row p at `cents`. Pure, no I/O."""
+    target = cents / 100
+    net, margin = _price_metrics(p, target)
+    lowest = _to_float(p.get("lowest_active"))
+    be = _stepper_break_even(p)
+    current = _parse_currency(p.get("ebay_price"))
+    lines = ["🎚️ <b>Adjust price</b>", f"<b>{html.escape((p.get('title') or '(untitled)')[:80])}</b>"]
+    if current is not None:
+        lines.append(f"eBay now: ${current:.2f}")
+    lines.append(f"New price: <b>${target:.2f}</b>")
+    if lowest is not None:
+        lines.append(f"⚡ cheapest competitor: ${lowest:.2f}")
+    if be is not None:
+        lines.append(f"🛑 break-even: ${be:.2f}")
+    if net is None:
+        lines.append("⚠️ cost or fee rate missing — margin unknown")
+    else:
+        margin_txt = f" ({margin:.1f}% margin)" if margin is not None else ""
+        lines.append(f"Net: ${net:.2f}{margin_txt}")
+        if net < 0:
+            lines.append("⚠️ below break-even — this price loses money")
+    if lowest is not None and target - lowest > _STEPPER_CEILING_GAP:
+        lines.append(f"&gt;${_STEPPER_CEILING_GAP:g} over the cheapest")
+
+    kb = [[InlineKeyboardButton(f"{'+' if d > 0 else '−'}${abs(d) / 100:g}",
+                                callback_data=f"reprice:nudge:{item_id}:{cents}:{d}")
+           for d in _STEP_SIZES]]
+    comp = _competitive_for(p, _cost_basis(p.get("buy_cost"), p.get("costco_cost")))
+    if comp["target"] is not None:
+        kb.append([InlineKeyboardButton(f"⚡ cheapest: ${comp['target']:.2f}",
+                                        callback_data=f"reprice:cheapest:{item_id}:{cents}")])
+    apply_label = (f"✓ Apply ${target:.2f}" if net is None or net >= 0
+                   else "⚠️ Apply below break-even")
+    kb.append([InlineKeyboardButton(apply_label, callback_data=f"reprice:stepapply:{item_id}:{cents}")])
+    kb.append([InlineKeyboardButton("← prev", callback_data=f"reprice:nav:{item_id}:prev"),
+               InlineKeyboardButton("next →", callback_data=f"reprice:nav:{item_id}:next")])
+    kb.append([InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show")])
+    return "\n".join(lines), InlineKeyboardMarkup(kb)
+
+
+_STEPPER_BACK_KB = InlineKeyboardMarkup(
+    [[InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show")]])
+
+
+async def _stepper_row(query, item_id, sheet=None):
+    """Re-read the sheet and resolve item_id's ACTIVE row -> p, or None after showing why."""
+    try:
+        col_map, _service, _sheet_name, start, rows = sheet or _read_product_rows()
+    except Exception as e:
+        logger.warning(f"stepper: sheet read failed: {e}")
+        await query.edit_message_text(_SHEET_UNREACHABLE_MSG, reply_markup=_STEPPER_BACK_KB)
+        return None
+    p, err = _price_row_for_item(item_id, rows, col_map, start)
+    if err:
+        await query.edit_message_text(html.escape(err), reply_markup=_STEPPER_BACK_KB)
+        return None
+    return p
+
+
+async def _stepper_render(query, p, cents, item_id):
+    text, kb = _stepper_screen(p, cents, item_id)
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+async def _stepper_malformed(query):
+    await query.edit_message_text("Button data was malformed — nothing changed.",
+                                  reply_markup=_STEPPER_BACK_KB)
+
+
+async def cb_reprice_stepper(update, context, arg):
+    """Open the stepper for an ACTIVE listing, starting at its current eBay price."""
+    query = update.callback_query
+    item_id = (arg or "").strip()
+    if not item_id or extract_item_id(item_id) != item_id:
+        await _stepper_malformed(query)
+        return
+    p = await _stepper_row(query, item_id)
+    if p is not None:
+        await _stepper_render(query, p, _stepper_start_cents(p), item_id)
+
+
+async def cb_reprice_nudge(update, context, arg):
+    query = update.callback_query
+    parsed = _parse_step_arg(arg)
+    if parsed is None or parsed[2] is None:
+        await _stepper_malformed(query)
+        return
+    item_id, cents, delta = parsed
+    new_cents = max(1, cents + delta)          # never ≤ $0
+    p = await _stepper_row(query, item_id)
+    if p is not None:
+        await _stepper_render(query, p, new_cents, item_id)
+
+
+async def cb_reprice_cheapest(update, context, arg):
+    """Jump to the competitive target ($0.01 under the cheapest, floored at break-even)."""
+    query = update.callback_query
+    parsed = _parse_step_arg(arg)
+    if parsed is None:
+        await query.answer()
+        await _stepper_malformed(query)
+        return
+    item_id = parsed[0]
+    try:
+        sheet = _read_product_rows()
+        col_map, _service, _sheet_name, start, rows = sheet
+        p, err = _price_row_for_item(item_id, rows, col_map, start)
+    except Exception as e:
+        logger.warning(f"stepper cheapest: sheet read failed: {e}")
+        sheet, p, err = None, None, None
+    if p is None:
+        await query.answer()
+        await query.edit_message_text(html.escape(err) if err else _SHEET_UNREACHABLE_MSG,
+                                      reply_markup=_STEPPER_BACK_KB)
+        return
+    title = p.get("title") or "(untitled)"
+    comp = _competitive_for(p, _cost_basis(p.get("buy_cost"), p.get("costco_cost")))
+    if comp["target"] is None:
+        # toast only: plain text (no HTML parsing in a callback answer), screen unchanged
+        await query.answer(re.sub(r"<[^>]+>", "", html.unescape(_no_competitive_text(title, comp)))[:200])
+        return
+    await query.answer()
+    await _stepper_render(query, p, int(round(comp["target"] * 100)), item_id)
+
+
+async def cb_reprice_stepapply(update, context, arg):
+    """✓ Apply: the only stepper tap that writes (eBay + col H/BE/P via the manual executor)."""
+    query = update.callback_query
+    parsed = _parse_step_arg(arg)
+    if parsed is None or parsed[1] <= 0:
+        await _stepper_malformed(query)
+        return
+    item_id, cents, _ = parsed
+    target = cents / 100
+    inflight = context.bot_data.setdefault("reprice_inflight", set())
+    if item_id in inflight:
+        return                                  # double tap while the first is still running
+    inflight.add(item_id)
+    try:
+        await query.edit_message_text(f"⏳ Repricing eBay item {item_id} to ${target:.2f}…")
+        text, kb = await _reprice_apply(item_id, target, manual=True)
+        if kb is None:
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎚️ Adjust again", callback_data=f"reprice:stepper:{item_id}"),
+                 InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show")]])
+        await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+    finally:
+        inflight.discard(item_id)
+
+
+async def cb_reprice_nav(update, context, arg):
+    """← prev / next →: open the stepper on the adjacent ACTIVE listing (Active List order)."""
+    query = update.callback_query
+    item_id, _, direction = (arg or "").rpartition(":")
+    if not item_id or extract_item_id(item_id) != item_id or direction not in ("prev", "next"):
+        await query.answer()
+        await _stepper_malformed(query)
+        return
+    try:
+        sheet = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"stepper nav: sheet read failed: {e}")
+        await query.answer("Couldn't read the sheet — try again.")
+        return
+    order = _active_stepper_order(sheet)
+    ids = [iid for _row, iid, _title in order]
+    if item_id not in ids:
+        await query.answer("This listing isn't in the ACTIVE list any more.")
+        return
+    i = ids.index(item_id) + (-1 if direction == "prev" else 1)
+    if not 0 <= i < len(ids):
+        await query.answer("no more that way")
+        return
+    await query.answer()
+    p = await _stepper_row(query, ids[i], sheet)
+    if p is not None:
+        await _stepper_render(query, p, _stepper_start_cents(p), ids[i])
 
 
 # ── Review queue (spec Part 5) ───────────────────────────────────────────────
@@ -3657,6 +3902,11 @@ _CALLBACK_ROUTES.update({
     ("reprice", "sched"): cb_reprice_sched,
     ("reprice", "schedend"): cb_reprice_schedend,
     ("reprice", "cancel"): cb_reprice_cancel,
+    ("reprice", "stepper"): cb_reprice_stepper,
+    ("reprice", "nudge"): cb_reprice_nudge,
+    ("reprice", "cheapest"): cb_reprice_cheapest,
+    ("reprice", "stepapply"): cb_reprice_stepapply,
+    ("reprice", "nav"): cb_reprice_nav,
     ("job", "start"): cb_job_start,
     ("job", "export"): cb_job_export,
     ("prices", "apply"): cb_prices_apply,
