@@ -69,7 +69,7 @@ from skills.research_outdoor import run_pass3 as outdoor_pass3
 from skills.research_watches import run_pass3 as watches_pass3
 from skills.research_appliances import run_pass3 as appliances_pass3
 from skills.research_pharmacy import run_pass3 as pharmacy_pass3
-from skills.scoring import score_dimension
+from skills.scoring import score_dimension, MAX_TIER1_PER_RUN
 from skills.base_scoring import score_sell_through, score_net_profit, MONTHLY_PROFIT_TIER1, MONTHLY_PROFIT_TIER2
 
 
@@ -1221,7 +1221,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 })
 
             # Tier routing
-            if tier == 1 and len(tier1_results) < 3:
+            if tier == 1 and len(tier1_results) < MAX_TIER1_PER_RUN:
                 tier1_results.append({
                     "title": title, "row": sheet_row,
                     "score": weighted_score,
@@ -1232,7 +1232,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     "stock": stock_status,
                     "demand_note": demand_note,
                 })
-            elif tier == 1 and len(tier1_results) >= 3:
+            elif tier == 1 and len(tier1_results) >= MAX_TIER1_PER_RUN:
                 # Cap hit — demote to Tier 2
                 tier = 2
 

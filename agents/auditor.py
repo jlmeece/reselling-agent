@@ -35,13 +35,13 @@ from tools.graveyard_writer import (
 PROTECTED = {"ACTIVE", "READY", "APPROVED", "LISTED", "AUDIT_REVIEW", "ENDED"}
 
 # ── SCORED dead-zone sweep ────────────────────────────────────────────────────
-# The Telegram review queue only surfaces SCORED rows with net >= 4.00
+# The Telegram review queue only surfaces SCORED rows with net >= 2.00
 # (agents/telegram_bot.py::_REVIEW_MIN_NET_PROFIT). Rows with net in
 # [SCORED_STALE_NET_FLOOR, SCORED_STALE_NET_CEILING) can never be reviewed, and
 # the rules below $1 don't reach them — so once they go stale they are removed.
 # Keep SCORED_STALE_NET_CEILING in lockstep with the review floor (a test pins it).
 SCORED_STALE_NET_FLOOR   = 1.00   # == the auto-remove "below floor" boundary (net < $1.00)
-SCORED_STALE_NET_CEILING = 4.00   # == telegram_bot._REVIEW_MIN_NET_PROFIT (exclusive)
+SCORED_STALE_NET_CEILING = 2.00   # == telegram_bot._REVIEW_MIN_NET_PROFIT (exclusive)
 SCORED_STALE_DAYS        = 30
 
 _DAYS_UNKNOWN = 999   # _days_since() sentinel for a blank/unparseable timestamp

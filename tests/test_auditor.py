@@ -107,7 +107,7 @@ def test_build_message_review_hint_only_when_flagged():
     assert "Filter col A = AUDIT_REVIEW" in flag_text
 
 
-# ── _remove_reason: SCORED $1–$4 dead-zone sweep ─────────────────────────────
+# ── _remove_reason: SCORED $1–$2 dead-zone sweep ─────────────────────────────
 
 from agents.auditor import (
     _remove_reason, _days_since, PROTECTED,
@@ -116,35 +116,35 @@ from agents.auditor import (
 
 
 def test_stale_scored_dead_zone_is_removed_with_reason():
-    reason = _remove_reason("SCORED", 2.50, 12, 45)
-    assert reason == "Below $4 review floor, stale 45 days"
+    reason = _remove_reason("SCORED", 1.50, 12, 45)
+    assert reason == "Below $2 review floor, stale 45 days"
 
 
 def test_dead_zone_net_boundaries():
     assert _remove_reason("SCORED", 1.00, 12, 30) is not None   # floor inclusive
-    assert _remove_reason("SCORED", 3.99, 12, 30) is not None
-    assert _remove_reason("SCORED", 4.00, 12, 30) is None       # ceiling exclusive
+    assert _remove_reason("SCORED", 1.99, 12, 30) is not None
+    assert _remove_reason("SCORED", 2.00, 12, 30) is None       # ceiling exclusive
     # $0.99 is now below the $1.00 auto-remove floor, not the dead-zone rule's job
     assert _remove_reason("SCORED", 0.99, 12, 30) == "Below floor ($1.00 min) — net $0.99"
 
 
 def test_dead_zone_day_boundary():
-    assert _remove_reason("SCORED", 2.50, 12, SCORED_STALE_DAYS - 1) is None
-    assert _remove_reason("SCORED", 2.50, 12, SCORED_STALE_DAYS) is not None
+    assert _remove_reason("SCORED", 1.50, 12, SCORED_STALE_DAYS - 1) is None
+    assert _remove_reason("SCORED", 1.50, 12, SCORED_STALE_DAYS) is not None
 
 
 def test_dead_zone_only_applies_to_scored():
     for status in ("WATCH", "PENDING", "PAUSED_MARGIN"):
-        assert _remove_reason(status, 2.50, 12, 45) is None
+        assert _remove_reason(status, 1.50, 12, 45) is None
 
 
 def test_dead_zone_unknown_timestamp_is_not_treated_as_stale():
     assert _days_since("") == 999
-    assert _remove_reason("SCORED", 2.50, 12, _days_since("")) is None
+    assert _remove_reason("SCORED", 1.50, 12, _days_since("")) is None
 
 
 def test_zero_velocity_rule_keeps_precedence_no_double_catch():
-    reason = _remove_reason("SCORED", 2.50, 0, 45)
+    reason = _remove_reason("SCORED", 1.50, 0, 45)
     assert reason.startswith("Zero velocity")
     assert "review floor" not in reason
 

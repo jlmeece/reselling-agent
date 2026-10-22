@@ -96,7 +96,7 @@ _TS_RE = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
 _MAX_MSG = 4096
 
-_REVIEW_MIN_NET_PROFIT = 4.00
+_REVIEW_MIN_NET_PROFIT = 2.00
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -441,14 +441,14 @@ def _format_net_fragment(net_profit_raw, net_margin_raw, label="net"):
 def _tier_label(demand_score_raw):
     """
     Classify a demand_score cell into 'Tier 1 🥇' / 'Tier 2' / 'Tier 3' using
-    base_scoring.py's TIER_RULES (Tier1>=6.0, Tier2>=3.0) — the SAME thresholds
+    base_scoring.py's TIER_RULES (Tier1>=5.0, Tier2>=3.0) — the SAME thresholds
     the research pipeline's assign_tier() uses, so the badge matches the sheet
     status (SCORED/WATCH/PAUSED). Returns None if demand_score is blank/unparseable.
     """
     score = _parse_currency(demand_score_raw)
     if score is None:
         return None
-    if score >= 6:
+    if score >= 5:
         return "Tier 1 🥇"
     if score >= 3:
         return "Tier 2"
@@ -853,7 +853,7 @@ def format_dashboard_reply(counts, total):
         lines.append(f"{emoji[label]} {label}: {n}")
 
     lines.append("")
-    lines.append("Scores: 0–10 · Tier 1 ≥6 🥇 · Tier 2 ≥3 · Tier 3 <3 · Sharpe = risk-adjusted return (higher = better)")
+    lines.append("Scores: 0–10 · Tier 1 ≥5 🥇 · Tier 2 ≥3 · Tier 3 <3 · Sharpe = risk-adjusted return (higher = better)")
     lines.append("")
     lines.append(f"Total tracked: {total}")
     lines.append("Last updated: just now")
@@ -3164,7 +3164,7 @@ async def _render_review_position(update, context):
     text = format_review_card(item, q["pos"] + 1, len(q["items"]))
     if q["pos"] == 0:
         text += (
-            "\n\nScore = demand/opportunity (0–10). Tier 1 ≥6 · Tier 2 3–5.9 · "
+            "\n\nScore = demand/opportunity (0–10). Tier 1 ≥5 · Tier 2 3–4.9 · "
             "Tier 3 <3. Margin is separate (Net / Net%)."
         )
     await _send_screen(update, text, reply_markup=_review_card_kb(item["row_num"]))
@@ -3434,10 +3434,24 @@ async def _finish_audit_queue(update, context):
 async def cb_audit_keep(update, context, arg):
     row_num = int(arg)
     item = _active_queue_item(context, row_num)
-    col_map, service, sheet_name, start, end = _sheet_ctx()
-    safe_write_row(service, sheet_name, row_num, [(col_map["status"], "APPROVED")])
+    try:
+        col_map, service, sheet_name, start, rows = _read_product_rows()
+    except Exception as e:
+        logger.warning(f"audit keep sheet read failed: {e}")
+        await _send_screen(update, _SHEET_UNREACHABLE_MSG)
+        return
+    current = _find_by_row_num(
+        _extract_rows_by_field(rows, col_map, ("title", "ebay_listing_url"), data_start_row=start),
+        row_num,
+    )
+    # A row already selling on eBay goes back to ACTIVE, not APPROVED: APPROVED would
+    # send it down the listing pipeline again. Same col Q test as cb_audit_confirm_delete.
+    ebay_url = str((current or {}).get("ebay_listing_url") or "")
+    status = "ACTIVE" if ebay_url.startswith("http") and extract_item_id(ebay_url) else "APPROVED"
+    safe_write_row(service, sheet_name, row_num, [(col_map["status"], status)])
     if item is None:
-        await _send_screen(update, "✅ Kept (Approved).", reply_markup=_home_inline_kb())
+        label = "Active" if status == "ACTIVE" else "Approved"
+        await _send_screen(update, f"✅ Kept ({label}).", reply_markup=_home_inline_kb())
         return
     q = context.user_data["queue"]
     q["tally"]["kept"] += 1

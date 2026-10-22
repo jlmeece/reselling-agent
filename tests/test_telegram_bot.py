@@ -213,13 +213,13 @@ def test_is_duplicate_instance_false_when_no_pid_file():
 
 # ── new pure helpers (tier label, fee %, sale-savings, net-with-ads) ───────────
 
-def test_tier_label_tier1_at_and_above_six():
+def test_tier_label_tier1_at_and_above_five():
     assert _tier_label("8.2") == "Tier 1 🥇"
-    assert _tier_label("6") == "Tier 1 🥇"
+    assert _tier_label("5") == "Tier 1 🥇"
 
 
-def test_tier_label_tier2_between_three_and_six():
-    assert _tier_label("5.9") == "Tier 2"
+def test_tier_label_tier2_between_three_and_five():
+    assert _tier_label("4.9") == "Tier 2"
     assert _tier_label("3") == "Tier 2"
 
 
@@ -414,8 +414,8 @@ def test_extract_review_queue_includes_row_num():
 
 def test_extract_review_queue_excludes_net_profit_below_floor():
     rows = [
-        _make_row(A="SCORED", C="Too Low", I="$2.00"),
-        _make_row(A="SCORED", C="Meets Floor", I="$4.00"),
+        _make_row(A="SCORED", C="Too Low", I="$1.99"),
+        _make_row(A="SCORED", C="Meets Floor", I="$2.00"),
     ]
     items = extract_review_queue(rows, _COL, data_start_row=4)
     assert [i["title"] for i in items] == ["Meets Floor"]
@@ -777,7 +777,7 @@ def test_format_top_opportunities_tier1_badge_shown():
 
 
 def test_format_top_opportunities_no_badge_for_tier2():
-    rows = [_make_dash_row(B="5.0")]
+    rows = [_make_dash_row(B="4.9")]
     products = extract_dashboard_products(rows, _DASH_COL)
     text = format_top_opportunities(products)
     assert "🥇" not in text
@@ -978,7 +978,7 @@ def test_format_category_breakdown_appends_unknown_category():
 def test_format_dashboard_reply_includes_score_legend():
     counts, total = {"Ready": 1}, 1
     text = format_dashboard_reply(counts, total)
-    assert "Scores: 0–10 · Tier 1 ≥6 🥇 · Tier 2 ≥3 · Tier 3 <3 · Sharpe = risk-adjusted return (higher = better)" in text
+    assert "Scores: 0–10 · Tier 1 ≥5 🥇 · Tier 2 ≥3 · Tier 3 <3 · Sharpe = risk-adjusted return (higher = better)" in text
 
 
 # ── _parse_pct ────────────────────────────────────────────────────────────────
@@ -1477,3 +1477,39 @@ def test_removed_text_commands_are_gone():
         assert not hasattr(_tb, name)
     for name in ("cmd_start", "cmd_status", "cmd_restart", "cmd_help"):
         assert hasattr(_tb, name)
+
+
+# ── audit queue Keep: live listing → ACTIVE, else APPROVED ────────────────────
+
+_KEEP_COL = {**_COL, "ebay_listing_url": "Q"}
+
+
+def _keep_env(monkeypatch, ebay_url):
+    rows = [_make_row(A="AUDIT_REVIEW", Q=ebay_url)]
+    writes = []
+    monkeypatch.setattr(_tb, "_read_product_rows",
+                        lambda: (_KEEP_COL, "svc", "Product Tracker", 4, rows))
+    monkeypatch.setattr(_tb, "safe_write_row",
+                        lambda svc, sheet, row, pairs: writes.append((row, list(pairs))))
+    monkeypatch.setattr(_tb, "_send_screen", AsyncMock())
+    render = AsyncMock()
+    monkeypatch.setattr(_tb, "_render_audit_position", render)
+    ctx = SimpleNamespace(user_data={"queue": {
+        "kind": "audit", "items": [{"row_num": 4, "title": "PAMP"}, {"row_num": 5}], "pos": 0,
+        "tally": {"kept": 0, "deleted": 0, "skipped": 0}}}, bot_data={})
+    return writes, ctx, render
+
+
+def test_audit_keep_live_listing_writes_active(monkeypatch):
+    writes, ctx, render = _keep_env(monkeypatch, "https://www.ebay.com/itm/318910010687")
+    asyncio.run(_tb.cb_audit_keep(SimpleNamespace(), ctx, "4"))
+    assert writes == [(4, [("A", "ACTIVE")])]
+    assert ctx.user_data["queue"]["tally"]["kept"] == 1
+    render.assert_awaited_once()
+
+
+def test_audit_keep_no_listing_writes_approved(monkeypatch):
+    writes, ctx, render = _keep_env(monkeypatch, "")
+    asyncio.run(_tb.cb_audit_keep(SimpleNamespace(), ctx, "4"))
+    assert writes == [(4, [("A", "APPROVED")])]
+    assert ctx.user_data["queue"]["tally"]["kept"] == 1

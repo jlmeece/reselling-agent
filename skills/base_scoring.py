@@ -14,7 +14,7 @@ Scoring model:
   - 4 business lenses, each applying different dimension weights
   - Lenses combined into a final weighted score
   - Seasonal modifier applied last (+0.5 to +1.0 during peak months)
-  - Tier 1 >= 6.0 | Tier 2 >= 3.0 | Tier 3 < 3.0 (plus a monthly-profit override)
+  - Tier 1 >= 5.0 | Tier 2 >= 3.0 | Tier 3 < 3.0 (plus a monthly-profit override)
 """
 
 from datetime import datetime
@@ -56,11 +56,12 @@ LENS_WEIGHTS = {
         "fulfillment_risk":    0.10,
     },
     "volume_flipper": {
-        # Speed-first: high demand, low competition, easy to ship
+        # Speed-first: high demand, easy to ship. A volume drop-shipper lives with
+        # crowded listings, so competition carries little weight here.
         "demand_signals":      0.40,
-        "competition_density": 0.35,
+        "margin_potential":    0.30,
+        "competition_density": 0.15,
         "fulfillment_risk":    0.15,
-        "margin_potential":    0.10,
     },
 }
 
@@ -78,11 +79,11 @@ FINAL_LENS_WEIGHTS = {
 # ── Tier thresholds ──
 
 TIER_RULES = {
-    "tier1": 6.0,
+    "tier1": 5.0,
     "tier2": 3.0,
 }
 
-MAX_TIER1_PER_RUN = 3
+MAX_TIER1_PER_RUN = 20   # Tier 1s past this in one research run are demoted to Tier 2
 
 
 # ── Net-profit (absolute $/unit) scoring + monthly-profit tier overrides ─────────
@@ -146,10 +147,11 @@ def score_dimension(dimension, value):
     elif dimension == "competition_density":
         if value is None:
             return 5   # unknown → assume moderate
+        # Crowded is neutral, not a penalty: a drop-shipper competes on price.
         if value < 10:   return 10
-        elif value < 25: return 7
-        elif value < 60: return 4
-        else:            return 1
+        elif value < 25: return 8
+        elif value < 60: return 6
+        else:            return 4
 
     elif dimension == "costco_availability":
         return {
