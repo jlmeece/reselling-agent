@@ -2,6 +2,8 @@
 
 Costco → eBay drop-shipping, automated end to end. It finds products, scores them, writes the listing, builds your branded photo, then monitors and protects everything that goes live.
 
+*309 commits · 50+ tools · ~30,000 lines of Python · 67 test files · first commit May 2026*
+
 ## The Pipeline
 
 1. **PENDING** · discovery finds new Costco products and parks them here
@@ -51,6 +53,18 @@ All times Central. All hands free.
 - Every 2 days · audit (removes junk, flags borderline)
 - Sunday · rotation (weekly underperformer digest)
 
+## The Intelligence Under the Hood
+
+**Scoring engine** · every product is graded 0 to 10 on five dimensions: margin potential, demand signals, competition density, Costco availability, and fulfillment risk. Four business lenses then weigh those dimensions differently (a conservative analyst, a growth operator, a brand builder, and a volume flipper), and the lens scores combine into one final number with a seasonal adjustment. Tier 1 (5+) is list now, Tier 2 (3 to 4.9) is watch, Tier 3 is shelved.
+
+**Portfolio ranking (MPT / Sharpe)** · every product is treated like an asset in a portfolio and ranked by risk-adjusted return. The sheet carries a Sharpe score and a portfolio rank, so your effort goes to the listings with the best return per unit of risk, not just the biggest dollar number.
+
+**eBay comp research** · scrapes eBay sold and active listings (new condition, buy it now, US only), filters out junk like parts and broken stock, and pulls real sold counts, average sold price, and competitor price range. The ⚡ Competitive price comes from here: it finds the cheapest live competitor and prices $0.01 under.
+
+**eBay sync** · the Trading API pulls units sold back into the sheet, mirrors eBay's live price, detects margin breaches, and flags listings that are live on eBay but missing from the sheet.
+
+**The smart sheet** · the Google Sheet is the living brain. Every row carries status, tier, Costco cost, eBay price, net profit, 90-day velocity, SKU, target price, and portfolio rank. As listings age and sales accumulate, re-scoring pulls fresh eBay sold data, so the sheet gets smarter the longer it runs.
+
 ## The Bot Buttons
 
 Home opens to the Dashboard, the hub for everything.
@@ -75,16 +89,17 @@ Home opens to the Dashboard, the hub for everything.
 
 ## The Automations That Protect You
 
-- **Break-even auto-reprice** · every live listing is held at its break-even floor, so a price drop can never make you lose money
+- **Break-even auto-reprice** · automatic, every live listing is held at its break-even floor, so a price drop can never make you lose money
 - **Out-of-stock protection** · hides the listing when Costco runs out, restores it when stock returns
 - **Sale-end repricing** · reprices on schedule when a Costco sale ends
-- **⚡ Competitive pricing** · price $0.01 under the cheapest live competitor
+- **⚡ Competitive pricing** · automatic, $0.01 under the cheapest live competitor
 - **Sale Radar** · a daily digest of your tracked items that are actually on sale
+- **Manual reprice** · from Active Listings, step any price up or down by hand, or end a listing on the spot
 
 ## The Automations That Build For You
 
 - **Discovery** · finds new Costco products and files them as PENDING
-- **Research and scoring** · grades each product on margin, demand, competition, availability, and fulfillment, then assigns a tier (1, 2, or 3)
+- **Research and scoring** · grades each product on five dimensions and assigns a tier (1, 2, or 3)
 - **Listing copy** · writes the SEO title, bullets, description, meta, and keywords
 - **Branded photos** · applies your watermark template to the main image
 - **CSV export** · one file, Seller Hub ready
