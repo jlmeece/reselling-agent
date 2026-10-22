@@ -2819,6 +2819,56 @@ def _main_apply_scheduled():
         logger.debug("apply_scheduled: nothing due")
 
 
+def _costco_url_key(url):
+    """Dedupe key for a Costco URL: the product id (covers both URL shapes), else the bare URL."""
+    pid = sched.costco_product_id(url)
+    return pid or (url or "").split("?")[0].strip().rstrip("/").lower()
+
+
+def _readd_revived(service, sheet_name, COL, revives, dry_run) -> dict:
+    """Put REVIVE'd Graveyard items back on the main sheet as PENDING rows so research
+    picks them up like a fresh discovery. Skips any whose Costco URL is already anywhere
+    in col R (and repeats within this batch). Returns {graveyard row_num: outcome}, outcome
+    = added / dry_run / duplicate / unchecked (sheet read failed) / failed."""
+    col = COL["costco_url"]
+    try:
+        existing = read_sheet(service, f"'{sheet_name}'!{col}:{col}")
+    except Exception as ex:
+        logger.warning(f"graveyard-sweep: main-sheet read failed, nothing re-added: {ex}")
+        return {e["row_num"]: "unchecked" for e, _ in revives}
+    seen = {_costco_url_key(r[0]) for r in existing if r and str(r[0]).strip()}
+
+    outcome, products = {}, []
+    for e, d in revives:
+        key = _costco_url_key(e["costco_url"])
+        if key in seen:
+            outcome[e["row_num"]] = "duplicate"
+            continue
+        seen.add(key)
+        price, cost = to_float(d.get("price")), to_float(e["cost"])
+        was = f"${cost:.2f}" if cost is not None else "?"
+        products.append({
+            "title": e["title"], "category": e["category"], "url": e["costco_url"],
+            "sku": e["sku"],
+            # col G = what Costco charges now; the removal-time cost goes in the note
+            "price": price if price is not None else cost,
+            "tier_summary": f"Revived from Graveyard — was {was} when removed ({e['reason'][:60]})",
+            "_row_num": e["row_num"],
+        })
+    if not products:
+        return outcome
+    if dry_run:
+        outcome.update({p["_row_num"]: "dry_run" for p in products})
+        return outcome
+    try:
+        _append_pending_rows(service, sheet_name, products, COL)
+        outcome.update({p["_row_num"]: "added" for p in products})
+    except Exception as ex:
+        logger.warning(f"graveyard-sweep: re-add failed: {ex}")
+        outcome.update({p["_row_num"]: "failed" for p in products})
+    return outcome
+
+
 def run_graveyard_sweep(config, COL, service, sheet_name, start_row, end_row,
                         dry_run=False, limit=None) -> dict:
     """graveyard-sweep mode: re-check a handful of Graveyard items' Costco pages to confirm
@@ -2870,11 +2920,11 @@ def run_graveyard_sweep(config, COL, service, sheet_name, start_row, end_row,
                 errors.append(e["title"])
                 continue   # transient — leave unchecked so it retries next run
             else:
-                # page is alive — is it a better deal than when it was killed?
+                # page is alive — is it cheaper than when it was killed? Only a real price
+                # drop revives; an "on sale" badge with an unchanged price is just ALIVE.
                 price = to_float(data.get("price"))
                 cost = to_float(e["cost"])
-                on_sale = bool(data.get("on_sale"))
-                if on_sale or (price is not None and cost is not None and price < cost - 0.005):
+                if price is not None and cost is not None and price < cost - 0.005:
                     verdict = "REVIVE"
                     revives.append((e, data))
                 else:
@@ -2890,23 +2940,36 @@ def run_graveyard_sweep(config, COL, service, sheet_name, start_row, end_row,
             if not dry_run:
                 write_graveyard_verdict(service, e["row_num"], now_str, verdict)
 
+    readd = _readd_revived(service, sheet_name, COL, revives, dry_run) if revives else {}
+    n_added = sum(1 for o in readd.values() if o == "added")
+
     counts = (f"{n['dead']} dead · {n['alive']} alive · {n['revive']} revived · "
               f"{n['error']} error")
     notes = f"{tag}graveyard-sweep: checked {n['checked']} ({counts})"
+    if revives:
+        notes += f", re-added {n_added}"
     logger.info(notes)
 
+    readd_label = {
+        "added": " · ➕ re-added as PENDING",
+        "dry_run": " · would re-add as PENDING",
+        "duplicate": " · already in the sheet, not re-added",
+        "unchecked": " · NOT re-added (sheet unreadable, couldn't check for duplicates)",
+        "failed": " · re-add FAILED",
+    }
     message = None
     if revives or errors:
         lines = [f"🪦 <b>Graveyard sweep</b> — checked {n['checked']}: {counts}"]
         if revives:
-            lines.append(f"\n♻️ <b>{len(revives)} worth a look:</b>")
+            lines.append(f"\n♻️ <b>{len(revives)} back at a lower price:</b>")
             for e, d in revives:
                 cost = to_float(e["cost"])
                 price = to_float(d.get("price"))
                 sale = " · on sale" if d.get("on_sale") else ""
                 was = f"was ${cost:.2f}" if cost is not None else "was ?"
                 now = f"now ${price:.2f}" if price is not None else "now ?"
-                lines.append(f"• {html.escape(e['title'][:50])} — {was}, {now}{sale}")
+                added = readd_label.get(readd.get(e["row_num"]), "")
+                lines.append(f"• {html.escape(e['title'][:50])} — {was}, {now}{sale}{added}")
         if errors:
             lines.append(f"\n⚠️ {len(errors)} errored (bot-block?) — retry next run:")
             for t in errors[:5]:
