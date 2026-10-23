@@ -345,3 +345,37 @@ def test_nav_works_from_a_non_active_live_listing(sheet, monkeypatch):
     seen = _screens(monkeypatch)
     _tap(tb.cb_reprice_nav, f"{ITEM_ID}:next")
     assert seen == [(4999, ITEM_2)]
+
+
+def test_stepapply_next_item_follows_views_sort(sheet, monkeypatch):
+    """Browsing by views: Next item → is the next-most-viewed listing, not the net neighbour."""
+    from tools import ebay_analytics as ea
+    ea._write_json(ea.VIEWS_PATH, {"fetched_at": "2026-10-21T00:00:00+00:00", "days": 30,
+                                   "views": {ITEM_ID: 50, ITEM_2: 30, ITEM_3: 10}})
+    sheet["rows"] = [_sheet_row("ACTIVE", "First", "9.00", f"https://www.ebay.com/itm/{ITEM_2}"),   # row 4, 30 views
+                     _sheet_row("ACTIVE", "Middle", "5.00", URL),                                    # row 5, 50 views
+                     _sheet_row("ACTIVE", "Last", "1.00", f"https://www.ebay.com/itm/{ITEM_3}")]     # row 6, 10 views
+    _apply_ok(monkeypatch)
+    ctx = SimpleNamespace(user_data={"activelist_sort": "views"}, bot_data={"chat_id": 1})
+    kb = _tap(tb.cb_reprice_stepapply, f"{ITEM_ID}:4749", ctx).edit_message_text.call_args.kwargs["reply_markup"]
+    nxt = [b.callback_data for r in kb.inline_keyboard for b in r if b.text == "Next item →"]
+    assert nxt == ["activelist:pick:4:views"]                 # net order would be row 6 (Last)
+    assert "activelist:pick:5:views" in _datas(kb)            # ⬅️ Back to card keeps the sort
+    assert "activelist:show:views" in _datas(kb)
+
+    # tap it: the card opened is "First", and its own Next continues in views order (-> Last)
+    import yaml
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "config", "col_map.yaml")) as f:
+        full_col = yaml.safe_load(f)["columns"]
+    assert all(full_col[k] == v for k, v in COL.items())       # same sheet layout
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (full_col, "svc", "Product Tracker", 4, sheet["rows"]))
+    monkeypatch.setattr(tb, "get_pending", lambda item_id: None)
+    monkeypatch.setattr(tb, "fetch_item_price", lambda item_id: {})
+    _route, _, arg = nxt[0].partition("activelist:pick:")
+    q = _tap(tb.cb_activelist_pick, arg, ctx)
+    assert "First" in q.edit_message_text.call_args.args[0]
+    card = q.edit_message_text.call_args.kwargs["reply_markup"]
+    assert [(b.text, b.callback_data) for r in card.inline_keyboard for b in r
+            if b.text in ("⬅️ Prev", "Next ➡️")] == [("⬅️ Prev", "activelist:pick:5:views"),
+                                                    ("Next ➡️", "activelist:pick:6:views")]

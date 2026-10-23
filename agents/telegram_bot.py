@@ -2983,9 +2983,11 @@ async def cb_reprice_cheapest(update, context, arg):
     await _stepper_render(query, p, int(round(comp["target"] * 100)), item_id)
 
 
-def _after_apply_kb(item_id):
+def _after_apply_kb(item_id, sort="net"):
     """After a successful ✓ Apply: Next item → (the next live listing's CARD), Back to card,
-    Active List. Next/Back are dropped when the row can't be resolved (sheet down, row moved)."""
+    Active List. Next/Back are dropped when the row can't be resolved (sheet down, row moved).
+    sort = the Active List sort the user was browsing; Next follows it and every button keeps it."""
+    suffix = ":views" if sort == "views" else ""
     row_num, next_row = None, None
     try:
         sheet = _read_product_rows()
@@ -2993,7 +2995,7 @@ def _after_apply_kb(item_id):
         p, _err = _price_row_for_item(item_id, rows, col_map, start)
         if p is not None:
             row_num = p["row_num"]
-            ids = [r for r, _iid, _t in _active_stepper_order(sheet)]
+            ids = [r for r, _iid, _t in _active_stepper_order(sheet, sort=sort)]
             try:
                 i = ids.index(row_num)
             except ValueError:
@@ -3003,11 +3005,11 @@ def _after_apply_kb(item_id):
         logger.warning(f"stepapply: next-item lookup failed: {e}")
     kb = []
     if next_row is not None:
-        kb.append([InlineKeyboardButton("Next item →", callback_data=f"activelist:pick:{next_row}")])
+        kb.append([InlineKeyboardButton("Next item →", callback_data=f"activelist:pick:{next_row}{suffix}")])
     last = []
     if row_num is not None:
-        last.append(InlineKeyboardButton("⬅️ Back to card", callback_data=f"activelist:pick:{row_num}"))
-    last.append(InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"))
+        last.append(InlineKeyboardButton("⬅️ Back to card", callback_data=f"activelist:pick:{row_num}{suffix}"))
+    last.append(InlineKeyboardButton("⬅️ Active List", callback_data=f"activelist:show{suffix}"))
     kb.append(last)
     return InlineKeyboardMarkup(kb)
 
@@ -3029,7 +3031,7 @@ async def cb_reprice_stepapply(update, context, arg):
         await query.edit_message_text(f"⏳ Repricing eBay item {item_id} to ${target:.2f}…")
         text, kb = await _reprice_apply(item_id, target, manual=True)
         if kb is None:
-            kb = _after_apply_kb(item_id)
+            kb = _after_apply_kb(item_id, sort=context.user_data.get("activelist_sort", "net"))
         await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
     finally:
         inflight.discard(item_id)
