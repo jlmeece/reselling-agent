@@ -2068,14 +2068,18 @@ def _sort_active_items(items, sort, views):
 
 
 def _parse_activelist_arg(arg):
-    """'<page>[:<net|views>]' -> (page or None, sort). Bare/garbage = page None, net sort."""
+    """'<page>[:<net|views>]' or a bare '<net|views>' (the card's ⬅️ Active List button)
+    -> (page or None, sort). Bare/garbage = page None, net sort."""
     page_s, _, sort_s = (arg or "").strip().partition(":")
+    if page_s in ("net", "views") and not sort_s:
+        return None, page_s
     page = max(1, int(page_s)) if page_s.isdigit() else None
     return page, ("views" if sort_s == "views" else "net")
 
 
 def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_id=None,
-                      prev_row_num=None, next_row_num=None):
+                      prev_row_num=None, next_row_num=None, sort="net"):
+    suffix = ":views" if sort == "views" else ""   # Prev/Next + back keep the list's sort
     rows = []
     if item_id:   # the price editor (⚡ cheapest lives inside it; no ⚡ Competitive on the card)
         rows.append([InlineKeyboardButton("🎚️ Adjust", callback_data=f"reprice:stepper:{item_id}")])
@@ -2087,13 +2091,13 @@ def _active_action_kb(row_num, reprice_item_id=None, cancel_item_id=None, item_i
     rows.append([InlineKeyboardButton("🔴 End Listing", callback_data=f"ended:start:{row_num}")])
     nav = []   # neighbours in Active List order (every live listing)
     if prev_row_num is not None:
-        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"activelist:pick:{prev_row_num}"))
+        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"activelist:pick:{prev_row_num}{suffix}"))
     if next_row_num is not None:
-        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"activelist:pick:{next_row_num}"))
+        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"activelist:pick:{next_row_num}{suffix}"))
     if nav:
         rows.append(nav)
     return InlineKeyboardMarkup(rows + [
-        [InlineKeyboardButton("⬅️ Active List", callback_data="activelist:show"),
+        [InlineKeyboardButton("⬅️ Active List", callback_data=f"activelist:show{suffix}"),
          InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
     ])
 
@@ -2153,8 +2157,9 @@ async def cb_activelist_show(update, context, arg):
         return f"{i}. {(p.get('title') or '(untitled)')[:34]}" + (f" · 👁️ {n}" if n is not None else "")
 
     suffix = ":views" if sort == "views" else ""      # net = the plain (back-compat) callback
+    context.user_data["activelist_sort"] = sort       # cards opened from here keep this order
     kb_rows = [
-        [InlineKeyboardButton(_label(i, p), callback_data=f"activelist:pick:{p['row_num']}")]
+        [InlineKeyboardButton(_label(i, p), callback_data=f"activelist:pick:{p['row_num']}{suffix}")]
         for i, p in enumerate(page_items, start=first + 1)
     ]
     nav = []
@@ -2176,7 +2181,10 @@ async def cb_activelist_show(update, context, arg):
 
 
 async def cb_activelist_pick(update, context, arg):
-    row_num = int(arg)
+    # '<row>[:<net|views>]'; no suffix (old buttons, other screens) = the last Active List sort
+    row_s, _, sort_s = str(arg).partition(":")
+    row_num = int(row_s)
+    sort = sort_s if sort_s in ("net", "views") else context.user_data.get("activelist_sort", "net")
     try:
         col_map, service, sheet_name, start, rows = _read_product_rows()
     except Exception as e:
@@ -2192,7 +2200,7 @@ async def cb_activelist_pick(update, context, arg):
             reply_markup=_home_inline_kb(),
         )
         return
-    order = _active_stepper_order((col_map, service, sheet_name, start, rows))
+    order = _active_stepper_order((col_map, service, sheet_name, start, rows), sort=sort)
     ids = [r for r, _iid, _t in order]
     try:
         i = ids.index(row_num)
@@ -2232,7 +2240,7 @@ async def cb_activelist_pick(update, context, arg):
                        reply_markup=_active_action_kb(row_num, pending,
                                                       cancel_item_id=item_id if scheduled else None,
                                                       item_id=item_id, prev_row_num=prev_row,
-                                                      next_row_num=next_row))
+                                                      next_row_num=next_row, sort=sort))
 
 
 async def cb_ended_start(update, context, arg):
@@ -2822,9 +2830,10 @@ def _stepper_break_even(p):
                             _to_rate(p.get("fee_rate")), _to_float(p.get("ship_cost")) or 0.0)
 
 
-def _active_stepper_order(sheet=None):
+def _active_stepper_order(sheet=None, sort="net"):
     """[(row_num, item_id, title)] of every live listing (is_live_listing — any sheet status), in
-    Active List order (_active_net_key, net desc). sheet = a _read_product_rows() result to reuse.
+    Active List order: sort 'net' = _active_net_key (net desc), 'views' = cached 30-day views desc,
+    unknown last, net tie-break (_sort_active_items). sheet = a _read_product_rows() result to reuse.
     [] on any sheet-read error (callers treat it as "no navigation")."""
     try:
         col_map, _service, _sheet_name, start, rows = sheet or _read_product_rows()
@@ -2834,7 +2843,7 @@ def _active_stepper_order(sheet=None):
         logger.warning(f"stepper order: sheet read failed: {e}")
         return []
     items = [p for p in items if is_live_listing(p.get("ebay_listing_url"), p.get("status"))]
-    items.sort(key=_active_net_key)
+    _sort_active_items(items, sort, _active_views_lookup() if sort == "views" else {})
     return [(p["row_num"], extract_item_id(p.get("ebay_listing_url")), p.get("title") or "(untitled)")
             for p in items]
 

@@ -175,7 +175,7 @@ def test_action_kb_prev_next_only_when_given():
     assert _nav(tb._active_action_kb(5, next_row_num=9)) == [("Next ➡️", "activelist:pick:9")]
 
 
-def _pick_nav(monkeypatch, rows, row_num):
+def _pick_nav(monkeypatch, rows, row_num, arg=None, user_data=None, full=False):
     import yaml
     with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "config", "col_map.yaml")) as f:
@@ -193,8 +193,10 @@ def _pick_nav(monkeypatch, rows, row_num):
     monkeypatch.setattr(tb, "fetch_item_price", lambda item_id: {})
     q = SimpleNamespace(edit_message_text=AsyncMock())
     asyncio.run(tb.cb_activelist_pick(SimpleNamespace(callback_query=q, message=None),
-                                      SimpleNamespace(user_data={}, bot_data={}), str(row_num)))
-    return _nav(q.edit_message_text.call_args.kwargs["reply_markup"])
+                                      SimpleNamespace(user_data=user_data or {}, bot_data={}),
+                                      arg or str(row_num)))
+    kb = q.edit_message_text.call_args.kwargs["reply_markup"]
+    return kb if full else _nav(kb)
 
 
 _THREE = [("PAUSED_MARGIN", "Mid", "$5.00", "100000000002"),      # row 4
@@ -276,7 +278,8 @@ def test_views_sort_survives_paging(monkeypatch):
 @pytest.mark.parametrize("arg,expected", [(None, (None, "net")), ("", (None, "net")),
                                           ("2", (2, "net")), ("2:views", (2, "views")),
                                           ("2:net", (2, "net")), ("2:junk", (2, "net")),
-                                          ("abc:views", (None, "views"))])
+                                          ("abc:views", (None, "views")),
+                                          ("views", (None, "views")), ("net", (None, "net"))])
 def test_parse_activelist_arg_back_compat(arg, expected):
     assert tb._parse_activelist_arg(arg) == expected
 
@@ -287,3 +290,67 @@ def test_format_active_line_appends_views_only_when_given():
     assert "👁️" not in tb._format_active_line(p)
     assert tb._format_active_line(p, views=12).endswith("📦 sold 1 · 👁️ 12")
     assert tb._format_active_line(p, views=0).endswith(" · 👁️ 0")
+
+
+# ── sort survives list -> card -> Prev/Next -> back ─────────────────────────
+
+# net order: Top(5) > Mid(4) > Low(6); views order: Low 80 > Top 5 > Mid (uncached)
+_SORT_VIEWS = {"100000000003": 80, "100000000001": 5}
+
+
+def test_views_list_item_buttons_carry_sort_and_remember_it(monkeypatch):
+    _cache_views({"100000000001": 5, "100000000003": 80})
+    monkeypatch.setattr(tb, "_read_product_rows", lambda: (COL, "svc", "Tab", 4, _MIXED))
+    monkeypatch.setattr(tb, "_load_sales_summary", lambda: _EMPTY_LOG)
+    q = SimpleNamespace(edit_message_text=AsyncMock())
+    ctx = SimpleNamespace(user_data={}, bot_data={})
+    asyncio.run(tb.cb_activelist_show(SimpleNamespace(callback_query=q, message=None), ctx, "1:views"))
+    picks = _picks(q.edit_message_text.call_args.kwargs["reply_markup"])
+    assert all(b.callback_data.endswith(":views") for b in picks)
+    assert ctx.user_data["activelist_sort"] == "views"
+
+
+def test_net_list_item_buttons_stay_plain(monkeypatch):
+    _text, kb = _show(monkeypatch, _MIXED)
+    assert all(b.callback_data.count(":") == 2 for b in _picks(kb))
+
+
+def test_pick_with_views_suffix_navigates_in_views_order(monkeypatch):
+    _cache_views(_SORT_VIEWS)
+    # views order Low(6) -> Top(5) -> Mid(4): Top's neighbours are Low and Mid
+    assert _pick_nav(monkeypatch, _THREE, 5, arg="5:views") == [
+        ("⬅️ Prev", "activelist:pick:6:views"), ("Next ➡️", "activelist:pick:4:views")]
+
+
+def test_pick_without_suffix_uses_remembered_sort(monkeypatch):
+    _cache_views(_SORT_VIEWS)
+    assert _pick_nav(monkeypatch, _THREE, 5, user_data={"activelist_sort": "views"}) == [
+        ("⬅️ Prev", "activelist:pick:6:views"), ("Next ➡️", "activelist:pick:4:views")]
+
+
+def test_explicit_net_suffix_overrides_remembered_views(monkeypatch):
+    _cache_views(_SORT_VIEWS)
+    assert _pick_nav(monkeypatch, _THREE, 5, arg="5:net",
+                     user_data={"activelist_sort": "views"}) == [("Next ➡️", "activelist:pick:4")]
+
+
+def test_card_back_button_returns_to_same_sort(monkeypatch):
+    _cache_views(_SORT_VIEWS)
+    kb = _pick_nav(monkeypatch, _THREE, 5, arg="5:views", full=True)
+    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
+    assert "activelist:show:views" in datas
+    _text, kb2 = _show(monkeypatch, _MIXED, "views")        # what that button routes to
+    assert "Sorted by views" in _text
+    kb = _pick_nav(monkeypatch, _THREE, 5, full=True)
+    assert "activelist:show" in [b.callback_data for r in kb.inline_keyboard for b in r]
+
+
+def test_stepper_order_views_sort():
+    col = {"status": "A", "title": "C", "net_profit": "I", "ebay_listing_url": "Q"}
+    rows = [_row("ACTIVE", "Top", "$9.00", "100000000001"),
+            _row("ACTIVE", "Mid", "$5.00", "100000000002"),
+            _row("ACTIVE", "Low", "$1.00", "100000000003")]
+    _cache_views(_SORT_VIEWS)
+    sheet = (col, "svc", "Tab", 4, rows)
+    assert [t for _r, _i, t in tb._active_stepper_order(sheet)] == ["Top", "Mid", "Low"]
+    assert [t for _r, _i, t in tb._active_stepper_order(sheet, sort="views")] == ["Low", "Top", "Mid"]
