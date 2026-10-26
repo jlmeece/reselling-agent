@@ -64,7 +64,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(encoding="utf-8", override=True)
 
 from tools.sheet_writer import (  # noqa: E402
-    ensure_grid_columns, read_sheet, required_grid_columns, safe_write_row,
+    ensure_grid_columns, read_sheet, required_grid_columns, safe_write_row, write_row_partial,
 )
 
 ENDPOINT          = "https://api.ebay.com/ws/api.dll"
@@ -188,6 +188,7 @@ def _build_request_xml(token: str, page: int) -> str:
         "ActiveList.ItemArray.Item.ItemID",
         "ActiveList.ItemArray.Item.Title",
         "ActiveList.ItemArray.Item.SKU",      # _parse_listing reads it; the auditor matches on it
+        "ActiveList.ItemArray.Item.ListingType",   # sweep_titles' FixedPriceItem guard
         "ActiveList.ItemArray.Item.Quantity",
         "ActiveList.ItemArray.Item.SellingStatus",
         "ActiveList.ItemArray.Item.WatchCount",
@@ -1729,6 +1730,101 @@ def format_auto_reprice_summary(results: list[dict]) -> str | None:
     return "\n".join(lines)
 
 
+# ── "No Costco in titles" sweep (spec 2026-10-26-ebay-title-costco-sweep) ─────
+#
+# Jay's rule: never say Costco in a listing (dropshipping red flag, same risk class as the
+# Henredon 21920397 takedown). The 10/21 cleanup only scrubbed descriptions; this keeps titles
+# clean on every sync. Reads the titles fetch_active_listings() already returned (no extra eBay
+# read); the only eBay write is the rare revise_title.
+
+_COSTCO_WORD = re.compile(r"\bcostco\b", re.I)
+
+
+def _strip_costco_title(title) -> str:
+    """Remove 'Costco' and its adjacent connector / qualifier words; clean title capped at
+    MAX_TITLE_LEN. Removal only — 'Costco Quality' is dropped, never rewritten; 'Kirkland' (the
+    brand) and every other word are kept."""
+    t = str(title or "")
+    t = re.sub(r"\bCostco\s+(?:Quality|Brand|Formula|Select|Premium|\d{4})\b", "", t, flags=re.I)
+    t = re.sub(r"\s*[-–—]\s*Costco\b", "", t, flags=re.I)
+    t = re.sub(r"\bCostco\b", "", t, flags=re.I)
+    t = re.sub(r"\s{2,}", " ", t).strip(" \t,;:-–—")
+    return t[:MAX_TITLE_LEN]
+
+
+def sweep_titles(listings, report, service, COL, sheet_name, *, dry_run, title_reader,
+                 enabled=True) -> list:
+    """
+    Revise every live listing whose title contains the word 'Costco' to _strip_costco_title(title)
+    (revise_title, in place — never a re-list), and mirror the clean title into col AI on its sheet
+    row when the revise succeeded. Orphans (no sheet row) are revised too, without a sheet write.
+    The sheet write is skipped when the row's title changed since the read (title_reader guard,
+    as in auto_reprice_breaches). dry_run = zero writes, the plan is still returned.
+    Returns [{item_id, title, clean_title, row_num?, outcome, error?}], outcome "dry_run" |
+    "revised" | "failed".
+    """
+    if not enabled:
+        return []
+    row_by_id = {e["item_id"]: e["row_num"] for e in report.get("matched", [])}
+    sheet_title = {e["item_id"]: e.get("title", "") for e in report.get("matched", [])}
+    results, titles = [], None
+    for listing in listings or []:
+        title = listing.get("title") or ""
+        if not _COSTCO_WORD.search(title):
+            continue
+        clean = _strip_costco_title(title)
+        if (not clean or clean == title or len(clean) > MAX_TITLE_LEN
+                or listing.get("listing_type") not in (None, "FixedPriceItem")):
+            continue
+        item_id = listing["item_id"]
+        entry = {"item_id": item_id, "title": title, "clean_title": clean}
+        if item_id in row_by_id:
+            entry["row_num"] = row_by_id[item_id]
+        results.append(entry)
+        if dry_run:
+            entry["outcome"] = "dry_run"
+            logger.info(f"sweep_titles (dry run): item {item_id} {title!r} -> {clean!r}")
+            continue
+        out = revise_title(item_id, clean)
+        if not out.get("ok"):
+            entry["outcome"] = "failed"
+            entry["error"] = (f"{out.get('error_code') or out.get('error_kind') or 'error'}: "
+                              f"{out.get('message', '')}")
+            continue
+        entry["outcome"] = "revised"
+        if "row_num" not in entry:
+            continue
+        # eBay is updated — keep sheet == eBay, only if the row still holds this product.
+        try:
+            if titles is None:
+                titles = title_reader() if title_reader else {}
+            row_num = entry["row_num"]
+            if title_reader and titles.get(row_num, "").strip() != str(sheet_title.get(item_id, "")).strip():
+                entry["error"] = "eBay OK — sheet col AI NOT updated (row moved)"
+                logger.warning(f"sweep_titles: row {row_num} title changed — col AI not written")
+            else:
+                write_row_partial(service, sheet_name, row_num, [(COL["seo_title"], clean)])
+                _sleep(WRITE_DELAY)
+        except Exception as e:
+            entry["error"] = f"eBay OK — sheet col AI write failed: {e}"[:120]
+            logger.error(f"sweep_titles: item {item_id} revised but col AI write failed: {e}")
+    return results
+
+
+def format_title_sweep_summary(results) -> str | None:
+    """Telegram HTML line for the eBay sync alert, or None when nothing was revised (dry-run and
+    clean runs stay silent)."""
+    revised = [r for r in results or [] if r.get("outcome") == "revised"]
+    if not revised:
+        return None
+    lines = [f'🔤 <b>Title sweep:</b> {len(revised)} listing(s) revised (removed "Costco")']
+    for r in results:
+        if r.get("outcome") == "failed":
+            lines.append(f"• ❌ item {r['item_id']} — revise failed: "
+                         f"{html.escape((r.get('error') or 'unknown error')[:80])}")
+    return "\n".join(lines)
+
+
 # ── Sheet-driven bulk reprice (col BD target_price) ───────────────────────────
 #
 # Jay types a price in col BD on ACTIVE rows; this pushes it to eBay. It's HIS number, so there
@@ -2235,9 +2331,20 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
     except Exception as e:  # never let the mirror break the sync
         logger.exception(f"ebay_sync: col H mirror failed: {e}")
 
+    # "No Costco in titles": revise any live title that names Costco (rare once clean).
+    title_summary = None
+    try:
+        title_results = sweep_titles(
+            listings, report, service, COL, sheet_name, dry_run=dry_run,
+            title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
+            enabled=bool(auto_cfg.get("sweep_titles", True)))
+        title_summary = format_title_sweep_summary(title_results)
+    except Exception as e:  # never let the title sweep break the sync
+        logger.exception(f"ebay_sync: title sweep failed: {e}")
+
     base_alert = alert_message(report)
     mirror_summary = format_mirror_summary(report.get("h_mirror"))
-    extras = [b for b in (target_summary, auto_summary, mirror_summary) if b]
+    extras = [b for b in (target_summary, auto_summary, mirror_summary, title_summary) if b]
     if base_alert and extras:
         combined_alert = "\n".join([base_alert] + extras)
     elif extras:
