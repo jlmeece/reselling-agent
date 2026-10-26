@@ -498,6 +498,28 @@ def test_on_ebay_not_in_sheet(writes):
     assert [l["item_id"] for l in rep["on_ebay_not_in_sheet"]] == ["999999999999"]
 
 
+def test_external_listing_is_not_an_orphan_but_a_real_orphan_still_is(writes):
+    listings = [_listing("111111111111"),
+                _listing("860069578501", title="1 PACK RoboTabs Cough Suppressant 30mg 100 Tablets"),
+                _listing("999999999999", title="Stray")]
+    rep = _sync([_row(4, "111111111111")], listings, external_titles=["robotabs"])
+    assert [l["item_id"] for l in rep["on_ebay_not_in_sheet"]] == ["999999999999"]
+
+
+def test_external_titles_match_substrings_case_insensitive_not_word_anchored():
+    from tools.ebay_sync import _is_external
+    assert _is_external({"title": "1 PACK RoboTabs Cough"}, ["ROBOTABS"])
+    assert _is_external({"title": "SuperRoboTabsXL"}, ["RoboTabs"])          # embedded brand
+    assert not _is_external({"title": "Kirkland Quinoa"}, ["RoboTabs"])
+    assert not _is_external({"title": "anything"}, [])                       # default = no exclusions
+    assert not _is_external({"title": "anything"}, ["", "  "])
+
+
+def test_no_external_titles_keeps_every_orphan(writes):
+    rep = _sync([], [_listing("860069578501", title="RoboTabs Cough")])
+    assert [l["item_id"] for l in rep["on_ebay_not_in_sheet"]] == ["860069578501"]
+
+
 def test_active_not_on_ebay_only_flags_active_ebay_rows(writes):
     rows = [
         _row(4, "111111111111", status="ACTIVE"),                        # gone from eBay -> flagged

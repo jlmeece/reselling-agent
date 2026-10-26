@@ -1156,9 +1156,17 @@ def _check_margin(row, listing, report, floor_price=FLOOR_PRICE, floor_margin_pc
             "break_even": _break_even(cost, fee, ship, ad)})
 
 
+def _is_external(listing, external_titles) -> bool:
+    """True when any configured substring (case-insensitive, anywhere in the title — not
+    word-anchored, brand names can be embedded) appears in the listing's title. Matched on title,
+    not item id: ids change on relist."""
+    title = str(listing.get("title") or "").lower()
+    return any(str(s).strip() and str(s).strip().lower() in title for s in external_titles or ())
+
+
 def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
          col_map=None, title_reader=None, cancelled_units=None, floor_price=FLOOR_PRICE,
-         floor_margin_pct=FLOOR_MARGIN_PCT) -> dict:
+         floor_margin_pct=FLOOR_MARGIN_PCT, external_titles=()) -> dict:
     """
     Match listings to sheet rows by the item ID in col Q. Flag-only except two writes:
     units_sold (col U) when QuantitySold differs, and buy_cost (col BB) snapshotted
@@ -1176,6 +1184,8 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                    sales log). Col U = eBay QuantitySold minus these, floored at 0 — eBay's
                    count still includes a refunded-before-shipping order. Only items the log
                    knows about are adjusted; no history = raw QuantitySold.
+    external_titles: title substrings (case-insensitive) of listings Jay sells on this account
+                   outside the reselling tool — never reported as on_ebay_not_in_sheet orphans.
 
     Returns {matched, updated, margin_breach, margin_unchecked, on_ebay_not_in_sheet,
              active_not_on_ebay, duplicate_url, stale_rows, write_errors, dry_run}.
@@ -1268,7 +1278,10 @@ def sync(service, sheet_rows, listings, *, dry_run=False, sheet_name=None,
                 unlinked.append(entry)
 
     sheet_ids = {extract_item_id(r.get("ebay_listing_url")) for r in sheet_rows}
-    report["on_ebay_not_in_sheet"] = [dict(l) for l in listings if l["item_id"] not in sheet_ids]
+    report["on_ebay_not_in_sheet"] = [
+        dict(l) for l in listings
+        if l["item_id"] not in sheet_ids and not _is_external(l, external_titles)
+    ]
 
     # Flag-only: suggest (never write) the col Q link for unlinked ACTIVE rows.
     pool = {l["item_id"]: l for l in report["on_ebay_not_in_sheet"]}
@@ -1812,16 +1825,20 @@ def sweep_titles(listings, report, service, COL, sheet_name, *, dry_run, title_r
 
 
 def format_title_sweep_summary(results) -> str | None:
-    """Telegram HTML line for the eBay sync alert, or None when nothing was revised (dry-run and
-    clean runs stay silent)."""
+    """Telegram HTML line for the eBay sync alert, or None when nothing was revised AND nothing
+    failed (dry-run and clean runs stay silent). An all-failed run still alerts: the safety
+    mechanism must never fail invisibly."""
     revised = [r for r in results or [] if r.get("outcome") == "revised"]
-    if not revised:
+    failed = [r for r in results or [] if r.get("outcome") == "failed"]
+    if not revised and not failed:
         return None
-    lines = [f'🔤 <b>Title sweep:</b> {len(revised)} listing(s) revised (removed "Costco")']
-    for r in results:
-        if r.get("outcome") == "failed":
-            lines.append(f"• ❌ item {r['item_id']} — revise failed: "
-                         f"{html.escape((r.get('error') or 'unknown error')[:80])}")
+    if revised:
+        lines = [f'🔤 <b>Title sweep:</b> {len(revised)} listing(s) revised (removed "Costco")']
+    else:
+        lines = [f"🔤 <b>Title sweep:</b> ⚠️ {len(failed)} revise(s) FAILED"]
+    for r in failed:
+        lines.append(f"• ❌ item {r['item_id']} — revise failed: "
+                     f"{html.escape((r.get('error') or 'unknown error')[:80])}")
     return "\n".join(lines)
 
 
@@ -2305,6 +2322,7 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         title_reader=lambda: _read_titles(service, COL, sheet_name, start_row, end_row),
         floor_price=float(auto_cfg.get("floor_price", FLOOR_PRICE)),
         floor_margin_pct=float(auto_cfg.get("floor_margin_pct", FLOOR_MARGIN_PCT)),
+        external_titles=auto_cfg.get("external_titles", []),
     )
     # Auto-reprice hard breaches BEFORE building the alert (repriced ones leave "Losing money").
     auto_summary = None

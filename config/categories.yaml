@@ -19,6 +19,9 @@ business:
   ebay_sync:
     auto_reprice: true
     auto_reprice_max_jump_pct: 0.50
+    # Listings Jay sells on this eBay account OUTSIDE the reselling tool: title substrings
+    # (case-insensitive) never reported as "On eBay but not in the sheet" orphans.
+    external_titles: ["RoboTabs"]
     # Margin-floor alert (ALERT ONLY, never auto-reprice): flag a live listing whose eBay
     # price is >= floor_price AND whose net margin is below floor_margin_pct. Jay reprices
     # these up himself. Percent scales with price — $8 on a $70 item is 11%, on a $200 item 4%.

@@ -138,3 +138,11 @@ def test_summary_counts_revised_and_lists_failures():
 def test_active_list_request_asks_for_listing_type():
     xml = ebay_sync._build_request_xml("tok", 1)
     assert "<OutputSelector>ActiveList.ItemArray.Item.ListingType</OutputSelector>" in xml
+
+
+def test_summary_alerts_when_every_revise_failed():
+    text = ebay_sync.format_title_sweep_summary([
+        {"item_id": "318943101184", "outcome": "failed", "error": "api: 21919301"},
+        {"item_id": "318943101193", "outcome": "failed", "error": "auth: token"}])
+    assert text.startswith("🔤 <b>Title sweep:</b> ⚠️ 2 revise(s) FAILED")
+    assert "item 318943101184" in text and "item 318943101193" in text
