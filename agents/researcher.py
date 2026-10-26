@@ -463,14 +463,30 @@ def _sale_end_sort_key(row, today=None):
 
 # ── Main research loop ────────────────────────────────────────────
 
-def run_researcher(limit=None, add_limit=None, category_filter=None, discover_only=False, skip_discovery=False):
+def run_researcher(limit=None, add_limit=None, category_filter=None, discover_only=False, skip_discovery=False,
+                   only_rows=None, keep_status_rows=None, force_copy=False, copy_overrides=None, notify=True):
     """
     limit:            max products to score this run (None = all PENDING)
     add_limit:        max new products to add to sheet during discovery (None = all)
     category_filter:  only research this category (e.g. 'Jewelry')
     discover_only:    add new products to sheet but skip scoring
     skip_discovery:   skip Costco scraping, go straight to researching PENDING rows
+
+    Targeted repair mode (all off by default — a normal run is unchanged):
+    only_rows:        research exactly these sheet rows, whatever their status (implies
+                      skip_discovery; limit is ignored)
+    keep_status_rows: never write col A status / col S re-eval date on these rows (live
+                      listings; the tier still lands in cols B/T/AV)
+    force_copy:       regenerate listing copy for the researched rows even when it exists
+    copy_overrides:   {sheet_row: {copy field: value}} written instead of the generated value
+                      (a live row's seo_title/description = what eBay already shows)
+    notify:           send the Tier 1 digest / run-summary email
     """
+    only_rows = set(only_rows or ())
+    keep_status_rows = set(keep_status_rows or ())
+    copy_overrides = copy_overrides or {}
+    if only_rows:
+        skip_discovery = True
     config   = _load_config()
     COL      = _load_col_map()
     business = config["business"]
@@ -576,6 +592,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 "PAUSED_DEMAND", "PAUSED_SEASONAL",
             ))
         )
+        if only_rows:
+            needs_research = (idx + start_row) in only_rows
         if needs_research:
             to_research.append((idx + start_row, row))
 
@@ -585,7 +603,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
     logger.info(f"  prioritized {prioritized} on-sale rows")
 
     # Apply run limit
-    if limit and len(to_research) > limit:
+    if limit and not only_rows and len(to_research) > limit:
         logger.info(f"  Limiting to {limit} products (queue has {len(to_research)}).")
         to_research = to_research[:limit]
 
@@ -1179,6 +1197,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 updates.append((COL["re_eval_date"], recheck_date_str))
             if costco_data.get("image_urls"):
                 updates.append((COL["image_urls"], ",".join(costco_data["image_urls"][:5])))
+            if sheet_row in keep_status_rows:
+                updates = [(c, v) for c, v in updates if c not in (COL["status"], COL["re_eval_date"])]
             seed_formula_row(service, sheet_name, sheet_row, ad_rate=cat_config.get("ad_rate", 0.0))
 
             # ── MPT scoring — compute Sharpe ratio and write to hidden cols AX–BA ──────
@@ -1214,7 +1234,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             # end of the run (prompt-caching savings). Tier 3 skips (PAUSED, not worth
             # the API spend).
             seo_title_idx = col_to_idx(COL["seo_title"])
-            if tier in (1, 2) and not safe_get(row, seo_title_idx):
+            if (force_copy and only_rows) or (tier in (1, 2) and not safe_get(row, seo_title_idx)):
                 copy_queue.append({
                     "sheet_row":  sheet_row,
                     "title":      title,
@@ -1295,6 +1315,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     for q in _chunk
                 ])
                 for _q, _cr in zip(_chunk, _copy_results):
+                    _cr = {**_cr, **copy_overrides.get(_q["sheet_row"], {})}
                     _copy_updates = [
                         (COL["seo_title"],    _cr.get("seo_title", "")),
                         (COL["bullets"],      _cr.get("bullets", "")),
@@ -1324,7 +1345,9 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
         if "melt" in str(item.get("reason", ""))
     )
 
-    if tier1_results:
+    if not notify:
+        logger.info("Notifications off for this run (targeted repair) — no digest email.")
+    elif tier1_results:
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         subject  = (
             f"[Tier 1] {len(tier1_results)} product(s) ready for your approval "
@@ -1415,7 +1438,8 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
         "spot_gold":    _spot_prices.get("gold", ""),
         "spot_silver":  _spot_prices.get("silver", ""),
         "errors":       ebay_fail_note.strip(" |") if _ebay_fail_log else "",
-        "notes":        f"Queued: {queued} | prioritized {prioritized} on-sale rows"
+        "notes":        (f"targeted rows {sorted(only_rows)} | " if only_rows else "")
+                        + f"Queued: {queued} | prioritized {prioritized} on-sale rows"
                         + (f" | Halted early: {skipped} skipped" if skipped else ""),
     }, service)
 

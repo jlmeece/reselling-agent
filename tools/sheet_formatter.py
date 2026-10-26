@@ -692,7 +692,9 @@ def setup_dashboard(service, sheet_name, data_start_row=4):
         body={"requests": [{
             "setBasicFilter": {
                 "filter": {
-                    "range": _cell_range(tab_id, header_row_idx, 1000, 0, VISIBLE_COLS),
+                    # ALL columns, not just the visible A–Z: a dropdown sort reorders only
+                    # the filter range, so an A–Z filter left AA–BF behind (10/25 scramble).
+                    "range": _cell_range(tab_id, header_row_idx, 1000, 0, TOTAL_COLS),
                 }
             }
         }]},
