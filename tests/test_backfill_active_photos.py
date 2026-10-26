@@ -77,3 +77,52 @@ def test_build_targets_every_row_with_item_id_any_status():
 def test_non_active_listing_not_active_on_ebay_is_skipped():
     action, detail, _ = plan_item(_job(status="PAUSED_MARGIN"), _live(listing_status="Completed"), None)
     assert action == "skip" and "Completed" in detail
+
+
+# ── wrong-product guard (2026-10-25: A-Z sort left col AA on other rows) ────────────────
+
+def test_sku_not_matching_row_costco_id_is_skipped():
+    job = _job(sku="4201018839", costco_url="https://www.costco.com/.product.100296198.html")
+    action, detail, _ = plan_item(job, _live(), BRANDED)
+    assert action == "skip" and "isn't this row's Costco id 100296198" in detail
+
+
+def test_sku_matching_row_costco_id_both_url_shapes_revises():
+    for url in ("https://www.costco.com/.product.4000423485.html",
+                "https://www.costco.com/p/-/mode-quito-6-piece/4000423485"):
+        assert plan_item(_job(sku="4000423485", costco_url=url), _live(), BRANDED)[0] == "revise"
+
+
+def test_live_title_unlike_row_title_is_skipped():
+    job = _job(title="Kirkland Signature Protein Bar Variety Pack")
+    action, detail, _ = plan_item(job, _live(title="KitchenAid 1.2 cu ft Countertop Microwave"), BRANDED)
+    assert action == "skip" and "doesn't match this row" in detail
+    assert plan_item(job, _live(title="Kirkland Protein Bar Variety 42ct"), BRANDED)[0] == "revise"
+
+
+def test_build_targets_filters_by_item_id_and_carries_costco_url():
+    cols = {"status": 0, "title": 2, "sku": 26, "image_urls": 45, "ebay_listing_url": 16, "costco_url": 17}
+    r1, r2 = [""] * 46, [""] * 46
+    for r, iid, sku in ((r1, "860077013393", "4000423485"), (r2, "860083308423", "4201032286")):
+        r[0], r[2], r[26], r[45], r[16] = "ACTIVE", "T", sku, "https://a/i.jpg", f"https://www.ebay.com/itm/{iid}"
+        r[17] = f"https://www.costco.com/.product.{sku}.html"
+    (job,) = build_targets([r1, r2], 4, cols, item_id="860077013393")
+    assert job["sku"] == "4000423485" and job["costco_url"].endswith("4000423485.html")
+
+
+def test_dry_run_never_builds_uploads_or_revises(monkeypatch, capsys):
+    import pytest
+    from tools import backfill_active_photos as bap
+    r = [""] * 46
+    r[0], r[2], r[26], r[45] = "ACTIVE", "Ring", "4000423485", "https://a/i.jpg"
+    r[16], r[17] = "https://www.ebay.com/itm/860077013393", "https://www.costco.com/.product.4000423485.html"
+    monkeypatch.setattr(bap.pc, "read_rows", lambda: ([r], 4))
+    monkeypatch.setattr(bap.up, "load_hosted", lambda: {"4000423485": {"url": BRANDED}})
+    monkeypatch.setattr(bap, "fetch_item_price", lambda iid: _live(title="Ring"))   # read-only GetItem
+    for name in ("revise_picture",):
+        monkeypatch.setattr(bap, name, lambda *a, **k: pytest.fail("dry run must not revise"))
+    monkeypatch.setattr(bap.up, "run", lambda **k: pytest.fail("dry run must not upload"))
+    monkeypatch.setattr(bap.pc, "run", lambda *a, **k: pytest.fail("dry run must not build photos"))
+    monkeypatch.setattr(bap.pc, "load_template", lambda: pytest.fail("dry run must not load the template"))
+    assert bap.main(["--dry-run"]) == 0
+    assert "would revise" in capsys.readouterr().out

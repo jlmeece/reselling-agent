@@ -2054,6 +2054,26 @@ def test_revise_picture_caps_at_24(monkeypatch, creds):
     assert len(out["pictures"]) == 24 and out["pictures"][0] == EPS_MAIN
 
 
+def test_revise_picture_xml_has_item_id_and_every_picture_url(monkeypatch, creds):
+    sent = []
+    ok = '<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></ReviseFixedPriceItemResponse>'
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda req, **k: sent.append(req) or FakeResp(ok))
+    ebay_sync.revise_picture("https://www.ebay.com/itm/860077013393", EPS_MAIN, [EPS_G1])
+    body = sent[0].data.decode()
+    assert "<Item><ItemID>860077013393</ItemID>" in body
+    assert body.count("<PictureURL>") == 2
+    assert "z/EBIAAeSw" in body and "z/AWIAAeSw" in body
+
+
+def test_fetch_item_price_returns_title(monkeypatch, creds):
+    body = ('<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack><Item>'
+            "<Title>MoDe Quito 6-Piece Set</Title><SellingStatus>"
+            '<CurrentPrice currencyID="USD">4326.99</CurrentPrice></SellingStatus></Item></GetItemResponse>')
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen", lambda req, **k: FakeResp(body))
+    assert ebay_sync.fetch_item_price("860077013393")["title"] == "MoDe Quito 6-Piece Set"
+
+
 # ── revise_description (off-eBay scrub) ──────────────────────────────────────
 
 def test_revise_description_sends_cdata_description_only(monkeypatch, creds):

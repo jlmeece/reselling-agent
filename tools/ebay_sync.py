@@ -884,7 +884,7 @@ def fetch_item_price(item_id) -> dict:
     out = {"ok": False, "item_id": iid or str(item_id or ""), "price": None,
            "listing_status": "", "listing_type": "",
            "quantity_available": None, "listing_duration": "", "out_of_stock_control": None,
-           "has_variations": False, "picture_urls": [], "sku": "",
+           "has_variations": False, "picture_urls": [], "sku": "", "title": "",
            "view_count": None, "watch_count": None,
            "error_kind": None, "error_code": "", "message": ""}
     if not iid:
@@ -906,6 +906,7 @@ def fetch_item_price(item_id) -> dict:
     if item is not None:
         out["listing_type"] = _text(item, "ListingType")
         out["sku"] = _text(item, "SKU")
+        out["title"] = _text(item, "Title")
         out["listing_duration"] = _text(item, "ListingDuration")
         out["view_count"] = _num(_text(item, "HitCount"), int, None)
         out["watch_count"] = _num(_text(item, "WatchCount"), int, 0)

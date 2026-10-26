@@ -12,13 +12,18 @@ Per row with an eBay item id (col Q), a SKU (col AA) and col AT image URLs, what
      new main photo (eBay replaces the whole set), capped at 24.
 
 --dry-run: GetItem only (read-only) + the plan per item; no photo built, uploaded or revised.
---sku / --limit restrict the run (e.g. one listing as a live trial).
+--sku / --item-id / --limit restrict the run (e.g. one listing as a live trial).
+
+Wrong-product guard (2026-10-25: an A-Z-only sort left cols AA:BF on other rows' products, so
+col Q and col AA named different products): a row is skipped when its col AA SKU isn't the
+Costco id in its col R, or when the live eBay title shares no word with the row's title.
 
 Spec: docs/superpowers/specs/2026-10-21-backfill-active-photos.md
 
 Usage:
     python tools/backfill_active_photos.py --dry-run
     python tools/backfill_active_photos.py --sku X4fb2cfc373      # one listing
+    python tools/backfill_active_photos.py --item-id 860077013393   # one listing by eBay id
     python tools/backfill_active_photos.py
 """
 import argparse
@@ -37,6 +42,7 @@ from tools import photo_compositor as pc  # noqa: E402
 from tools import upload_photos as up  # noqa: E402
 from tools.ebay_sync import (MAX_LISTING_PICTURES, extract_item_id, fetch_item_price,  # noqa: E402
                              revise_picture)
+from tools.sale_schedule import costco_product_id  # noqa: E402
 
 
 def _pic_key(url):
@@ -45,7 +51,11 @@ def _pic_key(url):
     return m.group(1) if m else str(url or "").strip()
 
 
-def build_targets(rows, start, cols, sku=None):
+def _words(text):
+    return set(re.findall(r"[a-z0-9]{4,}", str(text or "").lower()))
+
+
+def build_targets(rows, start, cols, sku=None, item_id=None):
     """Jobs (photo_compositor shape) + item_id for every row with an eBay item id in col Q — any
     sheet status (PAUSED_OOS / PAUSED_MARGIN / AUDIT_REVIEW / WATCH listings are live too);
     optionally one SKU. Rows without a col Q item id are not targets. Whether the listing is
@@ -57,9 +67,9 @@ def build_targets(rows, start, cols, sku=None):
     for offset, row in enumerate(rows):
         if not row:
             continue
-        item_id = extract_item_id(pc._cell(row, q))
+        row_item = extract_item_id(pc._cell(row, q))
         row_sku = pc._cell(row, cols["sku"])
-        if not item_id or (sku and row_sku != sku):
+        if not row_item or (sku and row_sku != sku) or (item_id and row_item != str(item_id)):
             continue
         out.append({
             "row":     start + offset,
@@ -67,7 +77,8 @@ def build_targets(rows, start, cols, sku=None):
             "title":   pc._cell(row, cols["title"]),
             "sku":     row_sku,
             "urls":    pc.parse_image_urls(pc._cell(row, cols["image_urls"])),
-            "item_id": item_id,
+            "item_id": row_item,
+            "costco_url": pc._cell(row, cols["costco_url"]) if "costco_url" in cols else "",
         })
     return out
 
@@ -88,6 +99,12 @@ def plan_item(job, live, hosted_url):
         return "skip", f"listing type {live['listing_type'] or 'unknown'} (not FixedPriceItem)", []
     if live["has_variations"]:
         return "skip", "multi-variation listing", []
+    pid = costco_product_id(job.get("costco_url"))
+    if pid and pid != job["sku"]:
+        return "skip", (f"col AA SKU {job['sku']} isn't this row's Costco id {pid} "
+                        "(sheet columns misaligned?) — photo would be another product's"), []
+    if live.get("title") and job.get("title") and not (_words(live["title"]) & _words(job["title"])):
+        return "skip", f"eBay title {live['title'][:50]!r} doesn't match this row", []
     existing = live.get("picture_urls") or []
     if hosted_url and existing and _pic_key(existing[0]) == _pic_key(hosted_url):
         return "skip", "already has the branded main photo", []
@@ -100,6 +117,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Branded main photo onto every live eBay listing")
     ap.add_argument("--dry-run", action="store_true", help="read-only: print the plan per item")
     ap.add_argument("--sku", help="only this SKU (col AA)")
+    ap.add_argument("--item-id", help="only the row whose col Q holds this eBay item id")
     ap.add_argument("--limit", type=int, help="revise at most N listings")
     args = ap.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):
@@ -108,8 +126,9 @@ def main(argv=None):
 
     cols = pc._load_columns()
     cols["ebay_listing_url"] = pc._col_idx(_col_letter("ebay_listing_url"))
+    cols["costco_url"] = pc._col_idx(_col_letter("costco_url"))
     rows, start = pc.read_rows()
-    targets = build_targets(rows, start, cols, sku=args.sku)
+    targets = build_targets(rows, start, cols, sku=args.sku, item_id=args.item_id)
     hosted = up.load_hosted()
 
     tpl = None
