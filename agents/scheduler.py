@@ -1072,6 +1072,17 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
     business   = config["business"]
     categories = config["categories"]
 
+    # ── SKU backfill (col AA) ─────────────────────────────────────────────────
+    # New rows land with a blank SKU, which silently skips them in the photo compositor and
+    # gives the export a ROW<n> CustomLabel. Fill them first. Never blocks the sweep.
+    try:
+        from tools.backfill_skus import backfill_skus
+        n_skus = backfill_skus(service, sheet_name, COL, start=start_row, end=end_row)
+        if n_skus:
+            logger.info(f"  SKU backfill: wrote {n_skus} SKU(s) to col {COL['sku']}")
+    except Exception as e:
+        logger.warning(f"  SKU backfill failed (non-fatal): {e}")
+
     # ── Spot price movement check ─────────────────────────────────────────────
     # Fires an alert if gold/silver moved > threshold since the last daily run.
     # 1.5% on gold = ~$45-60/oz — enough to shift margin by 1-2 points.

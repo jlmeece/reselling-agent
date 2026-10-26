@@ -208,3 +208,26 @@ def test_daily_status_message_none_when_nothing_moved_and_caps_long_lists():
     many = [{"title": f"T{i}", "row": i} for i in range(15)]
     msg = sch.daily_status_message([], [], [], [], many)
     assert "SCORED → PENDING (stale) (15)" in msg and "…and 5 more" in msg
+
+
+# ── SKU backfill runs first and never blocks the sweep (2026-10-25) ─────────────────────
+
+def test_daily_sweep_runs_sku_backfill_first(sweep, monkeypatch):
+    from tools import backfill_skus as bs
+    order = []
+    monkeypatch.setattr(bs, "backfill_skus", lambda *a, **k: order.append("backfill") or 2)
+    monkeypatch.setattr(sch, "check_spot_movement", lambda **k: order.append("spot"))
+    sweep([])
+    assert order[:2] == ["backfill", "spot"]
+
+
+def test_daily_sweep_continues_when_sku_backfill_fails(sweep, monkeypatch):
+    from tools import backfill_skus as bs
+
+    def boom(*a, **k):
+        raise RuntimeError("sheets down")
+    monkeypatch.setattr(bs, "backfill_skus", boom)
+    spot = []
+    monkeypatch.setattr(sch, "check_spot_movement", lambda **k: spot.append(1))
+    sweep([])
+    assert spot == [1]

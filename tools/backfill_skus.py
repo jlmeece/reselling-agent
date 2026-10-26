@@ -65,60 +65,70 @@ def _col_idx(letter):
     return n - 1
 
 
+def plan_assignments(rows, col_map, start=4):
+    """Pure: -> (to_assign [(row_num, sku, source, url)], already). A row with a status and a
+    blank col AA gets its Costco product id from col R (either URL shape), else a generated
+    "X…" id. Rows that already have a SKU are left alone (idempotent)."""
+    status_i = _col_idx(col_map["status"])
+    url_i = _col_idx(col_map["costco_url"])
+    sku_i = _col_idx(col_map["sku"])
+    to_assign, already = [], 0
+    for offset, r in enumerate(rows):
+        status = (r[status_i] if status_i < len(r) else "").strip()
+        if not status:
+            continue  # header / blank row
+        if (r[sku_i] if sku_i < len(r) else "").strip():
+            already += 1
+            continue
+        url = (r[url_i] if url_i < len(r) else "").strip()
+        pid = extract_product_id(url)
+        if pid:
+            to_assign.append((start + offset, pid, "costco-id", url))
+        else:
+            to_assign.append((start + offset, f"X{uuid.uuid4().hex[:10]}", "generated", url))
+    return to_assign, already
+
+
+def backfill_skus(service, sheet_name, col_map=None, *, start=4, end=500, apply=True, verbose=False) -> int:
+    """Fill blank col AA SKUs; -> number of SKUs written (planned, when apply=False).
+    Rows are re-read right before writing and a row whose col R changed since the plan is
+    skipped, so a row shift (auditor delete, bot, another run) can't put a SKU on the wrong row."""
+    from tools.sheet_writer import read_sheet, safe_write_row
+    col_map = col_map or load_col_map()
+    rng = f"'{sheet_name}'!A{start}:AA{end}"
+    to_assign, already = plan_assignments(read_sheet(service, rng), col_map, start)
+    if verbose:
+        print(f"Rows reviewed · already have SKU: {already} · to assign: {len(to_assign)}")
+        for row_num, sku, source, _ in to_assign:
+            print(f"  row {row_num}: {col_map['sku']} = {sku}  ({source})")
+    if not apply or not to_assign:
+        return len(to_assign) if not apply else 0
+    fresh = read_sheet(service, rng)
+    url_i, sku_i = _col_idx(col_map["costco_url"]), _col_idx(col_map["sku"])
+    written = 0
+    for row_num, sku, _, url in to_assign:
+        r = fresh[row_num - start] if row_num - start < len(fresh) else []
+        if (r[url_i] if url_i < len(r) else "").strip() != url or (r[sku_i] if sku_i < len(r) else "").strip():
+            continue   # row moved or got a SKU since the plan
+        safe_write_row(service, sheet_name, row_num, [(col_map["sku"], sku)])
+        written += 1
+    return written
+
+
 def main():
     load_dotenv()
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write SKUs to the sheet (default is dry run)")
     args = ap.parse_args()
 
-    col_map = load_col_map()
-    sheet_name = load_sheet_name()
-    status_col = col_map["status"]        # A
-    url_col = col_map["costco_url"]       # R
-    sku_col = col_map["sku"]              # AA
-
-    from tools.sheet_writer import get_sheets_service, read_sheet, safe_write_row
-    service = get_sheets_service()
-    start = 4
-    rows = read_sheet(service, f"'{sheet_name}'!A{start}:AA500")
-
-    status_i = _col_idx(status_col)
-    url_i = _col_idx(url_col)
-    sku_i = _col_idx(sku_col)
-
-    to_assign = []  # (row_num, sku, source)
-    already = 0
-    for offset, r in enumerate(rows):
-        status = (r[status_i] if status_i < len(r) else "").strip()
-        if not status:
-            continue  # header / blank row
-        existing_sku = (r[sku_i] if sku_i < len(r) else "").strip()
-        if existing_sku:
-            already += 1
-            continue
-        url = (r[url_i] if url_i < len(r) else "").strip()
-        pid = extract_product_id(url)
-        if pid:
-            to_assign.append((start + offset, pid, "costco-id"))
-        else:
-            to_assign.append((start + offset, f"X{uuid.uuid4().hex[:10]}", "generated"))
-
-    print(f"Rows reviewed: {len(rows)} · already have SKU: {already} · to assign: {len(to_assign)}")
-
-    if not to_assign:
+    from tools.sheet_writer import get_sheets_service
+    n = backfill_skus(get_sheets_service(), load_sheet_name(), apply=args.apply, verbose=True)
+    if not n:
         print("Nothing to do.")
-        return
-
-    for row_num, sku, source in to_assign:
-        print(f"  row {row_num}: {sku_col} = {sku}  ({source})")
-
-    if not args.apply:
+    elif not args.apply:
         print("\nDRY RUN — add --apply to write these SKUs to the sheet.")
-        return
-
-    for row_num, sku, _ in to_assign:
-        safe_write_row(service, sheet_name, row_num, [(sku_col, sku)])
-    print(f"\nDone: wrote {len(to_assign)} SKUs.")
+    else:
+        print(f"\nDone: wrote {n} SKUs.")
 
 
 if __name__ == "__main__":
