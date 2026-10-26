@@ -204,10 +204,11 @@ from agents.scheduler import load_col_map  # noqa: E402
 _COL = load_col_map()
 
 
-def _sheet_row(status, ebay_url="", net="0.72", sold="0"):
-    cells = {"status": status, "title": "Grand Leisure City Heights", "category": "Outdoor Furniture",
+def _sheet_row(status, ebay_url="", net="0.72", sold="0", sku="", title="Grand Leisure City Heights",
+               seo_title=""):
+    cells = {"status": status, "title": title, "category": "Outdoor Furniture",
              "net_profit": net, "sold_90d": sold, "ebay_listing_url": ebay_url,
-             "costco_url": "https://www.costco.com/x.product.1.html"}
+             "costco_url": "https://www.costco.com/x.product.1.html", "sku": sku, "seo_title": seo_title}
     row = [""] * 48
     for k, v in cells.items():
         row[auditor._col_to_idx(_COL[k])] = v
@@ -217,8 +218,17 @@ def _sheet_row(status, ebay_url="", net="0.72", sold="0"):
 @pytest.fixture
 def audit(monkeypatch):
     calls = {"flags": [], "graveyard": [], "deletes": [], "telegram": []}
-    state = {"rows": [], "titles_now": None, "meta_fails": False}
+    state = {"rows": [], "titles_now": None, "meta_fails": False,
+             "live": [{"item_id": "860049380044", "title": "Some live eBay title", "sku": "ROW81",
+                       "quantity": 5}],
+             "ebay_error": None}
     monkeypatch.setattr(auditor, "read_sheet", lambda *a, **k: state["rows"])
+    from tools import ebay_sync
+    monkeypatch.setattr(ebay_sync, "fetch_active_listings",
+                        lambda: [] if state["ebay_error"] else list(state["live"]))
+    monkeypatch.setattr(ebay_sync, "get_last_error",
+                        lambda: {"kind": state["ebay_error"], "message": "down"} if state["ebay_error"]
+                        else {"kind": None})
 
     def _title_now(svc, sheet, COL, row):
         if state["titles_now"] is not None:          # simulate rows moved since the read
@@ -248,8 +258,11 @@ def audit(monkeypatch):
     monkeypatch.setattr(auditor, "execute_with_retry",
                         lambda req, *a, **k: req if isinstance(req, dict) else None)
 
-    def run(rows, titles_now=None, meta_fails=False):
+    def run(rows, titles_now=None, meta_fails=False, live=None, ebay_error=None):
         state["rows"], state["titles_now"], state["meta_fails"] = rows, titles_now, meta_fails
+        state["ebay_error"] = ebay_error
+        if live is not None:
+            state["live"] = live
         auditor.run_audit({"business": {}}, _COL, _Svc(), "Product Tracker", 4, 500)
         return calls
     return run
@@ -296,3 +309,49 @@ def test_matching_title_is_deleted_and_counted(audit):
     calls = audit([_sheet_row("PAUSED_MARGIN")])
     assert calls["deletes"] == [4]
     assert "Auto-removed: 1 rows" in calls["telegram"][0] and "Not deleted" not in calls["telegram"][0]
+
+
+# ── live-listing match beyond col Q (2026-10-25: MoDe Quito deleted with a blank col Q) ──
+
+_QUITO_LIVE = [{"item_id": "860077013393", "title": "MoDe Quito 6-Piece Outdoor Patio Deep Seating Set",
+                "sku": "4000423485", "quantity": 99}]
+
+
+def test_blank_col_q_matching_live_title_is_flagged_not_removed(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN", title="MoDe Quito 6-piece outdoor patio deep-seating set")],
+                  live=_QUITO_LIVE)
+    assert calls["deletes"] == [] and calls["graveyard"] == []
+    ((row, w),) = calls["flags"]
+    assert w[_COL["status"]] == "AUDIT_REVIEW"
+    assert "eBay listing is LIVE (matched by title)" in w[_COL["tier_summary"]]
+
+
+def test_blank_col_q_matching_live_ebay_title_in_col_ai_is_protected(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN", title="Costco name differs",
+                              seo_title="MoDe Quito 6-Piece Outdoor Patio Deep Seating Set")], live=_QUITO_LIVE)
+    assert calls["deletes"] == [] and len(calls["flags"]) == 1
+
+
+def test_blank_col_q_matching_live_sku_is_not_removed(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN", sku="4000423485", title="Unrelated title")], live=_QUITO_LIVE)
+    assert calls["deletes"] == [] and calls["graveyard"] == []
+    assert "matched by SKU 4000423485" in calls["flags"][0][1][_COL["tier_summary"]]
+
+
+def test_ebay_unreachable_removes_nothing_and_says_so(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN"), _sheet_row("PAUSED_MARGIN", title="Other")],
+                  ebay_error="network")
+    assert calls["deletes"] == [] and calls["graveyard"] == [] and calls["flags"] == []
+    (msg,) = calls["telegram"]
+    assert "Auto-removed: 0 rows" in msg
+    assert "Skipped 2 — eBay unreachable, cannot confirm live status" in msg
+
+
+def test_no_live_match_anywhere_is_still_removed(audit):
+    calls = audit([_sheet_row("PAUSED_MARGIN", sku="4000000001", title="Nothing Like It",
+                              ebay_url="https://www.ebay.com/itm/999999999999")], live=_QUITO_LIVE)
+    assert calls["deletes"] == [4] and len(calls["graveyard"]) == 1 and calls["flags"] == []
+
+
+def test_norm_title_ignores_case_punctuation_and_spacing():
+    assert auditor._norm_title("MoDe  Quito 6-Piece, Set!") == auditor._norm_title("mode quito 6 piece set")

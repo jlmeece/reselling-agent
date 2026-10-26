@@ -15,6 +15,7 @@ Reviews all non-protected rows and:
 import html
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -102,11 +103,46 @@ def _days_since(timestamp_str: str) -> int:
     return _DAYS_UNKNOWN
 
 
-def _live_listing(url) -> bool:
-    """Col Q holds a URL with a parseable eBay item id (ebay_sync.is_live_listing, the active
-    monitor's own test; no status — a row the auditor would delete is never ENDED-protected)."""
-    from tools.ebay_sync import is_live_listing
-    return is_live_listing(url)
+def _norm_title(title) -> str:
+    """Case-insensitive, punctuation-blind title key: 'MoDe Quito 6-Piece' == 'mode quito 6 piece'."""
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).split())
+
+
+def _live_index():
+    """(item_ids, normalized titles, skus) of every listing on eBay's ActiveList — fetched ONCE
+    per audit — or None when eBay can't be reached (the caller then deletes nothing). Hidden
+    (quantity 0) listings count too: a deleted row orphans them just the same."""
+    from tools.ebay_sync import fetch_active_listings, get_last_error
+    try:
+        listings = fetch_active_listings()
+    except Exception as e:            # contract says never raises — belt and braces
+        logger.error(f"Audit: eBay ActiveList fetch raised: {e}")
+        return None
+    if not listings and (get_last_error() or {}).get("kind"):
+        logger.error(f"Audit: eBay unreachable ({get_last_error().get('message')}) — "
+                     "no row will be auto-removed this run")
+        return None
+    ids = {str(l["item_id"]) for l in listings if l.get("item_id")}
+    titles = {_norm_title(l.get("title")) for l in listings} - {""}
+    skus = {str(l.get("sku") or "").strip() for l in listings} - {""}
+    return ids, titles, skus
+
+
+def _live_match(index, ebay_url, sku, titles) -> str | None:
+    """Why this row's listing is live on eBay ('item N' / 'SKU X' / 'title'), else None.
+    Col Q alone is not enough: a row with a blank col Q but a live listing (MoDe Quito, 10/25)
+    must be protected too, so the row's SKU (col AA) and its titles (col C, and the eBay title
+    in col AI) are matched against the live listings as well."""
+    from tools.ebay_sync import extract_item_id
+    ids, live_titles, skus = index
+    item_id = extract_item_id(ebay_url)
+    if item_id and item_id in ids:
+        return f"item {item_id}"
+    if str(sku or "").strip() and str(sku).strip() in skus:
+        return f"SKU {str(sku).strip()}"
+    if any(_norm_title(t) and _norm_title(t) in live_titles for t in titles):
+        return "title"
+    return None
 
 
 def _current_title(service, sheet_name, COL, sheet_row) -> str | None:
@@ -180,14 +216,20 @@ def _fmt_line(product_dict: dict, reason: str) -> str:
 
 
 def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=True,
-                         not_deleted=()):
+                         not_deleted=(), live_unknown=()):
     """Pure string-builder for the audit Telegram message — no I/O, easy to unit test.
     not_deleted: [(sheet_row, product_dict, why)] removals that were NOT carried out (row moved
-    since the read, or the sheet lookup failed) — listed so a skipped delete is never silent."""
+    since the read, or the sheet lookup failed) — listed so a skipped delete is never silent.
+    live_unknown: [(sheet_row, product_dict, reason)] removal candidates skipped because eBay
+    couldn't be reached to confirm they have no live listing."""
     lines = [
         f"🧹 <b>Audit Complete — {run_date}</b>",
         f"Auto-removed: {len(to_remove) - len(not_deleted)} rows",
     ]
+    if live_unknown:
+        lines.append(f"⚠️ Skipped {len(live_unknown)} — eBay unreachable, cannot confirm live status "
+                     "(nothing deleted; retried next audit):")
+        lines += [_fmt_line(p, r) for _, p, r in list(live_unknown)[:8]]
     if not_deleted:
         lines.append(f"⚠️ Not deleted ({len(not_deleted)}) — already in the Graveyard tab, "
                      "check the sheet:")
@@ -231,9 +273,11 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
 
     all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AV{end_row}")
     logger.info(f"Audit: read {len(all_data)} rows from sheet.")
+    live = _live_index()        # None = eBay unreachable -> nothing is deleted this run
 
     to_remove     = []   # (sheet_row, product_dict, reason_str)
     to_flag       = []   # (sheet_row, product_dict, reason_str)
+    live_unknown  = []   # (sheet_row, product_dict, reason_str) — would remove, live status unknown
     rows_reviewed = 0
 
     for idx, row in enumerate(all_data):
@@ -291,12 +335,21 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         # ── Auto-remove rules ─────────────────────────────────────────────────
         remove_reason = _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes)
 
-        if remove_reason and _live_listing(_safe(row, _col_to_idx(COL["ebay_listing_url"]))):
+        if remove_reason and live is None:
+            # Never delete when live status is unknown: the row may own a live listing.
+            logger.warning(f"  Row {sheet_row} NOT removed, eBay unreachable: {title[:50]}")
+            live_unknown.append((sheet_row, product_dict, remove_reason))
+            continue
+
+        live_why = remove_reason and _live_match(
+            live, _safe(row, _col_to_idx(COL["ebay_listing_url"])), sku,
+            (title, _safe(row, _col_to_idx(COL["seo_title"]))))
+        if live_why:
             # Deleting the row would orphan a listing that still sells: nothing would
             # stock-check or hide it again. AUDIT_REVIEW is protected and stock-checked.
-            flag_reason = (f"Would auto-remove ({remove_reason}) but its eBay listing is LIVE — "
-                           "end or hide it on eBay, then delete the row")
-            logger.warning(f"  Row {sheet_row} NOT removed, live eBay listing: {title[:50]}")
+            flag_reason = (f"Would auto-remove ({remove_reason}) but its eBay listing is LIVE "
+                           f"(matched by {live_why}) — end or hide it on eBay, then delete the row")
+            logger.warning(f"  Row {sheet_row} NOT removed, live eBay listing ({live_why}): {title[:50]}")
             to_flag.append((sheet_row, product_dict, flag_reason))
             continue
 
@@ -468,10 +521,12 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
 
     # ── Telegram ──────────────────────────────────────────────────────────────
     tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health,
-                                   include_health=True, not_deleted=not_deleted)
+                                   include_health=True, not_deleted=not_deleted,
+                                   live_unknown=live_unknown)
     if len(tg_text) > 4096:
         tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health,
-                                       include_health=False, not_deleted=not_deleted)
+                                       include_health=False, not_deleted=not_deleted,
+                                       live_unknown=live_unknown)
     if len(tg_text) > 4096:
         tg_text = tg_text[:4096 - 15] + "\n[truncated]"
     _send_telegram(tg_text)

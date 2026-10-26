@@ -187,6 +187,7 @@ def _build_request_xml(token: str, page: int) -> str:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "ActiveList.ItemArray.Item.ItemID",
         "ActiveList.ItemArray.Item.Title",
+        "ActiveList.ItemArray.Item.SKU",      # _parse_listing reads it; the auditor matches on it
         "ActiveList.ItemArray.Item.Quantity",
         "ActiveList.ItemArray.Item.SellingStatus",
         "ActiveList.ItemArray.Item.WatchCount",
