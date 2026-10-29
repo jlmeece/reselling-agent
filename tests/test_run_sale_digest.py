@@ -117,16 +117,18 @@ def refresh(monkeypatch):
     return run, calls
 
 
-def test_refresh_heals_bogus_badge_and_writes_only_g_x_aw(refresh):
+def test_refresh_heals_bogus_badge_and_writes_only_g_x_aw_and_last_checked(refresh):
     run, calls = refresh
     bogus = _sale_row(status="SCORED", costco_cost="14.99", regular_price="", sale_info="🔥 -$100 ends 9/30/26")
     res = run([bogus], {"price": 12.99, "stock_status": "In Stock", "on_sale": True, "original_price": 14.99,
                         "sale_savings": 2.0, "sale_expires": "9/30/26", "coupon_type": "MFR",
                         "coupon_label": "Manufacturer Coupon"})
     (row, w), = calls["writes"]
-    assert row == 4 and set(w) == {COL["costco_cost"], COL["sale_info"], COL["regular_price"]}
+    assert row == 4 and set(w) == {COL["costco_cost"], COL["sale_info"], COL["regular_price"],
+                                COL["last_checked"]}
     assert w[COL["costco_cost"]] == 12.99 and w[COL["regular_price"]] == 14.99
     assert w[COL["sale_info"]] == "🔥 -$2 ends 9/30/26"
+    assert w[COL["last_checked"]] == "2026-09-24 12:00"                      # clears the stale flag
     assert len(calls["sales"]) == 1 and calls["sales"][0][1]["coupon_type"] == "MFR"
     assert "1 on sale" in res["notes"]
 
@@ -136,7 +138,8 @@ def test_refresh_clears_a_false_positive_badge(refresh):
     res = run([_sale_row(status="READY", costco_cost="199.99", regular_price="", sale_info="🔥 -$60")],
               {"price": 199.99, "stock_status": "In Stock", "on_sale": False})
     (_r, w), = calls["writes"]
-    assert w == {COL["costco_cost"]: 199.99, COL["sale_info"]: "", COL["regular_price"]: ""}
+    assert w == {COL["costco_cost"]: 199.99, COL["sale_info"]: "", COL["regular_price"]: "",
+                 COL["last_checked"]: "2026-09-24 12:00"}
     assert calls["sales"] == [] and "1 badges cleared" in res["notes"]
 
 
@@ -158,6 +161,9 @@ def test_refresh_respects_limit_and_statuses_and_skips_failed_scrapes(refresh):
     run(rows, {"price": None, "stock_status": "CHECK FAILED", "on_sale": False}, limit=3)
     assert len(calls["scraped"]) == 3 and calls["writes"] == []             # failures never write
     calls["scraped"].clear()
+    run(rows, {"price": None, "stock_status": "In Stock", "on_sale": False}, limit=2)
+    assert len(calls["scraped"]) == 2 and calls["writes"] == []             # no price: no last_checked
+    calls["scraped"].clear()
     run(rows, {"price": 5.0, "on_sale": False}, limit=12, statuses={"SCORED"})
     assert calls["scraped"] == []                                            # WATCH not in the statuses
 
@@ -169,7 +175,8 @@ def test_refresh_blank_too_backfills_never_scraped_rows(refresh):
                       "original_price": 39.99, "sale_savings": 8.0,
                       "sale_expires": "10/18/26"}, blank_too=True)
     (r, w), = calls["writes"]
-    assert r == 4 and set(w) == {COL["costco_cost"], COL["sale_info"], COL["regular_price"]}
+    assert r == 4 and set(w) == {COL["costco_cost"], COL["sale_info"], COL["regular_price"],
+                                COL["last_checked"]}
     assert w[COL["sale_info"]] == "🔥 -$8 ends 10/18/26"
     assert w[COL["regular_price"]] == 39.99
     assert "1 on sale" in res["notes"]

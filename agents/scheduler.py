@@ -2084,9 +2084,11 @@ def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
     Candidates: status in `statuses`, Costco URL, and EITHER a badge that isn't verified
     (tools.sale_monitor.badge_verified) OR — when blank_too=True — a blank badge, so rows never
     scraped get their real sale end date backfilled too. Re-scrapes up to `limit` (0 = no cap)
-    and writes ONLY cols G / X / AW (no status change, no last_checked — that would defer
-    SCORED->PENDING staleness, no alerts). Verified badges stop being candidates, so repeated
-    runs converge. Needs Chrome (local only).
+    and writes ONLY cols G / X / AW + last_checked (no status change, no alerts). last_checked
+    is written because a fresh price should clear the "Last checked Xh ago" stale flag; the
+    7-day re-research backstop is separate and still works. A failed / no-price scrape writes
+    nothing. Verified badges stop being candidates, so repeated runs converge. Needs Chrome
+    (local only).
     """
     statuses = SALE_REFRESH_STATUSES if statuses is None else statuses
     all_data = read_sheet(service, f"'{sheet_name}'!A{start_row}:AW{end_row}")
@@ -2131,6 +2133,8 @@ def run_sale_refresh(config, COL, service, sheet_name, start_row, end_row,
                 continue
             updates = [(COL["costco_cost"], data["price"])] + sale_column_updates(
                 COL, data, True, bool(safe_get(row, col_to_idx(COL["regular_price"]))))
+            # appended last: log_sale below reads the badge from updates[1][1]
+            updates.append((COL["last_checked"], datetime.now().strftime("%Y-%m-%d %H:%M")))
             write_row_partial(service, sheet_name, sheet_row, updates)
             if data.get("on_sale"):
                 still_on += 1
