@@ -148,6 +148,7 @@ def scored(run, monkeypatch):
             "sale_savings": 10.0 if on_sale else None, "image_urls": []})
         calls = run(only_rows=[5], notify=False)
         seen["net"] = round(sugg * (1 - seen["fee"]) - 100.0, 2)
+        seen["real_net"] = R.compute_net(sugg, 100.0, seen["fee"])   # col I formula
         return _research_write(calls, 5), seen
     return go
 
@@ -161,15 +162,25 @@ def test_margin_score_takes_the_better_of_dollar_and_percent(scored):
 
 
 def test_on_sale_in_stock_profitable_item_is_fast_tracked_to_scored(scored):
-    w, seen = scored()
-    assert seen["net"] >= R.SALE_FASTTRACK_MIN_NET
+    w, seen = scored(sugg=150.0)                          # real net ~$20 (simplified ~$30)
+    assert seen["real_net"] >= R.SALE_FASTTRACK_MIN_NET
     assert w[COL["status"]] == "SCORED"
-    assert "Sale fast-track: on sale" in w[COL["full_notes"]]
+    assert (f"Sale fast-track: on sale, net ${seen['real_net']:.2f}/unit"
+            in w[COL["full_notes"]])
+
+
+def test_fast_track_gates_on_real_net_not_simplified(scored):
+    # $125 on a $100 item: simplified net ~$8 clears $2, but Costco tax + $0.30 +
+    # buyer-tax FVF make the real (col I) net negative
+    w, seen = scored(sugg=125.0)
+    assert seen["net"] >= R.SALE_FASTTRACK_MIN_NET
+    assert seen["real_net"] < R.SALE_FASTTRACK_MIN_NET
+    assert w[COL["status"]] == "PAUSED_DEMAND"
 
 
 def test_fast_track_needs_net_at_floor_on_sale_and_in_stock(scored):
-    w, seen = scored(sugg=117.0)                          # net ~$1.50
-    assert 0 < seen["net"] < R.SALE_FASTTRACK_MIN_NET
+    w, seen = scored(sugg=117.0)                          # simplified net ~$1.50
+    assert seen["real_net"] < R.SALE_FASTTRACK_MIN_NET
     assert w[COL["status"]] == "PAUSED_DEMAND"
     assert scored(stock="OUT OF STOCK")[0].get(COL["status"]) != "SCORED"
     assert scored(on_sale=False)[0][COL["status"]] == "PAUSED_DEMAND"

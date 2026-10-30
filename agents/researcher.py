@@ -59,6 +59,7 @@ from tools.sale_priority import sale_end_sort_key
 from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
 from tools.ebay_research import get_ebay_comps
+from tools.ebay_sync import compute_net
 from tools.community_signals import get_community_signals
 from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_alert
@@ -1075,11 +1076,22 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     tier = 2
 
             # Sale fast-track: a live profitable sale is listable regardless of composite
-            # score. The score is still written and shown; it ranks, not gates.
-            if (tier != 1 and on_sale and net_profit_val is not None
-                    and net_profit_val >= SALE_FASTTRACK_MIN_NET
+            # score. The score is still written and shown; it ranks, not gates. Gated on the
+            # FULL net (compute_net = col I formula), not the simplified net_profit_val, so
+            # Costco tax + $0.30 + buyer-tax FVF aren't ignored (a $2 simplified net on a
+            # $100 item is really about -$8).
+            real_net = None
+            if suggested_price and costco_cost:
+                try:
+                    real_net = compute_net(float(suggested_price),
+                                           float(str(costco_cost).replace("$", "").replace(",", "")),
+                                           fee_rate)
+                except (TypeError, ValueError):
+                    real_net = None
+            if (tier != 1 and on_sale and real_net is not None
+                    and real_net >= SALE_FASTTRACK_MIN_NET
                     and stock_status not in ("OUT OF STOCK", "WAREHOUSE ONLY", "CHECK FAILED")):
-                _gate_note += (f"\nSale fast-track: on sale, net ${net_profit_val:.2f}/unit → SCORED.")
+                _gate_note += (f"\nSale fast-track: on sale, net ${real_net:.2f}/unit → SCORED.")
                 tier = 1
 
             tier_summary_line = (
