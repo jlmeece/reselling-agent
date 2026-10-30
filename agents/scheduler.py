@@ -1961,6 +1961,20 @@ def _load_export_state() -> dict:
         return {}
 
 
+def _count_eps_main_photos(csv_text: str) -> int:
+    """Rows of an export CSV whose first PicURL is eBay-hosted (= the branded main photo)."""
+    import csv
+    import io
+    count, pic = 0, None
+    for rec in csv.reader(io.StringIO(csv_text)):
+        if pic is None:
+            pic = next((i for i, c in enumerate(rec) if c.split("=")[0].strip() == "PicURL"), None)
+            continue
+        if len(rec) > pic and rec[pic].startswith("https://i.ebayimg.com/"):
+            count += 1
+    return count
+
+
 def _save_export_state(state: dict) -> None:
     tmp = EXPORT_STATE_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -2005,6 +2019,7 @@ def run_export(config, COL, service, sheet_name, start_row, end_row, dry_run=Fal
         logger.exception("export: photo step failed — continuing")
 
     # 2. Upload
+    us, gs = {}, {}
     try:
         us = upload_photos.run(dry_run=dry_run)
         n_up = us["planned"] if dry_run else us["uploaded"]
@@ -2027,6 +2042,25 @@ def run_export(config, COL, service, sheet_name, start_row, end_row, dry_run=Fal
         errors.append(f"gallery step crashed: {e}")
         logger.exception("export: gallery step failed — continuing")
 
+    # 2c. Photo hosting stopped on the eBay token / scope: say so plainly (once per 24h per
+    # distinct message), whether or not a new CSV goes out below.
+    auth_msg = us.get("auth_error") or gs.get("auth_error") or ""
+    if auth_msg and not dry_run:
+        notes.append("photo hosting stopped — eBay token/scope")
+        state = _load_export_state()
+        last = state.get("photo_auth_alert") or {}
+        try:
+            due = (last.get("msg") != auth_msg
+                   or datetime.now() - datetime.fromisoformat(last.get("at", "")) > timedelta(hours=24))
+        except (TypeError, ValueError):
+            due = True
+        token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if due and token and chat_id and _send_telegram(
+                token, chat_id, f"🔑 <b>eBay photo upload stopped</b>\n{html.escape(auth_msg[:600])}\n"
+                                "Listings export with the Costco photos (no branded main) until this is fixed."):
+            _save_export_state({**state, "photo_auth_alert": {
+                "msg": auth_msg, "at": datetime.now().isoformat(timespec="seconds")}})
+
     # 3. CSV
     eligible = ebay_export.select_eligible(rows, start_row)
     result = {"status": "ok"}
@@ -2045,21 +2079,22 @@ def run_export(config, COL, service, sheet_name, start_row, end_row, dry_run=Fal
             notes.append(f"{n} listing(s) unchanged since {state.get('file', 'last export')} — not re-sent")
         else:
             path = ebay_export.write_csv(csv_text)
-            hosted = upload_photos.load_hosted()
-            branded = sum(1 for _r, row in eligible
-                          if upload_photos.hosted_url_for(
-                              ebay_export._photo_key(ebay_export._safe(row, ebay_export._COL["sku"])), hosted))
+            # counted from the CSV itself: export lists the Costco shots instead of a lone
+            # branded photo when the gallery isn't hosted, so "hosted" != "used"
+            branded = _count_eps_main_photos(csv_text)
             notes.append(f"exported {n} listing(s) -> {path.name} ({branded} with branded photo)")
             caption = (f"📦 Export ready — {n} listing(s). CSV: {html.escape(path.name)}. "
-                       f"Upload to Seller Hub.\nBranded main photo: {branded}/{len(eligible)}")
+                       f"Upload to Seller Hub.\nBranded main photo: {branded}/{n}")
+            if auth_msg:
+                caption += "\n🔑 Photo upload stopped — eBay OAuth token needs the sell.inventory scope (see the alert)"
             if errors:
                 caption += f"\n⚠️ {len(errors)} photo/upload problem(s) — see Run Log"
             token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
             sent = bool(token and chat_id) and (_send_telegram_document(token, chat_id, path, caption)
                                                 or _send_telegram(token, chat_id, caption))
             if sent:
-                _save_export_state({"sha256": digest, "file": path.name, "rows": n,
-                                    "at": datetime.now().isoformat(timespec="seconds")})
+                _save_export_state({**_load_export_state(), "sha256": digest, "file": path.name,
+                                    "rows": n, "at": datetime.now().isoformat(timespec="seconds")})
             else:
                 result["status"] = "error"
                 errors.append("export alert not delivered: Telegram not configured or send failed")

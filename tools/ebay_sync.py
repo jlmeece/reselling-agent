@@ -1021,13 +1021,15 @@ MARGIN_COLS = ("buy_cost", "costco_cost", "fee_rate", "ship_cost", "ad_cost", "s
 # sheet-driven reprice inputs (col BD target_price, col BE manual_cost)
 TARGET_COLS = ("target_price", "manual_cost")
 _IDENTITY_COLS = ("status", "title", "platform", "ebay_price", "ebay_listing_url", "units_sold")
+# auto_link_orphans: col AA SKU (= the export's CustomLabel) + col AI eBay title
+LINK_COLS = ("sku", "seo_title")
 READ_LAST_COL = "BE"     # load_sheet_rows / _read_row range end — keep >= every column read here
 
 
 def _row_index(COL) -> dict:
     """{field: 0-based index} for every column load_sheet_rows reads (tolerant of an older col_map)."""
     idx = {k: _col_idx(COL[k]) for k in _IDENTITY_COLS}
-    idx.update({k: _col_idx(COL[k]) for k in MARGIN_COLS + TARGET_COLS if k in COL})
+    idx.update({k: _col_idx(COL[k]) for k in MARGIN_COLS + TARGET_COLS + LINK_COLS if k in COL})
     return idx
 
 
@@ -1336,6 +1338,144 @@ def _write_units_sold(service, sheet_name, units_col, entries, report, title_rea
                 {"row_num": entry["row_num"], "title": entry["title"], "error": str(e)[:150]})
 
 
+# ── Orphan auto-link (col Q backfill) ─────────────────────────────────────────
+# Jay uploads the export CSV to Seller Hub himself, so col Q is only filled when someone runs
+# import_ebay_results.py on the results file — a step that keeps getting skipped. An orphan
+# (live listing no col Q points at) that matches exactly one blank-col-Q row is linked here.
+
+# Statuses an auto-link moves to ACTIVE. Anything else (AUDIT_REVIEW, PAUSED_*, ENDED) was set
+# on purpose, so it only gets col Q — the monitor covers a live listing whatever its status.
+AUTO_LINK_TO_ACTIVE = {"", "PENDING", "SCORED", "WATCH", "APPROVED", "READY", "LISTED", "ACTIVE"}
+
+
+def _plan_auto_links(report, sheet_rows, sku_lookup=None) -> list[dict]:
+    """
+    Unambiguous orphan -> row links, never writes. Returns [{row_num, title, item_id,
+    listing_title, how: "sku"|"title", status}].
+
+    1. SKU: the listing's SKU (ActiveList, else sku_lookup(item_id) — GetItem) equals col AA
+       of exactly ONE sheet row, that row's col Q is blank, and no other orphan has that SKU.
+    2. Exact title: _suggest_links "exact" against col C, then col AI, over the remaining
+       blank-col-Q rows. "close" (Jaccard) matches are never linked, only suggested. A title
+       match whose row SKU and listing SKU are both filled and differ is skipped.
+    """
+    orphans = report.get("on_ebay_not_in_sheet") or []
+    blank = [r for r in sheet_rows if not str(r.get("ebay_listing_url") or "").strip()]
+    if not orphans or not blank:
+        return []
+
+    def _sku(x):
+        return str(x.get("sku") or "").strip()
+
+    if sku_lookup is not None:
+        for o in orphans:
+            if not _sku(o):
+                try:
+                    o["sku"] = str(sku_lookup(o["item_id"]) or "").strip()
+                except Exception as e:     # a lookup failure just means no SKU match
+                    logger.warning(f"ebay_sync: SKU lookup for {o['item_id']} failed: {e}")
+
+    links, used_rows, used_items = [], set(), set()
+
+    def _add(row, listing, how):
+        links.append({"row_num": row["row_num"], "title": row.get("title", ""),
+                      "item_id": listing["item_id"], "listing_title": listing.get("title", ""),
+                      "how": how, "status": str(row.get("status", "")).strip().upper()})
+        used_rows.add(row["row_num"])
+        used_items.add(listing["item_id"])
+
+    rows_by_sku, orphans_by_sku = {}, {}
+    for r in sheet_rows:
+        if _sku(r):
+            rows_by_sku.setdefault(_sku(r), []).append(r)
+    for o in orphans:
+        if _sku(o):
+            orphans_by_sku.setdefault(_sku(o), []).append(o)
+    for sku, os_ in orphans_by_sku.items():
+        rows = rows_by_sku.get(sku, [])
+        if len(os_) == 1 and len(rows) == 1 and not str(rows[0].get("ebay_listing_url") or "").strip():
+            _add(rows[0], os_[0], "sku")
+
+    by_row = {r["row_num"]: r for r in blank}
+    for field in ("title", "seo_title"):
+        pool = [o for o in orphans if o["item_id"] not in used_items]
+        entries = [{"row_num": r["row_num"], "title": r.get(field, "")}
+                   for r in blank if r["row_num"] not in used_rows]
+        for row_num, (listing, kind) in _suggest_links(entries, pool).items():
+            if kind != "exact" or listing["item_id"] in used_items or row_num in used_rows:
+                continue
+            row = by_row[row_num]
+            if _sku(row) and _sku(listing) and _sku(row) != _sku(listing):
+                continue                       # same title, different product id — don't guess
+            _add(row, listing, "title")
+    return links
+
+
+def auto_link_orphans(report, sheet_rows, service, COL, sheet_name, *, dry_run=False,
+                      enabled=True, sku_lookup=None) -> list[dict]:
+    """
+    Write col Q (https://www.ebay.com/itm/<id>) for every _plan_auto_links match; status ->
+    ACTIVE when it is in AUTO_LINK_TO_ACTIVE, col E -> "eBay" when blank. Each row is re-read
+    right before its write: a changed title ("row moved") or a col Q filled since the read is
+    skipped — col Q is never overwritten. dry_run writes nothing.
+
+    Linked (and dry-run) listings leave report["on_ebay_not_in_sheet"]; their rows leave
+    report["active_not_on_ebay"]. report["auto_linked"] = the results, each with outcome
+    linked / dry_run / skipped / failed (+ error).
+    """
+    if not enabled:
+        report["auto_linked"] = []
+        return []
+    if sku_lookup is None:
+        sku_lookup = lambda iid: fetch_item_price(iid).get("sku")   # GetItem; "" on failure
+    results = _plan_auto_links(report, sheet_rows, sku_lookup=sku_lookup)
+    first = True
+    for r in results:
+        r["to_active"] = r["status"] in AUTO_LINK_TO_ACTIVE and r["status"] != "ACTIVE"
+        if dry_run:
+            r["outcome"] = "dry_run"
+            continue
+        if not first:
+            _sleep(WRITE_DELAY)
+        first = False
+        try:
+            fresh = _read_row(service, COL, sheet_name, r["row_num"])
+        except Exception as e:
+            r.update(outcome="failed", error=f"re-read failed: {e}"[:150])
+            continue
+        if fresh is None or fresh.get("title", "") != r["title"]:
+            r.update(outcome="skipped", error="row moved")
+            continue
+        if str(fresh.get("ebay_listing_url") or "").strip():
+            r.update(outcome="skipped", error="col Q filled since the read")
+            continue
+        cols = [(COL["ebay_listing_url"], f"https://www.ebay.com/itm/{r['item_id']}")]
+        if r["to_active"]:
+            cols.append((COL["status"], "ACTIVE"))
+        if not str(fresh.get("platform") or "").strip() and "platform" in COL:
+            cols.append((COL["platform"], "eBay"))
+        try:
+            safe_write_row(service, sheet_name, r["row_num"], cols)
+            r["outcome"] = "linked"
+            logger.info(f"ebay_sync: auto-linked eBay {r['item_id']} -> row {r['row_num']} "
+                        f"(by {r['how']})" + (f", {r['status'] or 'blank'} -> ACTIVE" if r["to_active"] else ""))
+        except Exception as e:
+            r.update(outcome="failed", error=str(e)[:150])
+            logger.error(f"ebay_sync: auto-link write failed for row {r['row_num']}: {e}")
+            report["write_errors"].append({"row_num": r["row_num"], "title": r["title"],
+                                           "error": f"auto-link: {str(e)[:120]}"})
+
+    done = [r for r in results if r["outcome"] in ("linked", "dry_run")]
+    done_items = {r["item_id"] for r in done}
+    done_rows = {r["row_num"] for r in done}
+    report["on_ebay_not_in_sheet"] = [o for o in report.get("on_ebay_not_in_sheet", [])
+                                      if o["item_id"] not in done_items]
+    report["active_not_on_ebay"] = [g for g in report.get("active_not_on_ebay", [])
+                                    if g["row_num"] not in done_rows]
+    report["auto_linked"] = results
+    return results
+
+
 def summarize(report: dict) -> str:
     """One-line summary for the Run Log notes column."""
     hard = sum(1 for m in report["margin_breach"] if m["severity"] == "hard")
@@ -1356,6 +1496,9 @@ def summarize(report: dict) -> str:
             s += f", auto_{outcome} {n}"
     if report["margin_unchecked"]:
         s += f", margin_unchecked {len(report['margin_unchecked'])}"
+    n_auto = sum(1 for r in report.get("auto_linked") or [] if r["outcome"] in ("linked", "dry_run"))
+    if n_auto:
+        s += f", auto_linked {n_auto}"
     n_links = sum(1 for g in report["active_not_on_ebay"] if g.get("suggested_item_id"))
     if n_links:
         s += f", link_suggestions {n_links}"
@@ -1400,9 +1543,23 @@ def alert_message(report: dict) -> str | None:
     # A live listing with no cost / fee can't be margin-checked: it could sell at a loss
     # unseen (Grand Leisure rows 95/96, 10/21). Hidden at quantity 0 = can't sell, no alert.
     unchecked = [u for u in report.get("margin_unchecked", []) if u.get("can_sell", True)]
-    if not losing and not floor and not gone and not orphans and not unchecked:
+    linked = report.get("auto_linked") or []
+    if not losing and not floor and not gone and not orphans and not unchecked and not linked:
         return None
     msg = ["🛒 <b>eBay sync</b>" + (" (dry run)" if report.get("dry_run") else "")]
+    if linked:
+        # col Q backfilled for listings Jay created from the export CSV in Seller Hub
+        def _lline(r):
+            how = "SKU" if r["how"] == "sku" else "exact title"
+            if r["outcome"] in ("linked", "dry_run"):
+                verb = "would link" if r["outcome"] == "dry_run" else "linked"
+                st = f", {html.escape(r['status'] or 'blank')} → ACTIVE" if r.get("to_active") else ""
+                tail = f"{verb} to row {r['row_num']} by {how}{st}"
+            else:
+                tail = (f"NOT linked to row {r['row_num']} ({html.escape(r.get('error') or r['outcome'])})")
+            return f"• {html.escape(_truncate(r['listing_title'] or r['title']))} — eBay {r['item_id']} {tail}"
+        msg += _section(f"\n🔗 <b>Auto-linked to the sheet — col Q filled ({len(linked)})</b>",
+                        [_lline(r) for r in linked])
     if losing:
         def _line(m):
             be = f", break-even ${m['break_even']:.2f}" if m.get("break_even") else ""
@@ -2324,6 +2481,13 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         floor_margin_pct=float(auto_cfg.get("floor_margin_pct", FLOOR_MARGIN_PCT)),
         external_titles=auto_cfg.get("external_titles", []),
     )
+    # Col Q backfill: link orphans that match exactly one blank-col-Q row (SKU / exact title).
+    # The linked rows join the full matched pass (col U, margins, mirror) on the next run.
+    try:
+        auto_link_orphans(report, rows, service, COL, sheet_name, dry_run=dry_run,
+                          enabled=bool(auto_cfg.get("auto_link_orphans", True)))
+    except Exception as e:  # never let the auto-link break the sync
+        logger.exception(f"ebay_sync: orphan auto-link failed: {e}")
     # Auto-reprice hard breaches BEFORE building the alert (repriced ones leave "Losing money").
     auto_summary = None
     auto_results = []

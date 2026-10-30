@@ -1,19 +1,28 @@
 """
 upload_photos.py — Host the branded listing photos (tools/photo_compositor.py) on eBay.
 
-For every data/listing_photos/<sku>.jpg, uploads the JPEG with the Trading API's
-UploadSiteHostedPictures (eBay Picture Services, JPEG sent as a multipart binary
-attachment) and records the hosted URL in
-data/hosted_photos.json:
+For every data/listing_photos/<sku>.jpg, uploads the JPEG to eBay Picture Services with the
+Media API's createImageFromFile (multipart form-data, field "image") and records the hosted
+URL in data/hosted_photos.json:
 
-    {"<sku>": {"url": "https://i.ebayimg.com/...", "sha256": "...", "uploaded_at": "ISO"}}
+    {"<sku>": {"url": "https://i.ebayimg.com/...", "sha256": "...", "uploaded_at": "ISO",
+               "expires_at": "ISO" (eBay's expirationDate), "gallery": [...]}}
+
+The Trading API's UploadSiteHostedPictures is RETIRED: since late Oct 2026 it answers HTTP 404
+"Resource not found" (eBay scheduled it for 2026-09-30; last success here 2026-10-21). The
+Media API needs an OAuth USER token with the sell.inventory scope — minted from
+EBAY_OAUTH_REFRESH_TOKEN (tools/ebay_analytics) and cached in data/.ebay_media_token.json.
+A refresh token consented without sell.inventory fails with invalid_scope (live 2026-10-30):
+redo the consent with that scope ticked (RECONSENT_HINT).
 
 tools/ebay_export.py reads that map and puts the hosted URL FIRST in PicURL (the main
-image), followed by the raw Costco shots from col AT.
+image), followed by the EPS-hosted gallery shots.
 
-A photo is skipped when its sha256 matches the stored one (unchanged since upload) and
-the upload is younger than REUPLOAD_AFTER_DAYS — eBay purges hosted pictures that never
-get attached to a listing, so an old URL for a not-yet-listed photo may be dead.
+A photo is skipped when its sha256 matches the stored one (unchanged since upload) and it
+is not near expiry: EXPIRY_MARGIN_DAYS before eBay's expirationDate, or, for older entries
+with no expiry, REUPLOAD_AFTER_DAYS after the upload — eBay purges hosted pictures that never
+get attached to a listing. A stale entry whose re-upload FAILS is dropped from the map, so
+ebay_export never points a listing at a purged picture (it falls back to the Costco photos).
 
 Usage:
   python tools/upload_photos.py              # upload new / changed photos
@@ -25,7 +34,6 @@ Exit code: 0 = nothing failed, 1 = at least one upload failed (or no credentials
 """
 
 import argparse
-import base64
 import hashlib
 import json
 import os
@@ -35,7 +43,6 @@ import socket
 import urllib.error
 import urllib.request
 import uuid
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -43,15 +50,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from loguru import logger
 
-from tools.ebay_sync import (  # noqa: E402 — reuse the Trading API plumbing
-    AUTH_ERROR_CODES, ENDPOINT, REQUEST_TIMEOUT, _NS, _child, _headers, _load_credentials,
-    _parse_errors, _sleep, _text, _xml_escape,
-)
+from tools import ebay_analytics  # noqa: E402 — OAuth user token (refresh-token grant)
+from tools.ebay_sync import REQUEST_TIMEOUT, _sleep  # noqa: E402
 
 ROOT        = Path(__file__).resolve().parent.parent
 PHOTOS_DIR  = ROOT / "data" / "listing_photos"
 HOSTED_PATH = ROOT / "data" / "hosted_photos.json"
-REUPLOAD_AFTER_DAYS = 25     # refresh hosted URLs older than this (unlisted pictures get purged)
+MEDIA_URL   = "https://apim.ebay.com/commerce/media/v1_beta/image/create_image_from_file"
+MEDIA_SCOPES = ("https://api.ebay.com/oauth/api_scope/sell.inventory",)
+MEDIA_TOKEN_PATH = ROOT / "data" / ".ebay_media_token.json"
+RECONSENT_HINT = ("Renew EBAY_OAUTH_REFRESH_TOKEN: redo eBay's OAuth consent (developer.ebay.com > "
+                  "User Tokens > Get a Token from eBay via Your Application) with sell.inventory "
+                  "ticked next to sell.analytics.readonly and sell.finances, then put the new "
+                  "refresh token in .env (quoted).")
+REUPLOAD_AFTER_DAYS = 25     # entries with no expires_at: refresh after this (unlisted pictures get purged)
+EXPIRY_MARGIN_DAYS = 5       # entries with expires_at: refresh this long before eBay's expirationDate
 MAX_PHOTO_BYTES = 12 * 1024 * 1024   # eBay's per-picture upload limit
 MAX_GALLERY = 23             # eBay allows 24 pictures/listing: 1 main + up to 23 gallery shots
 
@@ -86,61 +99,73 @@ def save_hosted(data: dict, path: Path | str = None) -> None:
     os.replace(tmp, path)
 
 
-def hosted_url_for(sku: str, hosted: dict) -> str | None:
-    """The hosted URL for a SKU, or None. Used by ebay_export."""
+def _parse_ts(value) -> datetime | None:
+    """ISO timestamp (eBay's '…Z' included) -> aware datetime, None when missing/bad."""
+    try:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def hosted_url_for(sku: str, hosted: dict, now: datetime = None) -> str | None:
+    """The hosted URL for a SKU, or None — also None once eBay's expirationDate has passed
+    (the picture is purged; a listing pointing at it would post without it). Used by ebay_export."""
     entry = hosted.get(sku) if sku else None
     url = entry.get("url") if isinstance(entry, dict) else None
-    return url if isinstance(url, str) and url.startswith("https://") else None
+    if not (isinstance(url, str) and url.startswith("https://")):
+        return None
+    expires = _parse_ts(entry.get("expires_at"))
+    if expires is not None and (now or datetime.now(timezone.utc)) >= expires:
+        return None
+    return url
 
 
-# ── Upload ────────────────────────────────────────────────────────────────────
+# ── Upload (Media API createImageFromFile) ────────────────────────────────────
 
-def _build_upload_xml(token: str, sku: str) -> str:
-    """Request XML WITHOUT <PictureData>: eBay rejects an inline base64 picture
-    (live 2026-10-07: error 21916550 "File has corrupt image data") — the bytes must
-    travel as a binary MIME attachment, see _build_multipart."""
-    return (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        f'<UploadSiteHostedPicturesRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
-        f"<PictureName>{_xml_escape(sku)}.jpg</PictureName>"
-        "<PictureSystemVersion>2</PictureSystemVersion>"
-        "</UploadSiteHostedPicturesRequest>"
-    )
+def _media_token() -> tuple:
+    """(token, None, "") or (None, "auth", why + RECONSENT_HINT). Never raises."""
+    try:
+        token = ebay_analytics.get_user_access_token(scopes=MEDIA_SCOPES, cache_path=MEDIA_TOKEN_PATH)
+    except Exception as e:  # contract: never raises
+        token, ebay_analytics.last_token_error = None, f"unexpected error: {e}"
+    if token:
+        return token, None, ""
+    why = ebay_analytics.last_token_error or "no OAuth user token"
+    return None, "auth", f"eBay photo hosting has no Media API token ({why}). {RECONSENT_HINT}"
 
 
-def _build_multipart(xml: str, jpeg: bytes, boundary: str) -> bytes:
-    """multipart/form-data body: the XML payload part, then the JPEG as a binary part."""
+def _build_multipart(jpeg: bytes, filename: str, boundary: str) -> bytes:
+    """multipart/form-data body: one part named "image" carrying the raw JPEG."""
     crlf, b = b"\r\n", boundary.encode()
+    name = re.sub(r'[^A-Za-z0-9._-]', "_", filename).encode()
     return b"".join([
         b"--" + b + crlf,
-        b'Content-Disposition: form-data; name="XML Payload"' + crlf,
-        b"Content-Type: text/xml;charset=utf-8" + crlf + crlf,
-        xml.encode("utf-8") + crlf,
-        b"--" + b + crlf,
-        b'Content-Disposition: form-data; name="image"; filename="image.jpg"' + crlf,
-        b"Content-Transfer-Encoding: binary" + crlf,
-        b"Content-Type: application/octet-stream" + crlf + crlf,
+        b'Content-Disposition: form-data; name="image"; filename="' + name + b'"' + crlf,
+        b"Content-Type: image/jpeg" + crlf + crlf,
         jpeg + crlf,
         b"--" + b + b"--" + crlf,
     ])
 
 
-def _post(xml: str, jpeg: bytes, headers: dict) -> bytes:
-    """POST the multipart upload to the Trading API endpoint; one retry on timeout /
-    connection error / HTTP 5xx (same policy as ebay_sync._post, which only sends XML).
-    Raises OSError if both attempts fail."""
-    boundary = f"MIME_boundary_{uuid.uuid4().hex}"
-    hdrs = dict(headers, **{"Content-Type": f"multipart/form-data; boundary={boundary}"})
-    req = urllib.request.Request(ENDPOINT, data=_build_multipart(xml, jpeg, boundary),
-                                 headers=hdrs, method="POST")
+def _json(raw: bytes) -> dict:
+    try:
+        data = json.loads((raw or b"").decode("utf-8") or "{}")
+    except (UnicodeDecodeError, ValueError):
+        return {"_raw": (raw or b"")[:200].decode("utf-8", "replace")}
+    return data if isinstance(data, dict) else {}
+
+
+def _request(req) -> tuple[int, dict, dict]:
+    """Send `req` -> (status, JSON body, headers); one retry on timeout / connection error /
+    HTTP 5xx. HTTP 4xx returns its status + body. Raises OSError if both attempts fail."""
     for attempt in (1, 2):
         try:
             with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT * 2) as resp:
-                return resp.read()
+                return resp.status, _json(resp.read()), dict(resp.headers)
         except urllib.error.HTTPError as e:
             if e.code < 500 or attempt == 2:
-                raise
+                return e.code, _json(e.read()), dict(e.headers or {})
             logger.warning(f"upload_photos: HTTP {e.code} from eBay — retrying once")
         except (urllib.error.URLError, socket.timeout, TimeoutError, OSError) as e:
             if attempt == 2:
@@ -149,32 +174,49 @@ def _post(xml: str, jpeg: bytes, headers: dict) -> bytes:
         _sleep(2)
 
 
-def upload_picture(sku: str, jpeg: bytes, creds: tuple) -> dict:
-    """POST one picture. Returns {ok, url, error_kind, message}. Never raises.
-    error_kind: None | "auth" (931/932/16110) | "api" | "network"."""
-    token, app_id, dev_id, cert_id = creds
+def _post(jpeg: bytes, filename: str, token: str) -> tuple[int, dict, dict]:
+    """POST one picture to createImageFromFile."""
+    boundary = f"MIME_boundary_{uuid.uuid4().hex}"
+    req = urllib.request.Request(
+        MEDIA_URL, data=_build_multipart(jpeg, filename, boundary), method="POST",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json",
+                 "Content-Type": f"multipart/form-data; boundary={boundary}"})
+    return _request(req)
+
+
+def _get_image(location: str, token: str) -> tuple[int, dict, dict]:
+    """getImage — the 201 normally carries imageUrl; this is the fallback via Location."""
+    req = urllib.request.Request(location, method="GET",
+                                 headers={"Authorization": f"Bearer {token}",
+                                          "Accept": "application/json"})
+    return _request(req)
+
+
+def upload_picture(sku: str, jpeg: bytes, token: str) -> dict:
+    """POST one picture. Returns {ok, url, expires_at, error_kind, message}. Never raises.
+    error_kind: None | "auth" (HTTP 401/403 — token/scope) | "api" | "network"."""
+    out = {"ok": False, "url": None, "expires_at": None, "error_kind": "api", "message": ""}
     try:
-        raw = _post(_build_upload_xml(token, sku), jpeg,
-                    _headers(app_id, dev_id, cert_id, "UploadSiteHostedPictures"))
+        status, body, headers = _post(jpeg, f"{sku}.jpg", token)
+        if status in (200, 201) and not body.get("imageUrl"):
+            loc = next((v for k, v in headers.items() if k.lower() == "location"), "")
+            if loc:
+                status, body, headers = _get_image(loc, token)
     except OSError as e:
-        return {"ok": False, "url": None, "error_kind": "network", "message": f"eBay request failed: {e}"}
+        return dict(out, error_kind="network", message=f"eBay request failed: {e}")
     except Exception as e:  # contract: never raises
-        return {"ok": False, "url": None, "error_kind": "api", "message": f"unexpected error: {e}"}
-    try:
-        root = ET.fromstring(raw)
-    except ET.ParseError as e:
-        return {"ok": False, "url": None, "error_kind": "api", "message": f"unparseable eBay response: {e}"}
-    ack = _text(root, "Ack")
-    details = _child(root, "SiteHostedPictureDetails")
-    url = _text(details, "FullURL") if details is not None else ""
-    if ack in ("Success", "Warning") and url:
-        return {"ok": True, "url": url, "error_kind": None, "message": ""}
-    errors = _parse_errors(root)
-    codes = [c for c, _ in errors]
-    msg = "; ".join(f"{c}: {m}" for c, m in errors) or (
-        f"Ack={ack or 'missing'}" + ("" if url else ", no FullURL in response"))
-    kind = "auth" if any(c in AUTH_ERROR_CODES for c in codes) else "api"
-    return {"ok": False, "url": None, "error_kind": kind, "message": msg}
+        return dict(out, message=f"unexpected error: {e}")
+    url = body.get("imageUrl") or ""
+    if status in (200, 201) and url.startswith("https://"):
+        return dict(out, ok=True, url=url, expires_at=body.get("expirationDate"), error_kind=None)
+    msg = ebay_analytics._error_text(status, body)
+    if status in (200, 201):
+        msg = f"HTTP {status} but no imageUrl in the response"
+    elif body.get("_raw"):
+        msg = f"HTTP {status}: {body['_raw']}"
+    if status in (401, 403):
+        return dict(out, error_kind="auth", message=f"{msg} — {RECONSENT_HINT}")
+    return dict(out, message=msg)
 
 
 def _sha256(data: bytes) -> str:
@@ -182,14 +224,15 @@ def _sha256(data: bytes) -> str:
 
 
 def _is_fresh(entry: dict, now: datetime) -> bool:
-    """Uploaded within REUPLOAD_AFTER_DAYS. A missing/bad timestamp counts as fresh
-    (older map entries without one are not re-uploaded en masse)."""
-    try:
-        ts = datetime.fromisoformat(entry["uploaded_at"])
-    except (KeyError, TypeError, ValueError):
+    """Not yet due for a re-upload: more than EXPIRY_MARGIN_DAYS before eBay's expirationDate
+    when the entry has one, else uploaded within REUPLOAD_AFTER_DAYS. A missing/bad upload
+    timestamp counts as fresh (older map entries are not re-uploaded en masse)."""
+    expires = _parse_ts(entry.get("expires_at"))
+    if expires is not None:
+        return now < expires - timedelta(days=EXPIRY_MARGIN_DAYS)
+    ts = _parse_ts(entry.get("uploaded_at"))
+    if ts is None:
         return True
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
     return now - ts < timedelta(days=REUPLOAD_AFTER_DAYS)
 
 
@@ -215,11 +258,25 @@ def plan_uploads(photos: list[Path], hosted: dict, *, force=False, now=None) -> 
     return todo
 
 
+def _drop_dead(hosted: dict, failed_skus, now: datetime) -> list[str]:
+    """Remove the entries of failed uploads that are past their re-upload point: their URL is
+    (about to be) purged, and leaving it would make ebay_export list a dead main picture.
+    A fresh entry whose re-upload failed (changed / forced) still serves, so it stays."""
+    dropped = []
+    for s in failed_skus:
+        entry = hosted.get(s)
+        if isinstance(entry, dict) and entry.get("url") and not _is_fresh(entry, now):
+            hosted.pop(s)
+            dropped.append(s)
+    return dropped
+
+
 def run(*, dry_run=False, force=False, sku=None, photos_dir=None, hosted_path=None) -> dict:
-    """Returns {uploaded, skipped, failed: [(sku, msg)], planned}."""
+    """Returns {uploaded, skipped, failed: [(sku, msg)], planned, dropped: [sku], auth_error}.
+    auth_error = the token/scope message when uploading stopped on it ("" otherwise)."""
     photos_dir = Path(photos_dir or PHOTOS_DIR)
     hosted_path = Path(hosted_path or HOSTED_PATH)
-    stats = {"uploaded": 0, "skipped": 0, "failed": [], "planned": 0}
+    stats = {"uploaded": 0, "skipped": 0, "failed": [], "planned": 0, "dropped": [], "auth_error": ""}
 
     photos = sorted(photos_dir.glob("*.jpg")) if photos_dir.is_dir() else []
     if sku:
@@ -242,34 +299,43 @@ def run(*, dry_run=False, force=False, sku=None, photos_dir=None, hosted_path=No
             print(f"  would upload {s:<14} ({reason}, {len(data) // 1024} KB)  {p.name}")
         return stats
 
-    token, app_id, dev_id, cert_id, err_kind, err_msg = _load_credentials()
+    now = datetime.now(timezone.utc)
+    token, err_kind, err_msg = _media_token()
     if err_kind:
-        logger.error(f"upload_photos: {err_msg} — nothing uploaded")
+        logger.critical(f"upload_photos: {err_msg} — nothing uploaded")
         stats["failed"] = [(s, err_msg) for s, *_ in todo]
-        return stats
-    creds = (token, app_id, dev_id, cert_id)
+        stats["auth_error"] = err_msg
+    else:
+        for i, (s, p, data, sha, reason) in enumerate(todo):
+            if len(data) > MAX_PHOTO_BYTES:
+                res = {"ok": False, "error_kind": "invalid",
+                       "message": f"{len(data) // 1024} KB exceeds eBay's 12 MB picture limit"}
+            else:
+                res = upload_picture(s, data, token)
+            if res["ok"]:
+                hosted[s] = {"url": res["url"], "sha256": sha,
+                             "uploaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+                if res.get("expires_at"):
+                    hosted[s]["expires_at"] = res["expires_at"]
+                save_hosted(hosted, hosted_path)  # after every success — a crash keeps earlier URLs
+                stats["uploaded"] += 1
+                logger.info(f"✓ {s} -> {res['url']}")
+            else:
+                stats["failed"].append((s, res["message"]))
+                logger.error(f"✗ {s}: {res['message']}")
+                if res["error_kind"] == "auth":
+                    # Same token for every call — the rest would fail identically.
+                    rest = [t[0] for t in todo[i + 1:]]
+                    stats["failed"] += [(r, "skipped — eBay token rejected") for r in rest]
+                    stats["auth_error"] = res["message"]
+                    logger.critical(f"upload_photos: eBay token rejected — stopping. {RECONSENT_HINT}")
+                    break
 
-    for i, (s, p, data, sha, reason) in enumerate(todo):
-        if len(data) > MAX_PHOTO_BYTES:
-            res = {"ok": False, "error_kind": "invalid",
-                   "message": f"{len(data) // 1024} KB exceeds eBay's 12 MB picture limit"}
-        else:
-            res = upload_picture(s, data, creds)
-        if res["ok"]:
-            hosted[s] = {"url": res["url"], "sha256": sha,
-                         "uploaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-            save_hosted(hosted, hosted_path)  # after every success — a crash keeps earlier URLs
-            stats["uploaded"] += 1
-            logger.info(f"✓ {s} -> {res['url']}")
-        else:
-            stats["failed"].append((s, res["message"]))
-            logger.error(f"✗ {s}: {res['message']}")
-            if res["error_kind"] == "auth":
-                # Same token for every call — the rest would fail identically.
-                rest = [t[0] for t in todo[i + 1:]]
-                stats["failed"] += [(r, "skipped — eBay token rejected") for r in rest]
-                logger.critical("upload_photos: eBay token rejected — stopping. Renew EBAY_AUTH_TOKEN.")
-                break
+    stats["dropped"] = _drop_dead(hosted, [s for s, _ in stats["failed"]], now)
+    if stats["dropped"]:
+        save_hosted(hosted, hosted_path)
+        logger.warning(f"upload_photos: dropped {len(stats['dropped'])} expired hosted URL(s) whose "
+                       f"re-upload failed: {', '.join(stats['dropped'])}")
     return stats
 
 
@@ -302,8 +368,8 @@ def upload_gallery(jobs, *, dry_run=False, force=False) -> dict:
     and cached under hosted_photos.json[sku]["gallery"].
 
     jobs: [{sku, urls, ...}] from photo_compositor.build_jobs (urls = col AT, sanitized).
-    Returns {uploaded, skipped, failed: [(sku, msg)]}. Never raises."""
-    stats = {"uploaded": 0, "skipped": 0, "failed": []}
+    Returns {uploaded, skipped, failed: [(sku, msg)], auth_error}. Never raises."""
+    stats = {"uploaded": 0, "skipped": 0, "failed": [], "auth_error": ""}
     if not jobs:
         return stats
     hosted = load_hosted()
@@ -318,7 +384,9 @@ def upload_gallery(jobs, *, dry_run=False, force=False) -> dict:
         entry = hosted.get(key)
         if not isinstance(entry, dict) or not entry.get("url"):
             continue                                   # no branded photo → no EPS gallery
-        if entry.get("gallery") and not force:
+        gallery_age = {"expires_at": entry.get("gallery_expires_at"),
+                       "uploaded_at": entry.get("uploaded_at")}
+        if entry.get("gallery") and not force and _is_fresh(gallery_age, datetime.now(timezone.utc)):
             stats["skipped"] += 1
             continue
         targets.append((key, urls))
@@ -328,14 +396,18 @@ def upload_gallery(jobs, *, dry_run=False, force=False) -> dict:
         stats["skipped"] = len(targets)
         return stats
 
-    token, app_id, dev_id, cert_id, err_kind, err_msg = _load_credentials()
+    token, err_kind, err_msg = _media_token()
     if err_kind:
         stats["failed"] = [(k, err_msg) for k, _ in targets]
+        stats["auth_error"] = err_msg
         return stats
-    creds = (token, app_id, dev_id, cert_id)
 
-    for key, urls in targets:
-        gallery = []
+    for n, (key, urls) in enumerate(targets):
+        if stats["auth_error"]:
+            # Same token for every call — the remaining SKUs would fail identically.
+            stats["failed"] += [(k, "skipped — eBay token rejected") for k, _ in targets[n:]]
+            break
+        gallery, expiries = [], []
         for i, url in enumerate(urls[:MAX_GALLERY]):
             try:
                 jpeg = _download_as_jpeg(url)
@@ -345,17 +417,26 @@ def upload_gallery(jobs, *, dry_run=False, force=False) -> dict:
             if len(jpeg) > MAX_PHOTO_BYTES:
                 stats["failed"].append((key, f"{len(jpeg) // 1024} KB exceeds 12 MB limit"))
                 continue
-            res = upload_picture(f"{key}_g{i}", jpeg, creds)
+            res = upload_picture(f"{key}_g{i}", jpeg, token)
             if res["ok"]:
                 gallery.append(res["url"])
+                if _parse_ts(res.get("expires_at")):
+                    expiries.append(res["expires_at"])
                 logger.info(f"✓ {key} gallery #{i + 1} -> {res['url']}")
             else:
                 stats["failed"].append((key, res["message"]))
+                logger.error(f"✗ {key} gallery #{i + 1}: {res['message']}")
                 if res["error_kind"] == "auth":
+                    stats["auth_error"] = res["message"]
+                    logger.critical(f"upload_photos: eBay token rejected — stopping. {RECONSENT_HINT}")
                     break
         if gallery:
             entry = hosted.setdefault(key, {})
             entry["gallery"] = gallery
+            if expiries:
+                entry["gallery_expires_at"] = min(expiries, key=_parse_ts)   # earliest purge
+            else:
+                entry.pop("gallery_expires_at", None)
             save_hosted(hosted)
             stats["uploaded"] += len(gallery)
     return stats

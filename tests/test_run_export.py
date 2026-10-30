@@ -43,7 +43,10 @@ def env(monkeypatch, tmp_path):
 
     def generate(eligible, config):
         calls.append("csv")
-        return "Action,Title\n" + "".join(f"Add,row{r}\n" for r, _ in eligible)
+        # first row's PicURL is EPS (= branded main photo), the rest Costco — counted from the CSV
+        return "Action,Title,PicURL\n" + "".join(
+            f"Add,row{r},{'https://i.ebayimg.com/a.jpg' if n == 0 else 'https://gdx-assets.costco.com/1.jpg'}\n"
+            for n, (r, _) in enumerate(eligible))
 
     def write(csv_text):
         calls.append("write")
@@ -145,3 +148,35 @@ def test_failed_telegram_keeps_state_unsaved_so_next_run_retries(env, monkeypatc
     res = _run(monkeypatch, [_row()])
     assert res["status"] == "error" and "not delivered" in res["errors"]
     assert not (tmp_path / "export_state.json").exists()
+
+
+def test_photo_token_failure_alerts_once_and_tags_the_caption(env, monkeypatch, tmp_path):
+    calls, sent = env
+    msg = "eBay photo hosting has no Media API token (invalid_scope). Renew EBAY_OAUTH_REFRESH_TOKEN"
+    monkeypatch.setattr(upload_photos, "run", lambda dry_run=False: {
+        "uploaded": 0, "skipped": 0, "planned": 1, "failed": [("X1", msg)], "auth_error": msg})
+    _run(monkeypatch, [_row()])
+    alerts = [m for name, m in sent if name is None]
+    assert len(alerts) == 1 and "eBay photo upload stopped" in alerts[0] and "invalid_scope" in alerts[0]
+    caption = next(c for name, c in sent if name)
+    assert "Photo upload stopped" in caption
+    state = json.loads((tmp_path / "export_state.json").read_text())
+    assert state["photo_auth_alert"]["msg"] == msg and state["rows"] == 1   # both kept
+    sent.clear()
+    _run(monkeypatch, [_row()])                                  # same failure within 24h
+    assert [m for name, m in sent if name is None] == []
+
+
+def test_photo_token_failure_is_silent_on_dry_run(env, monkeypatch):
+    calls, sent = env
+    monkeypatch.setattr(upload_photos, "run", lambda dry_run=False: {
+        "uploaded": 0, "skipped": 0, "planned": 1, "failed": [], "auth_error": "no token"})
+    _run(monkeypatch, [_row()], dry_run=True)
+    assert sent == []
+
+
+def test_count_eps_main_photos_reads_the_picurl_column():
+    text = ("Action(SiteID=US|Country=US),Title,PicURL\n"
+            "Add,a,https://i.ebayimg.com/x.jpg|https://i.ebayimg.com/y.jpg\n"
+            "Add,b,https://gdx-assets.costco.com/1.jpg\n")
+    assert sch._count_eps_main_photos(text) == 1

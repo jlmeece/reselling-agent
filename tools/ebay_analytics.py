@@ -114,37 +114,55 @@ def _write_json(path, data) -> None:
     os.replace(tmp, path)
 
 
-def get_user_access_token(force=False) -> str | None:
+last_token_error = ""     # why the last get_user_access_token() returned None ("" = it didn't)
+
+
+def get_user_access_token(force=False, scopes=None, cache_path=None) -> str | None:
     """User access token from the refresh token, cached until ~1 min before expiry.
-    force=True skips the cache. None on any failure (logged), never raises."""
+    scopes / cache_path default to SCOPES / TOKEN_PATH; another scope set (the Media API's
+    sell.inventory) needs its own cache file — a token only carries the scopes it was minted
+    with, and asking for a scope the refresh token was never consented for fails the WHOLE
+    request (invalid_scope), so it can't be folded into SCOPES.
+    force=True skips the cache. None on any failure (logged, reason in last_token_error),
+    never raises."""
+    global last_token_error
+    scopes = SCOPES if scopes is None else scopes
+    cache_path = TOKEN_PATH if cache_path is None else cache_path
     now = _now()
     if not force:
-        cached = _read_json(TOKEN_PATH)
+        cached = _read_json(cache_path)
         if cached.get("access_token") and now < float(cached.get("expires_at") or 0):
+            last_token_error = ""
             return cached["access_token"]
     refresh = _refresh_token()
     app_id = os.getenv("EBAY_APP_ID", "").strip()
     cert_id = os.getenv("EBAY_CERT_ID", "").strip()
     if not (refresh and app_id and cert_id):
-        logger.warning("ebay_analytics: EBAY_OAUTH_REFRESH_TOKEN / EBAY_APP_ID / EBAY_CERT_ID not set")
+        last_token_error = "EBAY_OAUTH_REFRESH_TOKEN / EBAY_APP_ID / EBAY_CERT_ID not set"
+        logger.warning(f"ebay_analytics: {last_token_error}")
         return None
     basic = base64.b64encode(f"{app_id}:{cert_id}".encode()).decode()
     body = urllib.parse.urlencode({"grant_type": "refresh_token", "refresh_token": refresh,
-                                   "scope": " ".join(SCOPES)}).encode()
+                                   "scope": " ".join(scopes)}).encode()
     req = urllib.request.Request(TOKEN_URL, data=body, method="POST",
                                  headers={"Authorization": f"Basic {basic}",
                                           "Content-Type": "application/x-www-form-urlencoded"})
     status, data = _send(req)
     token = data.get("access_token") if status == 200 else None
     if not token:
-        logger.warning(f"ebay_analytics: user token refresh failed — {_error_text(status, data)}")
+        last_token_error = _error_text(status, data)
+        if data.get("error") == "invalid_scope":
+            last_token_error += (f" — the refresh token was never consented for "
+                                 f"{', '.join(s.rsplit('/', 1)[-1] for s in scopes)}")
+        logger.warning(f"ebay_analytics: user token refresh failed — {last_token_error}")
         return None
+    last_token_error = ""
     try:
         ttl = int(data.get("expires_in", 7200))
     except (TypeError, ValueError):
         ttl = 7200
     try:
-        _write_json(TOKEN_PATH, {"access_token": token,
+        _write_json(cache_path, {"access_token": token,
                                  "expires_at": now + max(ttl - TOKEN_SKEW_SECONDS, 0)})
     except OSError as e:
         logger.warning(f"ebay_analytics: couldn't cache the user token ({e})")

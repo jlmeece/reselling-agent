@@ -163,12 +163,29 @@ def _write_hosted(data):
     ebay_export.HOSTED_PHOTOS_PATH.write_text(json.dumps(data))
 
 
-def test_hosted_photo_is_eps_only_no_mix():
-    """A hosted (EPS) branded photo must NOT be mixed with self-hosted col AT URLs —
-    eBay error 20004 rejects the mix, so PicURL falls back to the branded photo alone."""
+def test_hosted_photo_without_gallery_lists_the_costco_photos_no_mix():
+    """A hosted (EPS) branded photo must NOT be mixed with self-hosted col AT URLs (eBay error
+    20004). With no EPS gallery, the branded photo alone would be a 1-picture listing, so
+    PicURL is the col AT photos instead (all self-hosted, no mix)."""
     _write_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg", "sha256": "abc"}})
     row = _make_row(sku="X1", image_urls="https://a.com/1.jpg, https://a.com/2.jpg")
-    assert _pic_url(row) == "https://i.ebayimg.com/branded.jpg"
+    assert _pic_url(row) == "https://a.com/1.jpg|https://a.com/2.jpg"
+
+
+def test_expired_hosted_photo_is_not_used():
+    _write_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg",
+                          "expires_at": "2020-01-01T00:00:00.000Z",
+                          "gallery": ["https://i.ebayimg.com/g1.jpg"]}})
+    row = _make_row(sku="X1", image_urls="https://a.com/1.jpg")
+    assert _pic_url(row) == "https://a.com/1.jpg"
+
+
+def test_expired_gallery_is_dropped():
+    _write_hosted({"X1": {"url": "https://i.ebayimg.com/branded.jpg",
+                          "gallery": ["https://i.ebayimg.com/g1.jpg"],
+                          "gallery_expires_at": "2020-01-01T00:00:00.000Z"}})
+    assert _pic_url(_make_row(sku="X1", image_urls="https://a.com/1.jpg")) == "https://a.com/1.jpg"
+    assert _pic_url(_make_row(sku="X1")) == "https://i.ebayimg.com/branded.jpg"
 
 
 def test_hosted_photo_plus_gallery_stays_eps_only():
@@ -186,8 +203,7 @@ def test_hosted_photo_alone_replaces_placeholder():
 
 def test_hosted_lookup_uses_compositor_safe_sku():
     _write_hosted({"A_B": {"url": "https://i.ebayimg.com/ab.jpg"}})
-    row = _make_row(sku="A/B", image_urls="https://a.com/1.jpg")
-    assert _pic_url(row) == "https://i.ebayimg.com/ab.jpg"
+    assert _pic_url(_make_row(sku="A/B")) == "https://i.ebayimg.com/ab.jpg"
 
 
 def test_no_hosted_photo_keeps_col_at_behavior():

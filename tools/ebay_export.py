@@ -673,7 +673,18 @@ def generate_ebay_csv(rows_with_idx: list[tuple[int, list]], config: dict) -> st
             entry = hosted.get(photo_key) or {}
             gallery = [u for u in (entry.get("gallery") or [])
                        if isinstance(u, str) and u.startswith("https://")]
-            pic_url = "|".join([hosted_url] + gallery[:MAX_PICTURES - 1])
+            if gallery and not hosted_url_for(photo_key, {photo_key: {
+                    "url": hosted_url, "expires_at": entry.get("gallery_expires_at")}}):
+                gallery = []                       # gallery past eBay's expirationDate = purged
+            if gallery or pic_url == PLACEHOLDER_IMAGE:
+                pic_url = "|".join([hosted_url] + gallery[:MAX_PICTURES - 1])
+            else:
+                # Gallery not hosted (upload failed): the branded photo alone would be a
+                # 1-picture listing (Nuwave 860098461573 / KitchenAid 860098461578, 10/30), and
+                # the Costco shots can't join it (error 20004) — list the Costco shots instead.
+                logger.warning(f"  {title[:40]} — gallery not hosted on eBay; using the "
+                               f"{len(pic_url.split('|'))} Costco photo(s) instead of the branded "
+                               "photo alone. Re-export after upload_photos hosts the gallery.")
         elif photo_key and (LISTING_PHOTOS_DIR / f"{photo_key}.jpg").exists():
             logger.warning(f"  {title[:40]} — branded photo {photo_key}.jpg exists but isn't hosted; "
                            "run `python tools/upload_photos.py` and re-export to use it as the main image.")
