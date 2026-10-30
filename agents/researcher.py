@@ -446,6 +446,7 @@ def _build_niche_key(title):
 # ── Research queue order ──────────────────────────────────────────
 
 _SALE_INFO_IDX = 23   # col X sale badge ("🔥 -$8 ends 10/18/26")
+SALE_FASTTRACK_MIN_NET = 2.00   # matches the review-queue floor; on-sale + in-stock items netting >= this are promoted to SCORED
 
 
 def _sale_end_sort_key(row, today=None):
@@ -978,8 +979,16 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             # margin as a %, which shelves high-ticket items (a $168 bracelet, $421
             # furniture) that carry big absolute profit at low margin %. Precious Metals
             # keep their spot-premium override above.
+            # Takes the better of the dollar and percent scales so small flips ($5 net on a
+            # $35 item = ~14%) aren't shelved either; never lowers either score.
             if net_profit_val is not None and category != "Precious Metals":
-                dimension_scores["margin_potential"] = score_net_profit(net_profit_val)
+                dollar_score = score_net_profit(net_profit_val)
+                try:
+                    pct_score = score_dimension("margin_potential",
+                                                net_profit_val / float(suggested_price))
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pct_score = 0
+                dimension_scores["margin_potential"] = max(dollar_score, pct_score)
 
             # 3e. Pass 3: deterministic scoring
             pass3_fn = _pass3_for_category(category)
@@ -1064,6 +1073,14 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     _gate_note += (f"\nMonthly-profit override: ${monthly_profit_val:,.0f}/mo "
                                    f"(net ${net_profit_val:.2f}/unit) → promoted to WATCH.")
                     tier = 2
+
+            # Sale fast-track: a live profitable sale is listable regardless of composite
+            # score. The score is still written and shown; it ranks, not gates.
+            if (tier != 1 and on_sale and net_profit_val is not None
+                    and net_profit_val >= SALE_FASTTRACK_MIN_NET
+                    and stock_status not in ("OUT OF STOCK", "WAREHOUSE ONLY", "CHECK FAILED")):
+                _gate_note += (f"\nSale fast-track: on sale, net ${net_profit_val:.2f}/unit → SCORED.")
+                tier = 1
 
             tier_summary_line = (
                 f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}"

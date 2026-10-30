@@ -118,3 +118,58 @@ def test_force_copy_regenerates_existing_copy_and_overrides_win(run):
 
 def test_notify_false_sends_no_email(run):
     assert run(only_rows=[4], notify=False)["emails"] == []
+
+
+# ── margin = max(dollar, percent) + sale fast-track ─────────────────────────
+# The fixture rows hold col G = $100, which wins over the scraped price, so the
+# suggested eBay price is what varies the net.
+
+@pytest.fixture
+def scored(run, monkeypatch):
+    """Composite score forced to Tier 3; returns the research write + what pass 3 saw."""
+    seen = {}
+
+    def _pass3(category):
+        def fn(dims, cat_config, reasoning=None):
+            seen["dims"], seen["fee"] = dict(dims), cat_config.get("fee_rate", 0.1325)
+            return {"tier": 3, "weighted_score": 3.1, "recommendation": "PASS",
+                    "lens_scores": {"conservative_analyst": 3.0, "volume_flipper": 3.2}}
+        return fn
+    monkeypatch.setattr(R, "_pass3_for_category", _pass3)
+
+    def go(sugg=130.0, on_sale=True, stock="In Stock"):
+        monkeypatch.setattr(R, "_suggest_ebay_price", lambda cost, data, fee: sugg)
+        monkeypatch.setattr(R, "get_ebay_comps", lambda *a, **k: {
+            "sold_90d": 0, "avg_sold_price": sugg, "active_count": 12, "median_sold": sugg,
+            "price_basis": "median", "query_strategy": "title"})
+        monkeypatch.setattr(R, "scrape_costco", lambda url, page=None: {
+            "stock_status": stock, "price": 100.0, "in_stock": stock == "In Stock",
+            "on_sale": on_sale, "original_price": 110.0 if on_sale else None,
+            "sale_savings": 10.0 if on_sale else None, "image_urls": []})
+        calls = run(only_rows=[5], notify=False)
+        seen["net"] = round(sugg * (1 - seen["fee"]) - 100.0, 2)
+        return _research_write(calls, 5), seen
+    return go
+
+
+def test_margin_score_takes_the_better_of_dollar_and_percent(scored):
+    _w, seen = scored(on_sale=False)
+    dollar = R.score_net_profit(seen["net"])
+    pct = R.score_dimension("margin_potential", seen["net"] / 130.0)
+    assert pct > dollar                                   # a ~$13 flip at ~10%: percent wins
+    assert seen["dims"]["margin_potential"] == max(dollar, pct)
+
+
+def test_on_sale_in_stock_profitable_item_is_fast_tracked_to_scored(scored):
+    w, seen = scored()
+    assert seen["net"] >= R.SALE_FASTTRACK_MIN_NET
+    assert w[COL["status"]] == "SCORED"
+    assert "Sale fast-track: on sale" in w[COL["full_notes"]]
+
+
+def test_fast_track_needs_net_at_floor_on_sale_and_in_stock(scored):
+    w, seen = scored(sugg=117.0)                          # net ~$1.50
+    assert 0 < seen["net"] < R.SALE_FASTTRACK_MIN_NET
+    assert w[COL["status"]] == "PAUSED_DEMAND"
+    assert scored(stock="OUT OF STOCK")[0].get(COL["status"]) != "SCORED"
+    assert scored(on_sale=False)[0][COL["status"]] == "PAUSED_DEMAND"
