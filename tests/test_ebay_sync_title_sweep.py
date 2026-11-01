@@ -136,7 +136,7 @@ def test_summary_counts_revised_and_lists_failures():
 
 
 def test_active_list_request_asks_for_listing_type():
-    xml = ebay_sync._build_request_xml("tok", 1)
+    xml = ebay_sync._build_request_xml(1)
     assert "<OutputSelector>ActiveList.ItemArray.Item.ListingType</OutputSelector>" in xml
 
 

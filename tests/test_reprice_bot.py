@@ -107,7 +107,7 @@ def test_auth_failure_is_loud_and_writes_nothing(env, code):
                             "error_code": code, "message": "token"}
     q = _tap(f"{ITEM_ID}:5099")
     text, kb = _final(q)
-    assert "eBay token rejected" in text and code in text and "EBAY_AUTH_TOKEN" in text
+    assert "eBay token rejected" in text and code in text and "ebay_consent.py" in text
     assert kb is None                               # no retry on a dead token
     assert env["writes"] == [] and env["popped"] == []
     assert env["logs"][0][0]["error_kind"] == "auth"

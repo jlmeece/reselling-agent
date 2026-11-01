@@ -64,6 +64,12 @@ def _no_live_ebay_analytics(monkeypatch, tmp_path):
     monkeypatch.setattr(ea, "_http_json", _blocked)
     monkeypatch.setattr(ea, "TOKEN_PATH", tmp_path / "ebay_user_token.json")
     monkeypatch.setattr(ea, "VIEWS_PATH", tmp_path / "listing_views.json")
+    # The Trading API and photo hosting mint their OAuth tokens through ea too: never let a
+    # REAL cached access token in data/ reach a test (Trading calls aren't blocked globally —
+    # tests mock urlopen themselves — so a real token could otherwise reach live eBay).
+    from tools import ebay_sync, upload_photos
+    monkeypatch.setattr(ebay_sync, "TRADING_TOKEN_PATH", str(tmp_path / "ebay_trading_token.json"))
+    monkeypatch.setattr(upload_photos, "MEDIA_TOKEN_PATH", tmp_path / "ebay_media_token.json")
 
 
 @pytest.fixture(autouse=True)

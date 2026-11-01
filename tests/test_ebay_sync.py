@@ -58,7 +58,11 @@ def creds(monkeypatch):
     monkeypatch.setenv("EBAY_APP_ID", "app")
     monkeypatch.setenv("EBAY_DEV_ID", "dev")
     monkeypatch.setenv("EBAY_CERT_ID", "cert")
-    monkeypatch.setenv("EBAY_AUTH_TOKEN", "tok+en=")
+    monkeypatch.setenv("EBAY_OAUTH_REFRESH_TOKEN", "v^1.1#refresh")
+    # the OAuth refresh grant itself is ebay_analytics' job (tested there): hand back an access token
+    from tools import ebay_analytics
+    monkeypatch.setattr(ebay_analytics, "get_user_access_token",
+                        lambda force=False, scopes=None, cache_path=None: "tok+en=")
 
 
 class FakeResp:
@@ -155,11 +159,11 @@ def test_extract_item_id_unparseable(value):
 # ── fetch_active_listings ─────────────────────────────────────────────────────
 
 def test_no_token_returns_empty_cleanly_without_http(monkeypatch, logs):
-    monkeypatch.setenv("EBAY_AUTH_TOKEN", "")
+    monkeypatch.setenv("EBAY_OAUTH_REFRESH_TOKEN", "")
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
                         lambda *a, **k: pytest.fail("must not hit the network"))
     assert fetch_active_listings() == []
-    assert any("ebay_sync skipped — no EBAY_AUTH_TOKEN" in m for m in logs)
+    assert any("ebay_sync skipped — no EBAY_OAUTH_REFRESH_TOKEN" in m for m in logs)
     assert ebay_sync.get_last_error()["kind"] == "no_token"
 
 
@@ -196,7 +200,8 @@ def test_fetch_parses_pages_and_sends_correct_request(monkeypatch, creds):
     assert h["x-ebay-api-siteid"] == "0"
     assert (h["x-ebay-api-app-name"], h["x-ebay-api-dev-name"], h["x-ebay-api-cert-name"]) == ("app", "dev", "cert")
     assert sent[0].full_url == "https://api.ebay.com/ws/api.dll"
-    assert b"<eBayAuthToken>tok+en=</eBayAuthToken>" in sent[0].data
+    assert h["x-ebay-api-iaf-token"] == "tok+en="                       # OAuth, in the header
+    assert b"RequesterCredentials" not in sent[0].data and b"tok+en=" not in sent[0].data
     assert b"<PageNumber>1</PageNumber>" in sent[0].data and b"<PageNumber>2</PageNumber>" in sent[1].data
 
 
@@ -689,9 +694,9 @@ def _cfg_args(config=None):
 
 
 def test_run_skips_cleanly_without_token(monkeypatch):
-    monkeypatch.setenv("EBAY_AUTH_TOKEN", "")
+    monkeypatch.setenv("EBAY_OAUTH_REFRESH_TOKEN", "")
     res = run_ebay_sync(*_cfg_args())
-    assert res["status"] == "skipped" and "no EBAY_AUTH_TOKEN" in res["notes"] and res["alert"] is None
+    assert res["status"] == "skipped" and "no EBAY_OAUTH_REFRESH_TOKEN" in res["notes"] and res["alert"] is None
 
 
 def test_run_api_failure_does_not_flag_active_rows(monkeypatch, creds):
@@ -842,10 +847,10 @@ def _err(code, msg="bad", severity="Error"):
 
 
 def test_build_revise_xml_changes_only_start_price():
-    xml = ebay_sync._build_revise_xml("a<b&c", "123456789012", 50.9)
+    xml = ebay_sync._build_revise_xml("123456789012", 50.9)
     assert xml.startswith('<?xml version="1.0" encoding="utf-8"?>')
     assert '<ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">' in xml
-    assert "<eBayAuthToken>a&lt;b&amp;c</eBayAuthToken>" in xml          # token escaped
+    assert "RequesterCredentials" not in xml                             # token rides in a header
     assert "<Item><ItemID>123456789012</ItemID>" in xml
     assert '<StartPrice currencyID="USD">50.90</StartPrice></Item>' in xml  # 2dp
     for other in ("<Quantity>", "<Title>", "<Description>", "<PictureDetails>"):
@@ -857,6 +862,8 @@ def test_headers_default_call_name_unchanged_and_overridable():
     h = ebay_sync._headers("a", "d", "c", "ReviseFixedPriceItem")
     assert h["X-EBAY-API-CALL-NAME"] == "ReviseFixedPriceItem"
     assert h["X-EBAY-API-COMPATIBILITY-LEVEL"] == "1193"
+    assert "X-EBAY-API-IAF-TOKEN" not in h and "Authorization" not in h
+    assert ebay_sync._headers("a", "d", "c", token="T")["X-EBAY-API-IAF-TOKEN"] == "T"
 
 
 def test_revise_success_posts_correct_request(monkeypatch, creds):
@@ -875,7 +882,7 @@ def test_revise_success_posts_correct_request(monkeypatch, creds):
     assert h["x-ebay-api-call-name"] == "ReviseFixedPriceItem"
     assert req.full_url == "https://api.ebay.com/ws/api.dll"
     assert b'<StartPrice currencyID="USD">50.99</StartPrice>' in req.data
-    assert b"<eBayAuthToken>tok+en=</eBayAuthToken>" in req.data
+    assert h["x-ebay-api-iaf-token"] == "tok+en=" and b"RequesterCredentials" not in req.data
 
 
 def test_revise_warning_ack_is_success(monkeypatch, creds):
@@ -922,7 +929,7 @@ def test_revise_invalid_input_never_posts(monkeypatch, creds, item_id, price):
 
 
 def test_revise_without_token_never_posts(monkeypatch, creds):
-    monkeypatch.setenv("EBAY_AUTH_TOKEN", "")
+    monkeypatch.setenv("EBAY_OAUTH_REFRESH_TOKEN", "")
     monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
                         lambda *a, **k: pytest.fail("must not hit the network"))
     out = ebay_sync.revise_fixed_price("123456789012", 10)
@@ -964,9 +971,9 @@ def _end_resp(ack="Success", errors=""):
 
 
 def test_build_end_xml():
-    xml = ebay_sync._build_end_xml("a<b", "123456789012")
+    xml = ebay_sync._build_end_xml("123456789012")
     assert '<EndItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">' in xml
-    assert "<eBayAuthToken>a&lt;b</eBayAuthToken>" in xml
+    assert "RequesterCredentials" not in xml
     assert "<ItemID>123456789012</ItemID>" in xml
     assert "<EndingReason>NotAvailable</EndingReason>" in xml
     assert "StartPrice" not in xml
@@ -1028,9 +1035,9 @@ def _qty_resp(ack="Success", errors=""):
 
 @pytest.mark.parametrize("qty", [0, 7])
 def test_build_qty_xml_changes_only_quantity(qty):
-    xml = ebay_sync._build_qty_xml("a<b", "123456789012", qty)
+    xml = ebay_sync._build_qty_xml("123456789012", qty)
     assert '<ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents">' in xml
-    assert "<eBayAuthToken>a&lt;b</eBayAuthToken>" in xml
+    assert "RequesterCredentials" not in xml
     assert (f"<InventoryStatus><ItemID>123456789012</ItemID><Quantity>{qty}</Quantity>"
             "</InventoryStatus>") in xml
     assert "StartPrice" not in xml and "EndingReason" not in xml
@@ -1287,7 +1294,7 @@ def test_auto_reprice_auth_error_stops_the_loop(ebay, writes):
                          (_row(5, "222222222222", **_HARD), 29.0))
     results = _auto(rep)
     assert len(ebay["revise"]) == 1 and len(results) == 1
-    assert "EBAY_AUTH_TOKEN" in results[0]["error"]
+    assert "ebay_consent.py" in results[0]["error"]
 
 
 def test_format_auto_reprice_summary_variants():
@@ -1457,7 +1464,7 @@ def test_apply_target_auth_error_stops_the_sweep(live, ebay, writes):
                       "error_code": "931", "message": "token"}
     rep = _apply([_trow(4, target="39.99"), _trow(5, "222222222222", target="39.99")])
     assert len(ebay["revise"]) == 1 and rep["stopped"]
-    assert "EBAY_AUTH_TOKEN" in rep["results"][0]["error"]
+    assert "ebay_consent.py" in rep["results"][0]["error"]
     assert writes == []
 
 
@@ -2229,3 +2236,46 @@ def test_format_mirror_summary_none_when_nothing_written():
     assert ebay_sync.format_mirror_summary([{"row_num": 1, "title": "x", "item_id": "1",
                                              "old_price": 1.0, "new_price": 2.0,
                                              "outcome": "error"}]) is None
+
+
+# ── OAuth credentials (Trading API via X-EBAY-API-IAF-TOKEN) ──────────────────
+
+def test_credentials_mint_an_api_scope_token_with_its_own_cache(monkeypatch, creds):
+    from tools import ebay_analytics
+    seen = {}
+
+    def fake(force=False, scopes=None, cache_path=None):
+        seen.update(scopes=scopes, cache_path=cache_path)
+        return "ACCESS"
+    monkeypatch.setattr(ebay_analytics, "get_user_access_token", fake)
+    token, app, dev, cert, kind, msg = ebay_sync._load_credentials()
+    assert (token, app, dev, cert, kind, msg) == ("ACCESS", "app", "dev", "cert", None, "")
+    assert seen["scopes"] == ("https://api.ebay.com/oauth/api_scope",)
+    assert seen["cache_path"] == ebay_sync.TRADING_TOKEN_PATH
+
+
+def test_refused_refresh_token_is_an_auth_error_with_the_fix(monkeypatch, creds):
+    from tools import ebay_analytics
+
+    def refused(force=False, scopes=None, cache_path=None):
+        ebay_analytics.last_token_error = "HTTP 400: the provided authorization refresh token is invalid"
+        return None
+    monkeypatch.setattr(ebay_analytics, "get_user_access_token", refused)
+    monkeypatch.setattr(ebay_sync.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("must not hit the network"))
+    token, *_, kind, msg = ebay_sync._load_credentials()
+    assert token == "" and kind == "auth"
+    assert "refresh token is invalid" in msg and "ebay_consent.py" in msg
+    res = run_ebay_sync(*_cfg_args())
+    assert res["status"] == "error" and "auth token rejected" in res["alert"]
+    assert "ebay_consent.py" in res["alert"]
+    out = ebay_sync.revise_fixed_price("123456789012", 10)            # single-item calls too
+    assert out["ok"] is False and out["error_kind"] == "auth"
+
+
+def test_missing_keyset_never_mints_a_token(monkeypatch, creds):
+    from tools import ebay_analytics
+    monkeypatch.setenv("EBAY_DEV_ID", "")
+    monkeypatch.setattr(ebay_analytics, "get_user_access_token",
+                        lambda **k: pytest.fail("must not refresh without a keyset"))
+    assert ebay_sync._load_credentials()[4:] == ("no_credentials", "missing EBAY_DEV_ID")

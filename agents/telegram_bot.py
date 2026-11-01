@@ -2341,7 +2341,7 @@ def _refusal(item_id, target, message):
 
 def _auth_text(code, t, tail):
     return (f"🚨 <b>eBay token rejected</b> ({html.escape(code or 'auth')}) — renew "
-            f"EBAY_AUTH_TOKEN in .env.\n<b>{t}</b> {tail}")
+            f"EBAY_OAUTH_REFRESH_TOKEN (run python tools/ebay_consent.py).\n<b>{t}</b> {tail}")
 
 
 def _manual_cost_pair(col_map, rows, start, row):

@@ -257,7 +257,7 @@ def _restore_oos_listing(service, row, COL, categories, costco_data, title, cate
         if not info.get("ok"):
             code = info.get("error_code") or info.get("error_kind") or "error"
             note = f"Back in stock — eBay check failed ({code}), retrying the quantity restore tomorrow"
-            line = (f"🚨 {t} (row {sheet_row}): eBay token rejected — renew EBAY_AUTH_TOKEN; quantity "
+            line = (f"🚨 {t} (row {sheet_row}): eBay token rejected — renew EBAY_OAUTH_REFRESH_TOKEN (run python tools/ebay_consent.py); quantity "
                     "not restored" if info.get("error_kind") == "auth" else None)
             return None, note, line, "wait"
         if info.get("listing_status") != "Active":
@@ -305,7 +305,7 @@ def _restore_oos_listing(service, row, COL, categories, costco_data, title, cate
     msg = (res.get("message") or "")[:120]
     if res.get("error_kind") == "auth":
         return (None, f"Back in stock — eBay token rejected ({code}), retrying the quantity restore tomorrow",
-                f"🚨 {t} (row {sheet_row}): eBay token rejected — renew EBAY_AUTH_TOKEN; quantity "
+                f"🚨 {t} (row {sheet_row}): eBay token rejected — renew EBAY_OAUTH_REFRESH_TOKEN (run python tools/ebay_consent.py); quantity "
                 "not restored", "wait")
     return ("WATCH", f"Back in stock — eBay quantity restore FAILED ({code}: {msg}) — raise it by hand",
             f"• {t} (row {sheet_row}): restore failed ({html.escape(code)}) — raise the quantity by hand",
@@ -549,7 +549,7 @@ def run_active_monitor(config, COL, service, sheet_name, start_row, end_row, onl
                     elif outcome == "auth":
                         stop_auto_hide = True
                         _notify("🚨 <b>eBay token rejected</b> while hiding an OOS listing — renew "
-                                "EBAY_AUTH_TOKEN in .env. Remaining OOS listings this run were NOT "
+                                "EBAY_OAUTH_REFRESH_TOKEN (run python tools/ebay_consent.py). Remaining OOS listings this run were NOT "
                                 "hidden; set their eBay quantity to 0 by hand.")
 
             # Sale columns X (badge) / AW (regular price): refreshed while on sale, cleared when
@@ -891,7 +891,7 @@ def _apply_one(a, page, service, COL, sheet_name, start_row, end_row, threshold,
         if res.get("error_kind") == "auth":
             if sched.set_last_error(item_id, err):
                 _notify(f"🚨 <b>eBay token rejected</b> ({html.escape(res.get('error_code') or 'auth')}) "
-                        f"— renew EBAY_AUTH_TOKEN in .env. Scheduled {action} for {t} is waiting and "
+                        f"— renew EBAY_OAUTH_REFRESH_TOKEN (run python tools/ebay_consent.py). Scheduled {action} for {t} is waiting and "
                         "will retry every 10 min.")
             return f"{item_id}: auth error"
         note = retry_or_give_up(f"eBay {err}")

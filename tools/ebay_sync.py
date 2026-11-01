@@ -69,6 +69,11 @@ from tools.sheet_writer import (  # noqa: E402
 
 ENDPOINT          = "https://api.ebay.com/ws/api.dll"
 COMPAT_LEVEL      = "1193"
+# Trading API auth = OAuth user token (see _load_credentials / _headers)
+TRADING_SCOPES     = ("https://api.ebay.com/oauth/api_scope",)
+TRADING_TOKEN_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                  "data", ".ebay_trading_token.json")
+AUTH_FIX = "run `python tools/ebay_consent.py` to renew EBAY_OAUTH_REFRESH_TOKEN"
 ENTRIES_PER_PAGE  = 200
 MAX_PAGES         = 50          # runaway guard (10,000 listings)
 REQUEST_TIMEOUT   = 30
@@ -183,7 +188,7 @@ def live_item_ids() -> set[str] | None:
 
 # ── eBay Trading API ──────────────────────────────────────────────────────────
 
-def _build_request_xml(token: str, page: int) -> str:
+def _build_request_xml(page: int) -> str:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "ActiveList.ItemArray.Item.ItemID",
         "ActiveList.ItemArray.Item.Title",
@@ -198,7 +203,6 @@ def _build_request_xml(token: str, page: int) -> str:
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<GetMyeBaySellingRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         "<ActiveList><Include>true</Include>"
         f"<Pagination><EntriesPerPage>{ENTRIES_PER_PAGE}</EntriesPerPage>"
@@ -208,8 +212,12 @@ def _build_request_xml(token: str, page: int) -> str:
     )
 
 
-def _headers(app_id: str, dev_id: str, cert_id: str, call_name: str = "GetMyeBaySelling") -> dict:
-    return {
+def _headers(app_id: str, dev_id: str, cert_id: str, call_name: str = "GetMyeBaySelling",
+             token: str = "") -> dict:
+    """Trading API headers. The OAuth user token rides in X-EBAY-API-IAF-TOKEN — live
+    2026-11-01: that header authorizes GetMyeBaySelling, "Authorization: Bearer" does NOT —
+    and the request XML carries no <RequesterCredentials> (that was Auth'n'Auth)."""
+    headers = {
         "Content-Type": "text/xml; charset=utf-8",
         "X-EBAY-API-COMPATIBILITY-LEVEL": COMPAT_LEVEL,
         "X-EBAY-API-CALL-NAME": call_name,
@@ -218,6 +226,9 @@ def _headers(app_id: str, dev_id: str, cert_id: str, call_name: str = "GetMyeBay
         "X-EBAY-API-DEV-NAME": dev_id,
         "X-EBAY-API-CERT-NAME": cert_id,
     }
+    if token:
+        headers["X-EBAY-API-IAF-TOKEN"] = token
+    return headers
 
 
 def _post(body: str, headers: dict) -> bytes:
@@ -313,12 +324,12 @@ def fetch_active_listings() -> list[dict]:
             _set_error(err_kind, msg)
             return []
 
-        headers  = _headers(app_id, dev_id, cert_id)
+        headers  = _headers(app_id, dev_id, cert_id, token=token)
         listings, seen = [], set()
         page, total_pages = 1, 1
         while page <= total_pages and page <= MAX_PAGES:
             try:
-                raw = _post(_build_request_xml(token, page), headers)
+                raw = _post(_build_request_xml(page), headers)
             except OSError as e:
                 msg = f"eBay request failed: {e}"
                 logger.error(f"ebay_sync: {msg}")
@@ -362,29 +373,41 @@ def fetch_active_listings() -> list[dict]:
 
 
 def _load_credentials():
-    """(token, app_id, dev_id, cert_id, error_kind, error_msg) from .env.
-    error_kind is None when everything is present, else "no_token" / "no_credentials"."""
-    token   = os.getenv("EBAY_AUTH_TOKEN", "").strip()
+    """(token, app_id, dev_id, cert_id, error_kind, error_msg). token = a 2-hour OAuth USER
+    access token (scope api_scope) minted from EBAY_OAUTH_REFRESH_TOKEN by
+    ebay_analytics.get_user_access_token and cached in data/.ebay_trading_token.json; the
+    Auth'n'Auth EBAY_AUTH_TOKEN is no longer used (it hard-expired 2026-11-01, error 932).
+    error_kind: None | "no_token" (no refresh token in .env — the old "no EBAY_AUTH_TOKEN"
+    skip) | "no_credentials" (keyset incomplete) | "auth" (eBay refused the refresh token).
+    Never raises."""
+    from tools import ebay_analytics
     app_id  = os.getenv("EBAY_APP_ID", "").strip()
     dev_id  = os.getenv("EBAY_DEV_ID", "").strip()
     cert_id = os.getenv("EBAY_CERT_ID", "").strip()
-    if not token:
-        return token, app_id, dev_id, cert_id, "no_token", "no EBAY_AUTH_TOKEN"
+    if not ebay_analytics._refresh_token():
+        return "", app_id, dev_id, cert_id, "no_token", "no EBAY_OAUTH_REFRESH_TOKEN"
     missing = [n for n, v in (("EBAY_APP_ID", app_id), ("EBAY_DEV_ID", dev_id),
                               ("EBAY_CERT_ID", cert_id)) if not v]
     if missing:
-        return token, app_id, dev_id, cert_id, "no_credentials", f"missing {', '.join(missing)}"
+        return "", app_id, dev_id, cert_id, "no_credentials", f"missing {', '.join(missing)}"
+    try:
+        token = ebay_analytics.get_user_access_token(scopes=TRADING_SCOPES,
+                                                     cache_path=TRADING_TOKEN_PATH)
+    except Exception as e:  # contract: never raises
+        token, ebay_analytics.last_token_error = None, f"unexpected error: {e}"
+    if not token:
+        return ("", app_id, dev_id, cert_id, "auth",
+                f"eBay OAuth refresh failed ({ebay_analytics.last_token_error or 'no detail'}) — {AUTH_FIX}")
     return token, app_id, dev_id, cert_id, None, ""
 
 
 # ── Trading API writes (one-tap reprice) ──────────────────────────────────────
 
-def _build_revise_xml(token: str, item_id: str, price: float) -> str:
+def _build_revise_xml(item_id: str, price: float) -> str:
     """ReviseFixedPriceItem body that changes ONLY the Buy It Now price (StartPrice)."""
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
         f'<StartPrice currencyID="USD">{price:.2f}</StartPrice></Item>'
@@ -392,7 +415,7 @@ def _build_revise_xml(token: str, item_id: str, price: float) -> str:
     )
 
 
-def _build_get_item_xml(token: str, item_id: str) -> str:
+def _build_get_item_xml(item_id: str) -> str:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "Item.ItemID", "Item.ListingType", "Item.SellingStatus", "Item.Title",
         "Item.Quantity", "Item.ListingDuration", "Item.OutOfStockControl", "Item.Variations",
@@ -401,7 +424,6 @@ def _build_get_item_xml(token: str, item_id: str) -> str:
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<GetItemRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
         "<IncludeWatchCount>true</IncludeWatchCount>"   # WatchCount is only sent when asked for
@@ -420,7 +442,7 @@ def _call(call_name: str, body_fn) -> tuple:
     if err_kind:
         return None, {"error_kind": err_kind, "error_code": "", "message": err_msg}
     try:
-        raw = _post(body_fn(token), _headers(app_id, dev_id, cert_id, call_name))
+        raw = _post(body_fn(), _headers(app_id, dev_id, cert_id, call_name, token=token))
     except OSError as e:
         return None, {"error_kind": "network", "error_code": "", "message": f"eBay request failed: {e}"}
     try:
@@ -463,7 +485,7 @@ def revise_fixed_price(item_id, new_price) -> dict:
         return out
     out["price"] = price
     try:
-        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_revise_xml(tok, iid, price))
+        root, err = _call("ReviseFixedPriceItem", lambda: _build_revise_xml(iid, price))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err:
@@ -491,13 +513,12 @@ def is_eps_url(url) -> bool:
     return bool(m) and (m.group(1) == "ebayimg.com" or m.group(1).endswith(".ebayimg.com"))
 
 
-def _build_picture_xml(token: str, item_id: str, urls: list) -> str:
+def _build_picture_xml(item_id: str, urls: list) -> str:
     """ReviseFixedPriceItem body that replaces ONLY Item.PictureDetails.PictureURL (in order)."""
     pics = "".join(f"<PictureURL>{_xml_escape(u)}</PictureURL>" for u in urls)
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
         f"<PictureDetails>{pics}</PictureDetails></Item>"
@@ -538,7 +559,7 @@ def revise_picture(item_id, main_url, gallery_urls=(), listing_type=None) -> dic
         return out
     out["pictures"] = urls
     try:
-        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_picture_xml(tok, iid, urls))
+        root, err = _call("ReviseFixedPriceItem", lambda: _build_picture_xml(iid, urls))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err:
@@ -560,12 +581,11 @@ def _cdata(text: str) -> str:
     return "<![CDATA[" + str(text).replace("]]>", "]]]]><![CDATA[>") + "]]>"
 
 
-def _build_description_xml(token: str, item_id: str, description: str) -> str:
+def _build_description_xml(item_id: str, description: str) -> str:
     """ReviseFixedPriceItem body that replaces ONLY Item.Description."""
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
         f"<Description>{_cdata(description)}</Description></Item>"
@@ -595,7 +615,7 @@ def revise_description(item_id, new_description, listing_type=None) -> dict:
         logger.error(f"revise_description: item {out['item_id']} {out['message']}")
         return out
     try:
-        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_description_xml(tok, iid, desc))
+        root, err = _call("ReviseFixedPriceItem", lambda: _build_description_xml(iid, desc))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err:
@@ -611,12 +631,11 @@ def revise_description(item_id, new_description, listing_type=None) -> dict:
     return out
 
 
-def _build_sku_xml(token: str, item_id: str, sku: str) -> str:
+def _build_sku_xml(item_id: str, sku: str) -> str:
     """ReviseFixedPriceItem body that changes ONLY Item.SKU."""
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
         f"<SKU>{_xml_escape(sku)}</SKU></Item>"
@@ -649,7 +668,7 @@ def revise_sku(item_id, sku, listing_type=None) -> dict:
         logger.error(f"revise_sku: item {out['item_id']} {out['message']}")
         return out
     try:
-        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_sku_xml(tok, iid, sku))
+        root, err = _call("ReviseFixedPriceItem", lambda: _build_sku_xml(iid, sku))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err:
@@ -665,12 +684,11 @@ def revise_sku(item_id, sku, listing_type=None) -> dict:
     return out
 
 
-def _build_title_xml(token: str, item_id: str, title: str) -> str:
+def _build_title_xml(item_id: str, title: str) -> str:
     """ReviseFixedPriceItem body that changes ONLY Item.Title."""
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<ReviseFixedPriceItemRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<Item><ItemID>{_xml_escape(str(item_id))}</ItemID>"
         f"<Title>{_xml_escape(title)}</Title></Item>"
@@ -703,7 +721,7 @@ def revise_title(item_id, title, listing_type=None) -> dict:
         logger.error(f"revise_title: item {out['item_id']} {out['message']}")
         return out
     try:
-        root, err = _call("ReviseFixedPriceItem", lambda tok: _build_title_xml(tok, iid, title))
+        root, err = _call("ReviseFixedPriceItem", lambda: _build_title_xml(iid, title))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err:
@@ -732,10 +750,9 @@ def fetch_item_description(item_id) -> dict:
     selectors = "".join(f"<OutputSelector>{s}</OutputSelector>" for s in (
         "Item.ItemID", "Item.Description", "Item.ListingType", "Item.SellingStatus", "Item.Variations"))
 
-    def body(tok):
+    def body():
         return ('<?xml version="1.0" encoding="utf-8"?>'
                 f'<GetItemRequest xmlns="{_NS}">'
-                f"<RequesterCredentials><eBayAuthToken>{_xml_escape(tok)}</eBayAuthToken></RequesterCredentials>"
                 "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
                 f"<ItemID>{_xml_escape(iid)}</ItemID><DetailLevel>ReturnAll</DetailLevel>{selectors}"
                 "</GetItemRequest>")
@@ -763,12 +780,11 @@ def fetch_item_description(item_id) -> dict:
 ALREADY_ENDED_CODES = {"1047"}    # "The auction has already been closed."
 
 
-def _build_end_xml(token: str, item_id: str, reason: str = "NotAvailable") -> str:
+def _build_end_xml(item_id: str, reason: str = "NotAvailable") -> str:
     """EndItem body. reason: eBay EndReasonCodeType — NotAvailable = item no longer available."""
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<EndItemRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
         f"<EndingReason>{_xml_escape(reason)}</EndingReason>"
@@ -793,7 +809,7 @@ def end_fixed_price(item_id, reason="NotAvailable") -> dict:
         logger.error(f"end_fixed_price: {out['message']}")
         return out
     try:
-        root, err = _call("EndItem", lambda tok: _build_end_xml(tok, iid, reason))
+        root, err = _call("EndItem", lambda: _build_end_xml(iid, reason))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err and err["error_code"] in ALREADY_ENDED_CODES:
@@ -811,13 +827,12 @@ def end_fixed_price(item_id, reason="NotAvailable") -> dict:
     return out
 
 
-def _build_qty_xml(token: str, item_id: str, qty: int) -> str:
+def _build_qty_xml(item_id: str, qty: int) -> str:
     """ReviseInventoryStatus body — quantity only (a multi-variation listing needs a SKU and
     is rejected by eBay; the error surfaces to the caller)."""
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<ReviseInventoryStatusRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         "<InventoryStatus>"
         f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
@@ -850,7 +865,7 @@ def set_quantity(item_id, qty) -> dict:
         logger.error(f"set_quantity: {out['message']}")
         return out
     try:
-        root, err = _call("ReviseInventoryStatus", lambda tok: _build_qty_xml(tok, iid, q))
+        root, err = _call("ReviseInventoryStatus", lambda: _build_qty_xml(iid, q))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err:
@@ -892,7 +907,7 @@ def fetch_item_price(item_id) -> dict:
         out.update(error_kind="invalid", message=f"bad item id {item_id!r}")
         return out
     try:
-        root, err = _call("GetItem", lambda tok: _build_get_item_xml(tok, iid))
+        root, err = _call("GetItem", lambda: _build_get_item_xml(iid))
     except Exception as e:  # contract: never raises
         root, err = None, {"error_kind": "api", "error_code": "", "message": f"unexpected error: {e}"}
     if err:
@@ -1848,7 +1863,7 @@ def auto_reprice_breaches(report: dict, service, COL, sheet_name: str, *, title_
             entry["error"] = (f"{result.get('error_code') or result.get('error_kind') or 'error'}: "
                               f"{result.get('message', '')}")
             if result.get("error_kind") == "auth":
-                entry["error"] = "eBay token rejected — generate a new EBAY_AUTH_TOKEN"
+                entry["error"] = f"eBay token rejected — {AUTH_FIX}"
                 logger.critical("auto_reprice: auth error — stopping")
                 break
             continue
@@ -2111,7 +2126,7 @@ def apply_target_prices(service, COL, sheet_name, start_row, end_row, *, rows=No
             entry.update(outcome="failed", error=(f"{live.get('error_code') or live.get('error_kind')}: "
                                                   f"couldn't read the live price — {live.get('message', '')}"))
             if live.get("error_kind") == "auth":
-                entry["error"] = "eBay token rejected — generate a new EBAY_AUTH_TOKEN"
+                entry["error"] = f"eBay token rejected — {AUTH_FIX}"
                 report["stopped"] = True
                 logger.critical("apply_targets: auth error on GetItem — stopping")
                 break
@@ -2141,7 +2156,7 @@ def apply_target_prices(service, COL, sheet_name, start_row, end_row, *, rows=No
                 if "variation" in str(result.get("message", "")).lower():
                     entry["error"] += " (multi-variation listing — set it in Seller Hub)"
                 if result.get("error_kind") == "auth":
-                    entry["error"] = "eBay token rejected — generate a new EBAY_AUTH_TOKEN"
+                    entry["error"] = f"eBay token rejected — {AUTH_FIX}"
                     report["stopped"] = True
                     logger.critical("apply_targets: auth error — stopping")
                     break
@@ -2238,7 +2253,7 @@ TXN_WINDOW_DAYS = 30   # GetItemTransactions rejects a ModTimeFrom..ModTimeTo sp
 TXN_MAX_DAYS    = 90   # ...and keeps no transactions older than ~90 days
 
 
-def _build_get_item_transactions_xml(token: str, item_id: str, days_back: int = 30, *,
+def _build_get_item_transactions_xml(item_id: str, days_back: int = 30, *,
                                      start=None, end=None) -> str:
     """Window = [start, end] when given, else the last days_back days (callers keep it <= 30)."""
     end = end or datetime.now(timezone.utc)
@@ -2257,7 +2272,6 @@ def _build_get_item_transactions_xml(token: str, item_id: str, days_back: int = 
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<GetItemTransactionsRequest xmlns="{_NS}">'
-        f"<RequesterCredentials><eBayAuthToken>{_xml_escape(token)}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         "<DetailLevel>ReturnAll</DetailLevel>"
         f"<ItemID>{_xml_escape(str(item_id))}</ItemID>"
@@ -2303,8 +2317,8 @@ def fetch_item_transactions(item_id, days_back: int = 30) -> list[dict]:
 def _fetch_transactions_window(token, app_id, dev_id, cert_id, iid, start, end) -> list[dict] | None:
     """One GetItemTransactions call for [start, end]; None on any failure."""
     try:
-        raw = _post(_build_get_item_transactions_xml(token, iid, start=start, end=end),
-                    _headers(app_id, dev_id, cert_id, "GetItemTransactions"))
+        raw = _post(_build_get_item_transactions_xml(iid, start=start, end=end),
+                    _headers(app_id, dev_id, cert_id, "GetItemTransactions", token=token))
     except OSError as e:
         logger.error(f"fetch_item_transactions: eBay request failed: {e}")
         return None
@@ -2434,7 +2448,7 @@ def run_ebay_sync(config, COL, service, sheet_name, start_row, end_row, dry_run=
         alert = None
         if kind == "auth":
             alert = ("🔑 <b>eBay sync: auth token rejected</b> — "
-                     f"{html.escape(err['message'][:200])}\nGenerate a new EBAY_AUTH_TOKEN.")
+                     f"{html.escape(err['message'][:200])}\nTo fix: {html.escape(AUTH_FIX)}.")
         return {"status": "error", "errors": f"eBay API: {err['message']}"[:300], "alert": alert}
 
     # The margin read reaches col BB (buy_cost); make sure the grid does. Best-effort.
