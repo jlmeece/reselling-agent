@@ -87,6 +87,18 @@ business:
       "Small Appliances":
         - '^appliances > small kitchen appliances'
         - '!water coolers'
+      # EXPERIMENTAL (Q4 2026): no toy was on sale in the 2026-09-24 probe, so Costco's real toy path is
+      # unconfirmed — this matches any path naming toys / games / puzzles, minus pet toys.
+      "Toys":
+        - 'toys?'
+        - 'board games'
+        - 'games (&|and) puzzles'
+        - 'puzzles'
+        - 'lego'
+        - '!pet'
+        - '!dogs?'
+        - '!cats?'
+        - '!electronics'
     keywords:
       "Precious Metals":
         - '(gold|silver|platinum|palladium) (bars?|coins?|rounds?|bullion)'
@@ -184,6 +196,37 @@ business:
         - '!knife'
         - '!knives'
         - '!tool and gadget'
+      # EXPERIMENTAL (Q4 2026). Last on purpose: every other category wins a tie.
+      "Toys":
+        - 'lego'
+        - 'building (set|kit)'
+        - 'action figures?'
+        - 'dolls?'
+        - 'board games?'
+        - 'plush'
+        - 'remote control'
+        - 'rc (car|truck)s?'
+        - 'nerf'
+        - 'hot wheels'
+        - 'barbie'
+        - 'playmobil'
+        - 'puzzles?'
+        - 'magnetic tiles'
+        - 'magna-?tiles'
+        - 'figure set'
+        - '!dogs?'
+        - '!cats?'
+        - '!pets?'
+        - '!blankets?'
+        - '!throws?'
+        - '!robes?'
+        - '!pillows?'
+        - '!mattress'
+        - '!topper'
+        - '!towels?'
+        - '!tv'
+        - '!ceiling fan'
+        - '!garage door'
 
   # Run schedule — times are local (Central). GitHub Actions workflow uses UTC offsets.
   # active:    Check ACTIVE listings — 3x/day, every run
@@ -555,12 +598,71 @@ categories:
         - "costco {brand} deal worth it"
     stale_days: 21
 
+  # ── Toys — EXPERIMENTAL, Q4 2026 holiday test only ───────────────────────────
+  # Short and capped: few discovery pages, a small active cap, conservative scoring in
+  # skills/research_toys.py (hard filters: commodity / off-brand / bulky low-margin; Tier 1 needs
+  # net >= $8 and an Oct–Jan month). Demand collapses after January: set discovery_urls: [] and
+  # let the rows age out (stale_days) once the season ends.
   Toys:
-    fee_rate: 0.1325
+    fee_rate: 0.1325   # eBay FVF, Toys & Hobbies (same tier as the other general categories)
     ad_rate: 0.0
+    fulfillment_risk: medium
+    max_active: 8
+    max_discovery: 15
+    capacity_headroom: 2
+    rotation_threshold: 4.0
+    velocity_target: 2
     research_skill: "skills/research_toys.py"
     seasonal_peak_months: [10, 11, 12]
-    notes: "Future category — not yet active"
-    discovery_urls: []
-    community_sources: []
-    stale_days: 30
+    notes: >
+      EXPERIMENTAL holiday category (Oct–Jan). Resale only works for brand/licensed toys (LEGO,
+      Magna-Tiles, Pokémon, Star Wars, Bluey …) and especially items SOLD OUT on Amazon / Walmart /
+      Target — say explicitly in demand_note whether it is sold out at those retailers.
+      Off-brand, commodity (crayons, bubbles, assorted packs) and bulky boxes (ride-ons, playhouses)
+      are skipped. Search eBay by LEGO set number / exact product name. Buyers need delivery before Dec 25.
+
+    # 220 (Toys & Hobbies) is a parent, not a leaf — rows that hit the default are resolved per title by
+    # eBay's category suggestions (invalid-only mode). Leaf IDs below verified with the Taxonomy API 2026-11-01.
+    ebay_category_id: "220"
+    ebay_category_map:
+      "lego": "19006"                       # LEGO Complete Sets & Packs
+      "magna-tiles": "258040"               # Building Toy Complete Sets & Packs
+      "magnetic tiles": "258040"
+      "building set": "258040"
+      "puzzle": "19183"                     # Jigsaw
+      "nerf": "158749"                      # Dart Guns & Soft Darts
+      "barbie": "262346"                    # Dolls & Doll Playsets
+      "doll": "262346"
+      "action figure": "261068"             # Action Figures
+      "remote control": "182183"            # RC Cars, Trucks & Motorcycles
+      "rc car": "182183"
+      "plush": "230"                        # Other Stuffed Animals
+      "board game": "180349"                # Board & Traditional Games, Contemporary Manufacture
+      "default": "220"
+    ebay_item_specifics:
+      "C:Brand": ""
+      "C:Type": ""
+    ebay_required_specifics: ["C:Brand", "C:Type"]
+    default_dimensions: {length: 16, width: 12, height: 6}  # inches — boxed toy fallback
+
+    discovery_urls:
+      - "https://www.costco.com/CatalogSearch?keyword=lego"
+      - "https://www.costco.com/CatalogSearch?keyword=magna-tiles"
+      - "https://www.costco.com/CatalogSearch?keyword=hot+wheels"
+      - "https://www.costco.com/CatalogSearch?keyword=barbie"
+
+    community_sources:
+      reddit:
+        - r/lego
+        - r/Costco
+        - r/flipping
+        - r/legodeal
+      forums: []
+      youtube_query_templates:
+        - "{title} review"
+        - "costco {brand} toy deal"
+      web_terms:
+        - "{title} sold out"
+        - "{title} review"
+        - "hot toys {brand} holiday"
+    stale_days: 14

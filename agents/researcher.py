@@ -70,6 +70,7 @@ from skills.research_outdoor import run_pass3 as outdoor_pass3
 from skills.research_watches import run_pass3 as watches_pass3
 from skills.research_appliances import run_pass3 as appliances_pass3
 from skills.research_pharmacy import run_pass3 as pharmacy_pass3
+from skills import research_toys as toys_skill
 from skills.scoring import score_dimension, MAX_TIER1_PER_RUN
 from skills.base_scoring import score_sell_through, score_net_profit, MONTHLY_PROFIT_TIER1, MONTHLY_PROFIT_TIER2
 
@@ -432,6 +433,8 @@ def _pass3_for_category(category):
         return appliances_pass3
     if category.lower() == "pharmacy":
         return pharmacy_pass3
+    if category.lower() == "toys":
+        return toys_skill.run_pass3
     return outdoor_pass3
 
 
@@ -991,6 +994,16 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     pct_score = 0
                 dimension_scores["margin_potential"] = max(dollar_score, pct_score)
 
+            # Toys (experimental Q4 category): brand / sellout / season / box-size signals
+            # reshape demand + fulfillment before Pass 3; toy_gate() below has the final word.
+            toy_sig = None
+            if category == "Toys":
+                _toy_text = " ".join([str(claude_result.get("demand_note", "")),
+                                      str(community_data.get("summary", ""))]
+                                     + [str(v) for v in (reasoning or {}).values()])
+                toy_sig = toys_skill.toy_signals(title, brand, costco_data.get("dimensions"), _toy_text)
+                toys_skill.adjust_dimensions(dimension_scores, toy_sig)
+
             # 3e. Pass 3: deterministic scoring
             pass3_fn = _pass3_for_category(category)
             result   = pass3_fn(dimension_scores, cat_config, reasoning=reasoning)
@@ -1093,6 +1106,12 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                     and stock_status not in ("OUT OF STOCK", "WAREHOUSE ONLY", "CHECK FAILED")):
                 _gate_note += (f"\nSale fast-track: on sale, net ${real_net:.2f}/unit → SCORED.")
                 tier = 1
+
+            # Toys gate runs last so a hard filter (commodity / off-brand / bulky) can't be
+            # promoted back by the overrides above.
+            if toy_sig is not None:
+                tier, _toy_note = toys_skill.toy_gate(tier, toy_sig, real_net)
+                _gate_note += f"\n{toys_skill.format_signals(toy_sig)}{_toy_note}"
 
             tier_summary_line = (
                 f"[T{tier} | Score {weighted_score} | {price_summary}Costco: {costco_url}"
