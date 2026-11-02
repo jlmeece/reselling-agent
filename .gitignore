@@ -76,3 +76,6 @@ data/.export_state.json
 data/photo_template/*.png
 data/photo_template/*.jpg
 data/photo_template/*.jpeg
+
+# runtime data
+data/knowledge/
