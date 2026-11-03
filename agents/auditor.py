@@ -5,7 +5,9 @@ Runs every other day via scheduler.py --mode audit.
 Reviews all non-protected rows and:
   - Auto-removes rows with clearly broken economics (incl. stale SCORED rows in
     the $1–$4 net dead zone the review queue never shows)
-  - Flags borderline rows as AUDIT_REVIEW for manual decision
+  - Never asks for a manual decision: a row that would be removed but still has a
+    selling eBay listing goes back to ACTIVE (monitored again); one whose listing is
+    hidden at quantity 0 keeps its status and is reported
   - Writes removed rows to Graveyard tab (append-only)
   - Appends summary row to Audit Log tab
   - Logs which categories need a discovery run to refill removed products
@@ -44,6 +46,10 @@ PROTECTED = {"ACTIVE", "READY", "APPROVED", "LISTED", "AUDIT_REVIEW", "ENDED"}
 SCORED_STALE_NET_FLOOR   = 1.00   # == the auto-remove "below floor" boundary (net < $1.00)
 SCORED_STALE_NET_CEILING = 2.00   # == telegram_bot._REVIEW_MIN_NET_PROFIT (exclusive)
 SCORED_STALE_DAYS        = 30
+
+# Zero sales in 90 days but a healthy net: removed once it has gone this long unchecked
+# (these used to be flagged AUDIT_REVIEW and frozen forever).
+ZERO_VELOCITY_HIGH_NET_STALE_DAYS = 30
 
 _DAYS_UNKNOWN = 999   # _days_since() sentinel for a blank/unparseable timestamp
 
@@ -111,7 +117,8 @@ def _norm_title(title) -> str:
 def _live_index():
     """(item_ids, normalized titles, skus) of every listing on eBay's ActiveList — fetched ONCE
     per audit — or None when eBay can't be reached (the caller then deletes nothing). Hidden
-    (quantity 0) listings count too: a deleted row orphans them just the same."""
+    (quantity 0) listings count too: a deleted row orphans them just the same. Each part is a
+    dict key -> available quantity (membership works like a set; _live_selling reads the qty)."""
     from tools.ebay_sync import fetch_active_listings, get_last_error
     try:
         listings = fetch_active_listings()
@@ -122,9 +129,13 @@ def _live_index():
         logger.error(f"Audit: eBay unreachable ({get_last_error().get('message')}) — "
                      "no row will be auto-removed this run")
         return None
-    ids = {str(l["item_id"]) for l in listings if l.get("item_id")}
-    titles = {_norm_title(l.get("title")) for l in listings} - {""}
-    skus = {str(l.get("sku") or "").strip() for l in listings} - {""}
+    ids, titles, skus = {}, {}, {}
+    for l in listings:
+        avail = max((l.get("quantity") or 0) - (l.get("quantity_sold") or 0), 0)
+        for d, key in ((ids, str(l.get("item_id") or "")), (titles, _norm_title(l.get("title"))),
+                       (skus, str(l.get("sku") or "").strip())):
+            if key:
+                d[key] = max(d.get(key, 0), avail)
     return ids, titles, skus
 
 
@@ -143,6 +154,19 @@ def _live_match(index, ebay_url, sku, titles) -> str | None:
     if any(_norm_title(t) and _norm_title(t) in live_titles for t in titles):
         return "title"
     return None
+
+
+def _live_selling(index, ebay_url, sku, titles) -> bool:
+    """True when the row's live listing (same match order as _live_match) has quantity > 0.
+    A listing hidden at quantity 0 (OOS / sale-end hide) is live but not selling."""
+    from tools.ebay_sync import extract_item_id
+    ids, live_titles, skus = index
+    item_id = extract_item_id(ebay_url)
+    if item_id and item_id in ids:
+        return ids[item_id] > 0
+    if str(sku or "").strip() in skus:
+        return skus[str(sku).strip()] > 0
+    return any(live_titles.get(_norm_title(t), 0) > 0 for t in titles if _norm_title(t))
 
 
 def _current_title(service, sheet_name, COL, sheet_row) -> str | None:
@@ -173,6 +197,9 @@ def _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes=
             return f"Below floor ($1.00 min) — net ${net_profit:.2f}"
         if sold_90d == 0 and net_profit < 5.0:
             return f"Zero velocity + net < $5 (net ${net_profit:.2f})"
+        if (sold_90d == 0 and net_profit >= 5.0
+                and ZERO_VELOCITY_HIGH_NET_STALE_DAYS <= days_since_checked < _DAYS_UNKNOWN):
+            return f"Zero velocity + net ${net_profit:.2f}, stale {days_since_checked} days"
         if (status == "SCORED"
                 and SCORED_STALE_NET_FLOOR <= net_profit < SCORED_STALE_NET_CEILING
                 and SCORED_STALE_DAYS <= days_since_checked < _DAYS_UNKNOWN):
@@ -216,8 +243,11 @@ def _fmt_line(product_dict: dict, reason: str) -> str:
 
 
 def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, include_health=True,
-                         not_deleted=(), live_unknown=()):
+                         not_deleted=(), live_unknown=(), to_activate=(), kept_hidden=()):
     """Pure string-builder for the audit Telegram message — no I/O, easy to unit test.
+    to_activate: [(sheet_row, product_dict, reason)] rows set back to ACTIVE because their eBay
+    listing is still selling. kept_hidden: same shape, rows left as they are because their
+    listing is hidden at quantity 0 — both listed so no status decision is silent.
     not_deleted: [(sheet_row, product_dict, why)] removals that were NOT carried out (row moved
     since the read, or the sheet lookup failed) — listed so a skipped delete is never silent.
     live_unknown: [(sheet_row, product_dict, reason)] removal candidates skipped because eBay
@@ -238,10 +268,21 @@ def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, 
     if len(to_remove) > 8:
         lines.append(f"…and {len(to_remove) - 8} more")
 
-    lines.append(f"Flagged for review: {len(to_flag)} rows")
-    lines += [_fmt_line(p, r) for _, p, r in to_flag[:5]]
-    if len(to_flag) > 5:
-        lines.append(f"…and {len(to_flag) - 5} more")
+    if to_flag:
+        lines.append(f"Flagged for review: {len(to_flag)} rows")
+        lines += [_fmt_line(p, r) for _, p, r in to_flag[:5]]
+        if len(to_flag) > 5:
+            lines.append(f"…and {len(to_flag) - 5} more")
+
+    for items, header in ((to_activate, "♻️ Restored to ACTIVE (live eBay listing)"),
+                          (kept_hidden, "🙈 Kept as is — eBay listing hidden at quantity 0, not deleted")):
+        if not items:
+            continue
+        items = list(items)
+        lines.append(f"{header}: {len(items)}")
+        lines += [_fmt_line(p, r) for _, p, r in items[:8]]
+        if len(items) > 8:
+            lines.append(f"…and {len(items) - 8} more")
 
     lines.append(f"Categories needing discovery: {n_subs}")
 
@@ -252,15 +293,89 @@ def _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health, 
         )
         lines.append(f"\n<b>Category Health:</b>\n{health_lines or '(no data)'}")
 
-    text = "\n".join(lines) + "\n"
-    if to_flag:
-        text += "\n⚠️ Filter col A = AUDIT_REVIEW to see rows needing your decision."
-    return text
+    return "\n".join(lines) + "\n"
+
+
+def _graveyard_row(run_date, product_dict, reason, substitute_queued=False) -> dict:
+    """One Graveyard tab entry for a removed row (write_to_graveyard's dict shape)."""
+    return {
+        "date_removed":      run_date,
+        "reason":            reason,
+        "category":          product_dict["category"],
+        "title":             product_dict["title"],
+        "cost":              product_dict["costco_cost"],
+        "ebay_price":        product_dict["ebay_price"],
+        "net_profit":        product_dict["net_profit"],
+        "sold_90d":          product_dict["sold_90d"],
+        "score":             product_dict["score"] or "",
+        "status_at_removal": product_dict["status"],
+        "days_on_sheet":     product_dict["days_on_sheet"],
+        "substitute_queued": "YES" if substitute_queued else "NO",
+        "original_row":      product_dict["original_row"],
+        "costco_url":        product_dict["costco_url"],
+        "sku":               product_dict["sku"],
+    }
+
+
+def _delete_rows(service, sheet_name, COL, to_remove) -> list:
+    """Delete the to_remove rows [(sheet_row, product_dict, reason)] highest row first, each one
+    only after re-reading its title (rows shift). Returns not_deleted [(sheet_row, product_dict,
+    why)]. Graveyard first is the CALLER's job. Shared by run_audit and
+    tools/migrate_audit_review.py."""
+    not_deleted = []    # (sheet_row, product_dict, why) — reported in the Telegram summary
+    if to_remove:
+        spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
+        try:
+            meta = execute_with_retry(
+                service.spreadsheets().get(spreadsheetId=spreadsheet_id), "auditor sheet meta"
+            )
+            sheet_gid = next(
+                s["properties"]["sheetId"]
+                for s in meta["sheets"]
+                if s["properties"]["title"] == sheet_name
+            )
+        except Exception as e:
+            # Never guess: sheet id 0 may be a different tab, and a delete there removes the
+            # wrong data. Skip every delete this run; the rows are already in the Graveyard.
+            logger.error(f"Could not get sheet GID for deletion — no rows deleted: {e}")
+            sheet_gid = None
+
+        sorted_removes = sorted(to_remove, key=lambda x: x[0], reverse=True)
+        for sheet_row, product_dict, reason in sorted_removes:
+            if sheet_gid is None:
+                not_deleted.append((sheet_row, product_dict, "sheet lookup failed, not deleted"))
+                continue
+            now_title = _current_title(service, sheet_name, COL, sheet_row)
+            if now_title != product_dict["title"]:
+                why = ("title unreadable, not deleted" if now_title is None
+                       else f"row {sheet_row} now holds a different product, not deleted")
+                logger.warning(f"  Row {sheet_row} NOT deleted — expected "
+                               f"{product_dict['title'][:40]!r}, found {str(now_title)[:40]!r}")
+                not_deleted.append((sheet_row, product_dict, why))
+                continue
+            try:
+                body = {"requests": [{"deleteDimension": {"range": {
+                    "sheetId":    sheet_gid,
+                    "dimension":  "ROWS",
+                    "startIndex": sheet_row - 1,  # 0-based
+                    "endIndex":   sheet_row,
+                }}}]}
+                execute_with_retry(service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id, body=body
+                ), f"delete row {sheet_row}", retry_statuses=(429,), retry_timeouts=False)
+                logger.info(f"  Deleted row {sheet_row}: {product_dict['title'][:40]}")
+                time.sleep(1.5)  # ~35 deletes/min — stays under the 60/min write cap
+            except Exception as e:
+                logger.error(f"  Failed to delete row {sheet_row}: {e}")
+                not_deleted.append((sheet_row, product_dict, f"delete failed: {e}"))
+
+    return not_deleted
 
 
 def run_audit(config, COL, service, sheet_name, start_row, end_row):
     """
-    CFO audit pass. Reads all rows, applies auto-remove rules, flags gray areas,
+    CFO audit pass. Reads all rows, applies auto-remove rules, restores rows with a live
+    eBay listing to ACTIVE instead of removing them,
     archives removed rows to Graveyard, logs to Audit Log, notifies via Telegram.
     """
     run_date = datetime.now().strftime("%Y-%m-%d")
@@ -276,7 +391,8 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
     live = _live_index()        # None = eBay unreachable -> nothing is deleted this run
 
     to_remove     = []   # (sheet_row, product_dict, reason_str)
-    to_flag       = []   # (sheet_row, product_dict, reason_str)
+    to_activate   = []   # (sheet_row, product_dict, reason_str) — would remove, listing still selling
+    kept_hidden   = []   # (sheet_row, product_dict, reason_str) — would remove, listing hidden at qty 0
     live_unknown  = []   # (sheet_row, product_dict, reason_str) — would remove, live status unknown
     rows_reviewed = 0
 
@@ -341,45 +457,34 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
             live_unknown.append((sheet_row, product_dict, remove_reason))
             continue
 
-        live_why = remove_reason and _live_match(
-            live, _safe(row, _col_to_idx(COL["ebay_listing_url"])), sku,
-            (title, _safe(row, _col_to_idx(COL["seo_title"]))))
+        ebay_url = _safe(row, _col_to_idx(COL["ebay_listing_url"]))
+        row_titles = (title, _safe(row, _col_to_idx(COL["seo_title"])))
+        live_why = remove_reason and _live_match(live, ebay_url, sku, row_titles)
         if live_why:
-            # Deleting the row would orphan a listing that still sells: nothing would
-            # stock-check or hide it again. AUDIT_REVIEW is protected and stock-checked.
-            flag_reason = (f"Would auto-remove ({remove_reason}) but its eBay listing is LIVE "
-                           f"(matched by {live_why}) — end or hide it on eBay, then delete the row")
-            logger.warning(f"  Row {sheet_row} NOT removed, live eBay listing ({live_why}): {title[:50]}")
-            to_flag.append((sheet_row, product_dict, flag_reason))
+            # Deleting the row would orphan a listing nothing would stock-check or hide again.
+            # Still selling -> back to ACTIVE so the monitor and ebay_sync (break-even reprice)
+            # own it. Hidden at qty 0 -> left as is: ACTIVE would fight the OOS / sale-end hide.
+            reason = f"matched by {live_why}; would remove: {remove_reason}"
+            if _live_selling(live, ebay_url, sku, row_titles):
+                logger.warning(f"  Row {sheet_row} -> ACTIVE, live eBay listing ({live_why}): {title[:50]}")
+                to_activate.append((sheet_row, product_dict, reason))
+            else:
+                logger.warning(f"  Row {sheet_row} kept, eBay listing hidden at qty 0 ({live_why}): {title[:50]}")
+                kept_hidden.append((sheet_row, product_dict, reason))
             continue
 
         if remove_reason:
             logger.info(f"  Row {sheet_row} AUTO-REMOVE [{remove_reason}]: {title[:50]}")
             to_remove.append((sheet_row, product_dict, remove_reason))
-            continue
 
-        # ── AUDIT_REVIEW rules ────────────────────────────────────────────────
-        flag_reason = None
+    logger.info(f"Decisions: {len(to_remove)} remove | {len(to_activate)} -> ACTIVE | "
+                f"{len(kept_hidden)} kept (hidden listing) | {rows_reviewed} reviewed")
 
-        # net_profit None = un-priced row: no economics-based flags.
-        # (Net $0.50–$1.00 is no longer flagged — _remove_reason auto-removes
-        #  anything below $1.00 as "below floor", since it can never be reviewed.)
-        if status in ("PENDING", "WATCH") and 45 <= days_since_checked < 60:
-            flag_reason = f"Stale {days_since_checked} days — might be salvageable"
-        elif net_profit is not None and sold_90d == 0 and net_profit >= 5.0:
-            flag_reason = f"Zero velocity but net ${net_profit:.2f} — no proven demand, high upside"
-
-        if flag_reason:
-            logger.info(f"  Row {sheet_row} AUDIT_REVIEW [{flag_reason}]: {title[:50]}")
-            to_flag.append((sheet_row, product_dict, flag_reason))
-
-    logger.info(f"Decisions: {len(to_remove)} remove | {len(to_flag)} flag | {rows_reviewed} reviewed")
-
-    # ── Apply AUDIT_REVIEW flags BEFORE deleting rows ────────────────────────
-    for sheet_row, product_dict, reason in to_flag:
+    # ── Restore rows with a selling eBay listing to ACTIVE, BEFORE deleting rows ──
+    for sheet_row, product_dict, reason in to_activate:
         write_row_partial(service, sheet_name, sheet_row, [
-            (COL["status"],      "AUDIT_REVIEW"),
-            (COL["tier_summary"], f"[AUDIT_REVIEW] {reason}"),
+            (COL["status"],      "ACTIVE"),
+            (COL["tier_summary"], "[audit] live eBay listing restored to ACTIVE"),
         ])
         time.sleep(0.3)  # Sheets write cap is 60/min per service account
 
@@ -389,23 +494,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
 
     for sheet_row, product_dict, reason in to_remove:
         is_economics = any(k in reason for k in ["Negative", "Below floor", "Zero velocity", "review floor"])
-        graveyard_rows.append({
-            "date_removed":      run_date,
-            "reason":            reason,
-            "category":          product_dict["category"],
-            "title":             product_dict["title"],
-            "cost":              product_dict["costco_cost"],
-            "ebay_price":        product_dict["ebay_price"],
-            "net_profit":        product_dict["net_profit"],
-            "sold_90d":          product_dict["sold_90d"],
-            "score":             product_dict["score"] or "",
-            "status_at_removal": product_dict["status"],
-            "days_on_sheet":     product_dict["days_on_sheet"],
-            "substitute_queued": "YES" if is_economics else "NO",
-            "original_row":      product_dict["original_row"],
-            "costco_url":        product_dict["costco_url"],
-            "sku":               product_dict["sku"],
-        })
+        graveyard_rows.append(_graveyard_row(run_date, product_dict, reason, is_economics))
         if is_economics:
             sub_categories.append(product_dict["category"])
 
@@ -413,52 +502,7 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         write_to_graveyard(service, graveyard_rows)
 
     # ── Delete rows in REVERSE order (highest row number first) ──────────────
-    not_deleted = []    # (sheet_row, product_dict, why) — reported in the Telegram summary
-    if to_remove:
-        spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
-        try:
-            meta = execute_with_retry(
-                service.spreadsheets().get(spreadsheetId=spreadsheet_id), "auditor sheet meta"
-            )
-            sheet_gid = next(
-                s["properties"]["sheetId"]
-                for s in meta["sheets"]
-                if s["properties"]["title"] == sheet_name
-            )
-        except Exception as e:
-            # Never guess: sheet id 0 may be a different tab, and a delete there removes the
-            # wrong data. Skip every delete this run; the rows are already in the Graveyard.
-            logger.error(f"Could not get sheet GID for deletion — no rows deleted: {e}")
-            sheet_gid = None
-
-        sorted_removes = sorted(to_remove, key=lambda x: x[0], reverse=True)
-        for sheet_row, product_dict, reason in sorted_removes:
-            if sheet_gid is None:
-                not_deleted.append((sheet_row, product_dict, "sheet lookup failed, not deleted"))
-                continue
-            now_title = _current_title(service, sheet_name, COL, sheet_row)
-            if now_title != product_dict["title"]:
-                why = ("title unreadable, not deleted" if now_title is None
-                       else f"row {sheet_row} now holds a different product, not deleted")
-                logger.warning(f"  Row {sheet_row} NOT deleted — expected "
-                               f"{product_dict['title'][:40]!r}, found {str(now_title)[:40]!r}")
-                not_deleted.append((sheet_row, product_dict, why))
-                continue
-            try:
-                body = {"requests": [{"deleteDimension": {"range": {
-                    "sheetId":    sheet_gid,
-                    "dimension":  "ROWS",
-                    "startIndex": sheet_row - 1,  # 0-based
-                    "endIndex":   sheet_row,
-                }}}]}
-                execute_with_retry(service.spreadsheets().batchUpdate(
-                    spreadsheetId=spreadsheet_id, body=body
-                ), f"delete row {sheet_row}", retry_statuses=(429,), retry_timeouts=False)
-                logger.info(f"  Deleted row {sheet_row}: {product_dict['title'][:40]}")
-                time.sleep(1.5)  # ~35 deletes/min — stays under the 60/min write cap
-            except Exception as e:
-                logger.error(f"  Failed to delete row {sheet_row}: {e}")
-                not_deleted.append((sheet_row, product_dict, f"delete failed: {e}"))
+    not_deleted = _delete_rows(service, sheet_name, COL, to_remove)    # reported in the Telegram summary
 
     # ── Queue substitute PENDING rows ─────────────────────────────────────────
     n_subs = 0
@@ -512,23 +556,29 @@ def run_audit(config, COL, service, sheet_name, start_row, end_row):
         "mode":               "audit",
         "rows_reviewed":      rows_reviewed,
         "auto_removed":       len(to_remove),
-        "flagged_review":     len(to_flag),
+        "flagged_review":     0,          # AUDIT_REVIEW is no longer written (2026-11-03)
         "substitutes_queued": n_subs,
         "category_health":    json.dumps(category_health),
-        "notes":              (f"Removed: {[r[2][:25] for r in to_remove[:3]]}" if to_remove else "Clean pass"),
+        "notes":              ("; ".join(
+            ([f"Removed: {[r[2][:25] for r in to_remove[:3]]}"] if to_remove else [])
+            + ([f"Restored to ACTIVE: {len(to_activate)}"] if to_activate else [])
+            + ([f"Kept, hidden listing: {len(kept_hidden)}"] if kept_hidden else [])) or "Clean pass"),
     }
     append_audit_log(service, audit_summary)
 
     # ── Telegram ──────────────────────────────────────────────────────────────
-    tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health,
+    tg_text = _build_audit_message(run_date, to_remove, [], n_subs, category_health,
                                    include_health=True, not_deleted=not_deleted,
-                                   live_unknown=live_unknown)
+                                   live_unknown=live_unknown, to_activate=to_activate,
+                                   kept_hidden=kept_hidden)
     if len(tg_text) > 4096:
-        tg_text = _build_audit_message(run_date, to_remove, to_flag, n_subs, category_health,
+        tg_text = _build_audit_message(run_date, to_remove, [], n_subs, category_health,
                                        include_health=False, not_deleted=not_deleted,
-                                       live_unknown=live_unknown)
+                                       live_unknown=live_unknown, to_activate=to_activate,
+                                       kept_hidden=kept_hidden)
     if len(tg_text) > 4096:
         tg_text = tg_text[:4096 - 15] + "\n[truncated]"
     _send_telegram(tg_text)
 
-    logger.info(f"Audit complete. Removed: {len(to_remove)} | Flagged: {len(to_flag)}")
+    logger.info(f"Audit complete. Removed: {len(to_remove)} | Restored to ACTIVE: {len(to_activate)} | "
+                f"Kept (hidden listing): {len(kept_hidden)}")

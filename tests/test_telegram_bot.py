@@ -14,12 +14,10 @@ from agents.telegram_bot import (
     _parse_pct,
     compute_category_roi,
     compute_spot_price_impact,
-    extract_audit_queue,
     extract_review_queue,
     find_back_in_stock,
     find_stale_active_items,
     partition_stock,
-    format_audit_card,
     format_review_card,
     _format_fee_rate_pct,
     _format_net_fragment,
@@ -369,7 +367,7 @@ def test_extract_rows_by_field_no_filter_returns_all_nonblank_rows():
     assert len(items) == 2
 
 
-# ── extract_review_queue / extract_audit_queue ───────────────────────────────
+# ── extract_review_queue ─────────────────────────────────────────────────────
 
 def test_extract_review_queue_filters_scored_status():
     rows = [_make_row(A="SCORED", C="Scored Item"), _make_row(A="PENDING", C="Pending Item")]
@@ -427,31 +425,7 @@ def test_extract_review_queue_excludes_blank_net_profit():
     assert items == []
 
 
-def test_extract_audit_queue_filters_audit_review_status():
-    rows = [_make_row(A="AUDIT_REVIEW", C="Flagged"), _make_row(A="SCORED", C="Not Flagged")]
-    items = extract_audit_queue(rows, _COL, data_start_row=4)
-    assert len(items) == 1
-    assert items[0]["title"] == "Flagged"
-
-
-def test_extract_audit_queue_includes_tier_summary():
-    rows = [_make_row(A="AUDIT_REVIEW", T="[AUDIT_REVIEW] Stale 90+ days")]
-    items = extract_audit_queue(rows, _COL, data_start_row=4)
-    assert items[0]["tier_summary"] == "[AUDIT_REVIEW] Stale 90+ days"
-
-
-def test_extract_audit_queue_preserves_sheet_row_order():
-    rows = [
-        _make_row(A="AUDIT_REVIEW", C="First"),
-        _make_row(A="AUDIT_REVIEW", C="Second"),
-    ]
-    items = extract_audit_queue(rows, _COL, data_start_row=4)
-    assert [i["title"] for i in items] == ["First", "Second"]
-    assert items[0]["row_num"] == 4
-    assert items[1]["row_num"] == 5
-
-
-# ── format_review_card / format_audit_card ───────────────────────────────────
+# ── format_review_card ───────────────────────────────────────────────────────
 
 def test_format_review_card_shows_position_and_body():
     p = search_products([_make_row(A="SCORED")], _COL, "pamp")[0]
@@ -460,27 +434,12 @@ def test_format_review_card_shows_position_and_body():
     assert "📦 PAMP Suisse 1oz Gold Bar" in text
 
 
-def test_format_audit_card_shows_flag_reason():
-    rows = [_make_row(A="AUDIT_REVIEW", T="[AUDIT_REVIEW] Stale 90+ days")]
-    p = extract_audit_queue(rows, _COL, data_start_row=4)[0]
-    text = format_audit_card(p, 1, 3)
-    assert "⚠️ Flagged: [AUDIT_REVIEW] Stale 90+ days" in text
-    assert "Item 1 of 3" in text
-
-
-def test_format_audit_card_no_flag_line_when_tier_summary_blank():
-    rows = [_make_row(A="AUDIT_REVIEW", T="")]
-    p = extract_audit_queue(rows, _COL, data_start_row=4)[0]
-    text = format_audit_card(p, 1, 1)
-    assert "Flagged" not in text
-
-
 # ── format_queue_dump ────────────────────────────────────────────────────────
 
 def test_format_queue_dump_shows_scraped_sale_end_date():
     rows = [_make_row(A="SCORED", C="Energy Shot", D="Pharmacy", I="$18.20", X="🔥 -$8 ends 10/18/26")]
     items = extract_review_queue(rows, _COL, data_start_row=4)
-    chunks = format_queue_dump(items, kind="review", now=datetime(2026, 9, 30, 12, 0))
+    chunks = format_queue_dump(items, now=datetime(2026, 9, 30, 12, 0))
     assert len(chunks) == 1
     assert "Energy Shot" in chunks[0]
     assert "net $18.20" in chunks[0]
@@ -488,18 +447,17 @@ def test_format_queue_dump_shows_scraped_sale_end_date():
 
 
 def test_format_queue_dump_never_guesses_missing_date():
-    rows = [_make_row(A="AUDIT_REVIEW", C="No Sale Item", D="Jewelry", I="$3.50", X="", T="zero velocity")]
-    items = extract_audit_queue(rows, _COL, data_start_row=4)
-    chunks = format_queue_dump(items, kind="audit", now=datetime(2026, 9, 30, 12, 0))
+    rows = [_make_row(A="SCORED", C="No Sale Item", D="Jewelry", I="$3.50", X="")]
+    items = extract_review_queue(rows, _COL, data_start_row=4)
+    chunks = format_queue_dump(items, now=datetime(2026, 9, 30, 12, 0))
     assert "No Sale Item" in chunks[0]
     assert "no sale" in chunks[0]
-    assert "zero velocity" in chunks[0]
 
 
 def test_format_queue_dump_chunks_long_queues():
     rows = [_make_row(A="SCORED", C=f"Item number {n}", I="$10.00", X="🔥 -$8 ends 10/18/26") for n in range(80)]
     items = extract_review_queue(rows, _COL, data_start_row=4)
-    chunks = format_queue_dump(items, kind="review", now=datetime(2026, 9, 30, 12, 0))
+    chunks = format_queue_dump(items, now=datetime(2026, 9, 30, 12, 0))
     assert len(chunks) > 1
     assert all(len(c) <= 4096 for c in chunks)
 
@@ -1370,7 +1328,7 @@ def _compete_env(monkeypatch, status="SCORED"):
     item = {"row_num": 4, "title": "PAMP Suisse 1oz Gold Bar"}
     ctx = SimpleNamespace(user_data={"queue": {
         "kind": "review", "items": [item, {"row_num": 5}], "pos": 0,
-        "tally": {"approved": 0, "paused": 0, "audited": 0, "skipped": 0}}}, bot_data={})
+        "tally": {"approved": 0, "paused": 0, "skipped": 0}}}, bot_data={})
     return writes, ctx
 
 
@@ -1479,37 +1437,15 @@ def test_removed_text_commands_are_gone():
         assert hasattr(_tb, name)
 
 
-# ── audit queue Keep: live listing → ACTIVE, else APPROVED ────────────────────
-
-_KEEP_COL = {**_COL, "ebay_listing_url": "Q"}
-
-
-def _keep_env(monkeypatch, ebay_url):
-    rows = [_make_row(A="AUDIT_REVIEW", Q=ebay_url)]
-    writes = []
-    monkeypatch.setattr(_tb, "_read_product_rows",
-                        lambda: (_KEEP_COL, "svc", "Product Tracker", 4, rows))
-    monkeypatch.setattr(_tb, "safe_write_row",
-                        lambda svc, sheet, row, pairs: writes.append((row, list(pairs))))
-    monkeypatch.setattr(_tb, "_send_screen", AsyncMock())
-    render = AsyncMock()
-    monkeypatch.setattr(_tb, "_render_audit_position", render)
-    ctx = SimpleNamespace(user_data={"queue": {
-        "kind": "audit", "items": [{"row_num": 4, "title": "PAMP"}, {"row_num": 5}], "pos": 0,
-        "tally": {"kept": 0, "deleted": 0, "skipped": 0}}}, bot_data={})
-    return writes, ctx, render
-
-
-def test_audit_keep_live_listing_writes_active(monkeypatch):
-    writes, ctx, render = _keep_env(monkeypatch, "https://www.ebay.com/itm/318910010687")
-    asyncio.run(_tb.cb_audit_keep(SimpleNamespace(), ctx, "4"))
-    assert writes == [(4, [("A", "ACTIVE")])]
-    assert ctx.user_data["queue"]["tally"]["kept"] == 1
-    render.assert_awaited_once()
-
-
-def test_audit_keep_no_listing_writes_approved(monkeypatch):
-    writes, ctx, render = _keep_env(monkeypatch, "")
-    asyncio.run(_tb.cb_audit_keep(SimpleNamespace(), ctx, "4"))
-    assert writes == [(4, [("A", "APPROVED")])]
-    assert ctx.user_data["queue"]["tally"]["kept"] == 1
+def test_audit_review_ui_is_gone():
+    for name in ("extract_audit_queue", "format_audit_card", "_audit_card_kb", "cb_review_audit",
+                 "cb_menu_audit", "_render_audit_position", "_finish_audit_queue", "cb_audit_keep",
+                 "cb_audit_skip", "cb_audit_delete", "cb_audit_confirm_cancel", "cb_audit_confirm_delete"):
+        assert not hasattr(_tb, name), name
+    for key in (("menu", "audit"), ("review", "audit"), ("audit", "keep"), ("audit", "delete"),
+                ("audit", "skip"), ("audit_confirm", "delete"), ("audit_confirm", "cancel")):
+        assert key not in _tb._CALLBACK_ROUTES, key
+    kb = _tb._review_card_kb(4).inline_keyboard
+    assert all("review:audit" not in b.callback_data for row in kb for b in row)
+    kb = _tb._search_action_kb(4, "SCORED").inline_keyboard
+    assert all("review:audit" not in b.callback_data for row in kb for b in row)

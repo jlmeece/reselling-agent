@@ -104,13 +104,23 @@ def test_restock_restores_previous_quantity_and_goes_active(sweep):
 
 def test_restock_of_listing_hidden_from_non_active_row_restores_its_status(sweep):
     sched.record_oos_hidden(IID, title="Seaweed Snack", row=START_ROW, prev_qty=5,
-                            prev_status="AUDIT_REVIEW")
+                            prev_status="PAUSED_MARGIN")
     calls = sweep([_oos_row()])
     assert calls["set_qty"] == [(IID, 5)]
     w = _sweep_write(calls)
-    assert w[COL["status"]] == "AUDIT_REVIEW"
-    assert "status back to AUDIT_REVIEW" in w[COL["tier_summary"]]
+    assert w[COL["status"]] == "PAUSED_MARGIN"
+    assert "status back to PAUSED_MARGIN" in w[COL["tier_summary"]]
     assert sched.get_oos_hidden(IID) is None
+
+
+def test_restock_of_listing_hidden_from_audit_review_row_goes_active(sweep):
+    # AUDIT_REVIEW is retired: a restocked listing must not put the row back into it
+    sched.record_oos_hidden(IID, title="Seaweed Snack", row=START_ROW, prev_qty=5,
+                            prev_status="AUDIT_REVIEW")
+    calls = sweep([_oos_row()])
+    w = _sweep_write(calls)
+    assert w[COL["status"]] == "ACTIVE"
+    assert "AUDIT_REVIEW" not in w[COL["tier_summary"]]
 
 
 @pytest.mark.parametrize("limit, expected", [("4/day", 4), ("", 99)])

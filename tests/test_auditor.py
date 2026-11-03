@@ -82,7 +82,7 @@ def test_build_message_include_health_false_omits_category_health_block():
                                  category_health={"Jewelry": 50}, include_health=False)
     assert "Category Health" not in text
     assert "Auto-removed: 0 rows" in text
-    assert "Flagged for review: 0 rows" in text
+    assert "Flagged for review" not in text          # nothing is flagged any more
     assert "Categories needing discovery: 0" in text
 
 
@@ -98,13 +98,31 @@ def test_build_message_empty_lists_have_no_stray_bullets():
     assert "Auto-removed: 0 rows" in text
 
 
-def test_build_message_review_hint_only_when_flagged():
-    no_flag_text = _build_audit_message("2026-09-18", [], [], n_subs=0, category_health={})
-    assert "AUDIT_REVIEW" not in no_flag_text
+def test_build_message_never_asks_for_an_audit_review():
+    flag_text = _build_audit_message("2026-09-18", [], [(1, _product("X"), "reason")], n_subs=0,
+                                     category_health={})
+    assert "AUDIT_REVIEW" not in flag_text
 
-    with_flag = [(1, _product("X"), "reason")]
-    flag_text = _build_audit_message("2026-09-18", [], with_flag, n_subs=0, category_health={})
-    assert "Filter col A = AUDIT_REVIEW" in flag_text
+
+def test_build_message_lists_rows_restored_to_active():
+    to_activate = [(i, _product(f"Live {i}"), "would remove (x); live on eBay, matched by title")
+                   for i in range(10)]
+    text = _build_audit_message("2026-09-18", [], [], n_subs=0, category_health={},
+                                to_activate=to_activate)
+    assert "♻️ Restored to ACTIVE (live eBay listing): 10" in text
+    assert text.count("• Live ") == 8 and "…and 2 more" in text
+
+
+def test_build_message_lists_rows_kept_for_a_hidden_listing():
+    text = _build_audit_message("2026-09-18", [], [], n_subs=0, category_health={},
+                                kept_hidden=[(1, _product("Hidden Set"), "hidden")])
+    assert "Kept as is — eBay listing hidden at quantity 0, not deleted: 1" in text
+    assert "• Hidden Set" in text and "Restored to ACTIVE" not in text
+
+
+def test_build_message_without_restorations_has_no_restore_line():
+    assert "Restored to ACTIVE" not in _build_audit_message("2026-09-18", [], [], n_subs=0,
+                                                            category_health={})
 
 
 # ── _remove_reason: SCORED $1–$2 dead-zone sweep ─────────────────────────────
@@ -268,12 +286,22 @@ def audit(monkeypatch):
     return run
 
 
-def test_row_with_live_listing_is_flagged_not_deleted(audit):
+def test_row_with_live_listing_is_restored_to_active_not_deleted(audit):
     calls = audit([_sheet_row("PAUSED_MARGIN", ebay_url="https://www.ebay.com/itm/860049380044")])
     assert calls["deletes"] == [] and calls["graveyard"] == []
     ((row, w),) = calls["flags"]
-    assert row == 4 and w[_COL["status"]] == "AUDIT_REVIEW"
-    assert "eBay listing is LIVE" in w[_COL["tier_summary"]] and "Would auto-remove (" in w[_COL["tier_summary"]]
+    assert row == 4 and w[_COL["status"]] == "ACTIVE"
+    assert w[_COL["tier_summary"]] == "[audit] live eBay listing restored to ACTIVE"
+    (msg,) = calls["telegram"]
+    assert "Restored to ACTIVE (live eBay listing): 1" in msg and "matched by item 860049380044" in msg
+
+
+def test_row_with_listing_hidden_at_qty_0_keeps_its_status_and_is_reported(audit):
+    calls = audit([_sheet_row("PAUSED_OOS", ebay_url="https://www.ebay.com/itm/860049380044")],
+                  live=[{"item_id": "860049380044", "title": "x", "sku": "", "quantity": 3,
+                         "quantity_sold": 3}])
+    assert calls["deletes"] == [] and calls["graveyard"] == [] and calls["flags"] == []
+    assert "hidden at quantity 0, not deleted: 1" in calls["telegram"][0]
 
 
 @pytest.mark.parametrize("url", ["", "https://www.ebay.com/sch/i.html?_nkw=x"])
@@ -317,25 +345,27 @@ _QUITO_LIVE = [{"item_id": "860077013393", "title": "MoDe Quito 6-Piece Outdoor 
                 "sku": "4000423485", "quantity": 99}]
 
 
-def test_blank_col_q_matching_live_title_is_flagged_not_removed(audit):
+def test_blank_col_q_matching_live_title_is_restored_not_removed(audit):
     calls = audit([_sheet_row("PAUSED_MARGIN", title="MoDe Quito 6-piece outdoor patio deep-seating set")],
                   live=_QUITO_LIVE)
     assert calls["deletes"] == [] and calls["graveyard"] == []
     ((row, w),) = calls["flags"]
-    assert w[_COL["status"]] == "AUDIT_REVIEW"
-    assert "eBay listing is LIVE (matched by title)" in w[_COL["tier_summary"]]
+    assert w[_COL["status"]] == "ACTIVE"
+    assert "matched by title" in calls["telegram"][0]
 
 
 def test_blank_col_q_matching_live_ebay_title_in_col_ai_is_protected(audit):
     calls = audit([_sheet_row("PAUSED_MARGIN", title="Costco name differs",
                               seo_title="MoDe Quito 6-Piece Outdoor Patio Deep Seating Set")], live=_QUITO_LIVE)
     assert calls["deletes"] == [] and len(calls["flags"]) == 1
+    assert calls["flags"][0][1][_COL["status"]] == "ACTIVE"
 
 
 def test_blank_col_q_matching_live_sku_is_not_removed(audit):
     calls = audit([_sheet_row("PAUSED_MARGIN", sku="4000423485", title="Unrelated title")], live=_QUITO_LIVE)
     assert calls["deletes"] == [] and calls["graveyard"] == []
-    assert "matched by SKU 4000423485" in calls["flags"][0][1][_COL["tier_summary"]]
+    assert calls["flags"][0][1][_COL["status"]] == "ACTIVE"
+    assert "matched by SKU 4000423485" in calls["telegram"][0]
 
 
 def test_ebay_unreachable_removes_nothing_and_says_so(audit):
@@ -355,3 +385,37 @@ def test_no_live_match_anywhere_is_still_removed(audit):
 
 def test_norm_title_ignores_case_punctuation_and_spacing():
     assert auditor._norm_title("MoDe  Quito 6-Piece, Set!") == auditor._norm_title("mode quito 6 piece set")
+
+
+# ── self-cleaning audit (2026-11-03): no AUDIT_REVIEW is ever written ─────────────────────
+
+def test_zero_velocity_high_net_removed_once_stale_30_days():
+    assert _remove_reason("SCORED", 9.0, 0, 30).startswith("Zero velocity + net $9.00")
+    assert _remove_reason("SCORED", 9.0, 0, 29) is None
+    assert _remove_reason("SCORED", 9.0, 0, 999) is None       # blank last_checked is not "stale"
+    assert _remove_reason("SCORED", 9.0, 3, 90) is None        # it sells — not this rule
+
+
+def test_pending_row_at_50_days_is_neither_flagged_nor_removed(audit):
+    from datetime import datetime, timedelta
+    row = _sheet_row("PENDING", net="", sold="")
+    row[auditor._col_to_idx(_COL["last_checked"])] = (datetime.now() - timedelta(days=50)).strftime("%Y-%m-%d %H:%M")
+    calls = audit([row])
+    assert calls["flags"] == [] and calls["deletes"] == [] and calls["graveyard"] == []
+
+
+def test_audit_never_writes_audit_review(audit):
+    from datetime import datetime, timedelta
+    old = (datetime.now() - timedelta(days=50)).strftime("%Y-%m-%d %H:%M")
+    rows = [_sheet_row("SCORED", net="12.00", sold="0", title="High net no sales"),
+            _sheet_row("WATCH", net="3.00", sold="2", title="Watch row"),
+            _sheet_row("PAUSED_MARGIN", ebay_url="https://www.ebay.com/itm/860049380044", title="Live one")]
+    for r in rows[:2]:
+        r[auditor._col_to_idx(_COL["last_checked"])] = old
+    calls = audit(rows)
+    assert all(w[_COL["status"]] != "AUDIT_REVIEW" for _, w in calls["flags"])
+    assert calls["deletes"] == [4]                         # 50 days stale, zero velocity, net $12
+
+
+def test_audit_review_stays_protected():
+    assert "AUDIT_REVIEW" in PROTECTED

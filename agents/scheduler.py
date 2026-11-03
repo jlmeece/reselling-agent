@@ -1244,8 +1244,9 @@ def run_daily_sweep(config, COL, service, sheet_name, start_row, end_row):
                             oos_iid, hidden_rec)
                         if line:
                             oos_restore_lines[kind].append(line)
-                        if new_st == "ACTIVE" and hidden_rec.get("prev_status"):
-                            # hidden from a non-ACTIVE row (e.g. AUDIT_REVIEW): give it its status back
+                        if new_st == "ACTIVE" and hidden_rec.get("prev_status") not in (None, "", "AUDIT_REVIEW"):
+                            # hidden from a non-ACTIVE row (e.g. PAUSED_MARGIN): give it its status back.
+                            # AUDIT_REVIEW is retired (2026-11-03): a restocked, selling listing stays ACTIVE.
                             new_st = hidden_rec["prev_status"]
                             notes = f"{notes} — status back to {new_st}"
                         if new_st:

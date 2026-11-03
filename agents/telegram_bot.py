@@ -377,24 +377,6 @@ def extract_review_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW, 
     return items
 
 
-def extract_audit_queue(rows, col_map, data_start_row=_DEFAULT_DATA_START_ROW):
-    """
-    AUDIT_REVIEW rows in sheet order (stable/deterministic — no urgency
-    ordering is defined for this queue). Includes tier_summary (col T), where
-    agents/auditor.py writes the human-readable flag reason, so the Audit
-    card can show *why* a row was flagged.
-    """
-    status_i = col_to_idx(col_map["status"])
-
-    def is_flagged(row):
-        return safe_get(row, status_i) == "AUDIT_REVIEW"
-
-    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category", "tier_summary")
-    return _extract_rows_by_field(
-        rows, col_map, fields, data_start_row=data_start_row, filter_fn=is_flagged
-    )
-
-
 def _format_price(raw):
     """Strip a leading '$' (caller adds its own); '—' when blank."""
     raw = (raw or "").strip()
@@ -660,17 +642,6 @@ def format_review_card(item, position, total):
     return f"Item {position} of {total}\n{format_product_detail(item)}"
 
 
-def format_audit_card(item, position, total):
-    """
-    Render an Audit-queue swipe card: the same body as format_review_card,
-    prefixed with the flag reason from tier_summary (col T) when present —
-    where agents/auditor.py writes why a row was sent to AUDIT_REVIEW.
-    """
-    reason = (item.get("tier_summary") or "").strip()
-    reason_line = f"⚠️ Flagged: {reason}\n" if reason else ""
-    return f"{reason_line}Item {position} of {total}\n{format_product_detail(item)}"
-
-
 def _chunk_lines(lines, max_chars=_MAX_MSG - 100):
     """Split pre-rendered lines into message chunks <= max_chars, on line boundaries."""
     chunks, cur, size = [], [], 0
@@ -685,9 +656,9 @@ def _chunk_lines(lines, max_chars=_MAX_MSG - 100):
     return chunks or [""]
 
 
-def format_queue_dump(items, kind="review", now=None):
+def format_queue_dump(items, now=None):
     """
-    Compact one-line-per-item dump of a Review or Audit queue — the "see
+    Compact one-line-per-item dump of the Review queue — the "see
     everything at once" view. Each line carries the scraped Costco sale end
     date from col X via _format_sale_line — never guessed: a missing or
     unparseable date renders as 'no sale'. Returns a list of message chunks
@@ -702,19 +673,12 @@ def format_queue_dump(items, kind="review", now=None):
         net = _parse_currency(it.get("net_profit"))
         net_s = f"net ${net:,.2f}" if net is not None else "net —"
         sale = _format_sale_line(it.get("sale_info"), now=now) or "no sale"
-        if kind == "review":
-            tier = _tier_label(it.get("demand_score"))
-            score = _parse_currency(it.get("demand_score"))
-            tag = tier or "—"
-            if score is not None:
-                tag += f" (Score {score:.1f})"
-            line = f"{i}. {title} — {cat} · {tag} · {net_s} · {sale}"
-        else:
-            line = f"{i}. {title} — {cat} · {net_s} · {sale}"
-            reason = (it.get("tier_summary") or "").strip()
-            if reason:
-                line += f" · ⚠️ {reason}"
-        lines.append(line)
+        tier = _tier_label(it.get("demand_score"))
+        score = _parse_currency(it.get("demand_score"))
+        tag = tier or "—"
+        if score is not None:
+            tag += f" (Score {score:.1f})"
+        lines.append(f"{i}. {title} — {cat} · {tag} · {net_s} · {sale}")
     return _chunk_lines(lines)
 
 
@@ -809,7 +773,6 @@ _DASHBOARD_GROUPS = [
     ("APPROVED", "Approved", "🟣"),
     ("SCORED", "Scored", "🔵"),
     ("PENDING", "Pending", "⬜️"),
-    ("AUDIT_REVIEW", "Audit Review", "🟡"),
 ]
 
 _PAUSED_STATUSES = {"PAUSED_OOS", "PAUSED_MARGIN", "PAUSED_DEMAND", "PAUSED_SEASONAL"}
@@ -1714,7 +1677,6 @@ def _search_action_kb(row_num, status):
         rows_.append([
             InlineKeyboardButton("✅ Approve", callback_data=f"review:approve:{row_num}"),
             InlineKeyboardButton("⏸️ Pause", callback_data=f"review:pause:{row_num}"),
-            InlineKeyboardButton("🔍 Audit", callback_data=f"review:audit:{row_num}"),
         ])
     rows_.append([InlineKeyboardButton("🔍 Search Again", callback_data="menu:search")])
     rows_.append([InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")])
@@ -3091,16 +3053,14 @@ def _review_card_kb(row_num):
         [InlineKeyboardButton("✅ Approve", callback_data=f"review:approve:{row_num}"),
          InlineKeyboardButton("⏸️ Pause", callback_data=f"review:pause:{row_num}")],
         [InlineKeyboardButton("⚡ Competitive", callback_data=f"review:compete:{row_num}")],
-        [InlineKeyboardButton("🔍 Flag for review", callback_data=f"review:audit:{row_num}"),
-         InlineKeyboardButton("⏭️ Skip", callback_data=f"review:skip:{row_num}")],
+        [InlineKeyboardButton("⏭️ Skip", callback_data=f"review:skip:{row_num}")],
         [InlineKeyboardButton("✅ Done", callback_data="menu:dashboard")],
     ])
 
 
-def _queue_dump_kb(kind):
-    one = "▶️ Review one-by-one" if kind == "review" else "▶️ Audit one-by-one"
+def _queue_dump_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(one, callback_data=f"queue:onepass:{kind}"),
+        [InlineKeyboardButton("▶️ Review one-by-one", callback_data="queue:onepass:review"),
          InlineKeyboardButton("🔁 Scrape sale dates", callback_data="queue:scrape")],
         [InlineKeyboardButton("✅ Done", callback_data="menu:dashboard")],
     ])
@@ -3120,10 +3080,7 @@ async def cb_queue_onepass(update, context, arg):
     if not q:
         await _send_screen(update, "Queue is empty.", reply_markup=_home_inline_kb())
         return
-    if q["kind"] == "review":
-        await _render_review_position(update, context)
-    else:
-        await _render_audit_position(update, context)
+    await _render_review_position(update, context)
 
 
 async def cb_queue_scrape(update, context, arg):
@@ -3140,7 +3097,7 @@ async def cb_queue_scrape(update, context, arg):
     context.bot_data.setdefault("jobs", {})["sale-refresh"] = proc
     await _send_screen(
         update,
-        "🔁 Scraping Costco sale end dates for the review + audit queue… "
+        "🔁 Scraping Costco sale end dates for the review queue… "
         "you'll get a message here when it finishes.",
         reply_markup=_home_inline_kb(),
     )
@@ -3163,10 +3120,10 @@ async def cb_menu_review(update, context, arg):
         return
     context.user_data["queue"] = {
         "kind": "review", "items": items, "pos": 0,
-        "tally": {"approved": 0, "paused": 0, "audited": 0, "skipped": 0},
+        "tally": {"approved": 0, "paused": 0, "skipped": 0},
     }
-    chunks = format_queue_dump(items, kind="review")
-    await _send_queue_dump(update, context, chunks, _queue_dump_kb("review"))
+    chunks = format_queue_dump(items)
+    await _send_queue_dump(update, context, chunks, _queue_dump_kb())
 
 
 async def _render_review_position(update, context):
@@ -3188,7 +3145,6 @@ async def _finish_review_queue(update, context):
         f"✅ Review complete — {len(q['items'])} items processed\n"
         f"  Approved: {t['approved']}\n"
         f"  Paused: {t['paused']}\n"
-        f"  Flagged: {t['audited']}\n"
         f"  Skipped: {t['skipped']}"
     )
     context.user_data["queue"] = None
@@ -3308,21 +3264,6 @@ async def cb_review_skip(update, context, arg):
     await _advance_or_finish_review(update, context)
 
 
-async def cb_review_audit(update, context, arg):
-    row_num = int(arg)
-    item = _active_queue_item(context, row_num)
-    col_map, service, sheet_name, start, end = _sheet_ctx()
-    safe_write_row(service, sheet_name, row_num, [
-        (col_map["status"], "AUDIT_REVIEW"),
-        (col_map["tier_summary"], "[AUDIT_REVIEW] Sent to audit via Telegram bot"),
-    ])
-    if item is None:
-        await _send_screen(update, "🔍 Sent to audit.", reply_markup=_home_inline_kb())
-        return
-    context.user_data["queue"]["tally"]["audited"] += 1
-    await _advance_or_finish_review(update, context)
-
-
 async def cb_review_pause(update, context, arg):
     row_num = int(arg)
     kb = InlineKeyboardMarkup([
@@ -3389,201 +3330,6 @@ async def cb_pause_back(update, context, arg):
         await _send_screen(update, "Cancelled.", reply_markup=_home_inline_kb())
 
 
-# ── Audit queue (spec Part 6) ────────────────────────────────────────────────
-
-def _audit_card_kb(row_num):
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Keep", callback_data=f"audit:keep:{row_num}"),
-         InlineKeyboardButton("🗑️ Archive", callback_data=f"audit:delete:{row_num}")],
-        [InlineKeyboardButton("⏭️ Skip", callback_data=f"audit:skip:{row_num}")],
-        [InlineKeyboardButton("✅ Done", callback_data="menu:dashboard")],
-    ])
-
-
-async def cb_menu_audit(update, context, arg):
-    try:
-        col_map, service, sheet_name, start, rows = _read_product_rows()
-    except Exception as e:
-        logger.warning(f"audit queue sheet read failed: {e}")
-        await _send_screen(update, _SHEET_UNREACHABLE_MSG, reply_markup=_home_inline_kb())
-        return
-    items = extract_audit_queue(rows, col_map, data_start_row=start)
-    if not items:
-        await _send_screen(
-            update, "✅ Audit queue is empty — nothing flagged right now.",
-            reply_markup=_home_inline_kb(),
-        )
-        return
-    context.user_data["queue"] = {
-        "kind": "audit", "items": items, "pos": 0,
-        "tally": {"kept": 0, "deleted": 0, "skipped": 0},
-    }
-    chunks = format_queue_dump(items, kind="audit")
-    await _send_queue_dump(update, context, chunks, _queue_dump_kb("audit"))
-
-
-async def _render_audit_position(update, context):
-    q = context.user_data["queue"]
-    item = q["items"][q["pos"]]
-    text = format_audit_card(item, q["pos"] + 1, len(q["items"]))
-    await _send_screen(update, text, reply_markup=_audit_card_kb(item["row_num"]))
-
-
-async def _finish_audit_queue(update, context):
-    q = context.user_data["queue"]
-    t = q["tally"]
-    text = (
-        f"✅ Audit complete — {len(q['items'])} items processed\n"
-        f"  Kept: {t['kept']}\n"
-        f"  Deleted: {t['deleted']}\n"
-        f"  Skipped: {t['skipped']}"
-    )
-    context.user_data["queue"] = None
-    await _send_screen(update, text, reply_markup=_home_inline_kb())
-
-
-async def cb_audit_keep(update, context, arg):
-    row_num = int(arg)
-    item = _active_queue_item(context, row_num)
-    try:
-        col_map, service, sheet_name, start, rows = _read_product_rows()
-    except Exception as e:
-        logger.warning(f"audit keep sheet read failed: {e}")
-        await _send_screen(update, _SHEET_UNREACHABLE_MSG)
-        return
-    current = _find_by_row_num(
-        _extract_rows_by_field(rows, col_map, ("title", "ebay_listing_url"), data_start_row=start),
-        row_num,
-    )
-    # A row already selling on eBay goes back to ACTIVE, not APPROVED: APPROVED would
-    # send it down the listing pipeline again. Same col Q test as cb_audit_confirm_delete.
-    ebay_url = str((current or {}).get("ebay_listing_url") or "")
-    status = "ACTIVE" if ebay_url.startswith("http") and extract_item_id(ebay_url) else "APPROVED"
-    safe_write_row(service, sheet_name, row_num, [(col_map["status"], status)])
-    if item is None:
-        label = "Active" if status == "ACTIVE" else "Approved"
-        await _send_screen(update, f"✅ Kept ({label}).", reply_markup=_home_inline_kb())
-        return
-    q = context.user_data["queue"]
-    q["tally"]["kept"] += 1
-    q["pos"] += 1
-    if q["pos"] >= len(q["items"]):
-        await _finish_audit_queue(update, context)
-    else:
-        await _render_audit_position(update, context)
-
-
-async def cb_audit_skip(update, context, arg):
-    row_num = int(arg)
-    item = _active_queue_item(context, row_num)
-    if item is None:
-        await _send_screen(update, "Skipped.", reply_markup=_home_inline_kb())
-        return
-    q = context.user_data["queue"]
-    q["tally"]["skipped"] += 1
-    q["pos"] += 1
-    if q["pos"] >= len(q["items"]):
-        await _finish_audit_queue(update, context)
-    else:
-        await _render_audit_position(update, context)
-
-
-async def cb_audit_delete(update, context, arg):
-    row_num = int(arg)
-    item = _active_queue_item(context, row_num)
-    title = item["title"] if item else f"row {row_num}"
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🗑️ Archive to Graveyard", callback_data=f"audit_confirm:delete:{row_num}"),
-        InlineKeyboardButton("❌ Cancel", callback_data=f"audit_confirm:cancel:{row_num}"),
-    ]])
-    await _send_screen(update, f"Archive '{title}' to the Graveyard? The record is kept and recoverable.", reply_markup=kb)
-
-
-async def cb_audit_confirm_cancel(update, context, arg):
-    row_num = int(arg)
-    item = _active_queue_item(context, row_num)
-    if item is not None:
-        await _render_audit_position(update, context)
-    else:
-        await _send_screen(update, "Cancelled.", reply_markup=_home_inline_kb())
-
-
-async def cb_audit_confirm_delete(update, context, arg):
-    """
-    Two-step delete (confirm already happened in cb_audit_delete) + a
-    Graveyard-tab write before the row is removed — matching
-    agents/auditor.py's own convention for every other automated delete path
-    in this codebase, rather than a bare irreversible tap with no record.
-    """
-    row_num = int(arg)
-    item = _active_queue_item(context, row_num)
-    try:
-        col_map, service, sheet_name, start, rows = _read_product_rows()
-    except Exception as e:
-        logger.warning(f"audit delete sheet read failed: {e}")
-        await _send_screen(update, _SHEET_UNREACHABLE_MSG)
-        return
-
-    fields = _LOOKUP_PRODUCT_FIELDS + ("title", "category", "ebay_listing_url", "sku")
-    current = _find_by_row_num(_extract_rows_by_field(rows, col_map, fields, data_start_row=start), row_num)
-    if current is None:
-        await _send_screen(
-            update, "This item is no longer there — it may have already been handled.",
-            reply_markup=_home_inline_kb(),
-        )
-        return
-    # Deleting the row would orphan a live listing: nothing would stock-check or hide it
-    # again (the 13 orphans of 10/19). Same test as the auditor's guard.
-    ebay_url = str(current.get("ebay_listing_url") or "")
-    if ebay_url.startswith("http") and extract_item_id(ebay_url):
-        logger.warning(f"audit delete blocked, live eBay listing: row {row_num} {ebay_url}")
-        await _send_screen(
-            update, f"🚫 '{current.get('title', '')[:60]}' — this listing is live on eBay "
-                    f"(item {extract_item_id(ebay_url)}) — end or hide it first, then delete.",
-            reply_markup=_home_inline_kb(),
-        )
-        return
-
-    write_to_graveyard(service, [{
-        "date_removed": datetime.now().strftime("%Y-%m-%d"),
-        "reason": "Deleted via Telegram bot (Audit queue)",
-        "category": current.get("category", ""),
-        "title": current.get("title", ""),
-        "cost": current.get("costco_cost", ""),
-        "ebay_price": current.get("ebay_price", ""),
-        "net_profit": current.get("net_profit", ""),
-        "score": current.get("demand_score", ""),
-        "status_at_removal": "AUDIT_REVIEW",
-        "original_row": row_num,
-        "costco_url": current.get("costco_url", ""),   # graveyard sweep re-check
-        "sku": current.get("sku", ""),
-    }])
-    _delete_sheet_row(service, sheet_name, row_num, context)
-
-    if item is not None and context.user_data.get("queue"):
-        context.user_data["queue"]["tally"]["deleted"] += 1
-
-    # A deleteDimension shifts every row below the deleted one up by one,
-    # invalidating cached row_num for every not-yet-visited queue item.
-    # Re-extracting from the sheet is the cheapest correct fix for a queue
-    # this small — cheaper than patching cached row numbers in memory.
-    try:
-        col_map2, service2, sheet_name2, start2, rows2 = _read_product_rows()
-        items = extract_audit_queue(rows2, col_map2, data_start_row=start2)
-    except Exception as e:
-        logger.warning(f"audit re-extract after delete failed: {e}")
-        items = []
-
-    if context.user_data.get("queue"):
-        context.user_data["queue"]["items"] = items
-        context.user_data["queue"]["pos"] = 0
-
-    if not items:
-        await _finish_audit_queue(update, context)
-    else:
-        await _render_audit_position(update, context)
-
-
 # ── Alerts screen (spec Part 6) ──────────────────────────────────────────────
 
 async def cb_menu_alerts(update, context, arg):
@@ -3595,7 +3341,6 @@ async def cb_menu_alerts(update, context, arg):
         return
 
     products = extract_dashboard_products(rows, col_map, data_start_row=start)
-    audit_count = len(extract_audit_queue(rows, col_map, data_start_row=start))
     stale = find_stale_active_items(products)
     back_in_stock = find_back_in_stock(products)
     sale_section = format_sale_urgency_section(products)
@@ -3604,11 +3349,9 @@ async def cb_menu_alerts(update, context, arg):
     lines.append(sale_section if sale_section else "🔥 Sale Expiring Soon: none")
     lines.append(f"⚠️ Stale Checks: {len(stale)} ACTIVE item(s) not checked in 12h+")
     lines.append(f"📦 Back In Stock: {len(back_in_stock)} item(s)")
-    lines.append(f"🗂️ Audit Queue: {audit_count} item(s)")
     text = "\n".join(lines)
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗂️ Audit Queue", callback_data="menu:audit")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="menu:alerts"),
          InlineKeyboardButton("📊 Dashboard", callback_data="menu:dashboard")],
     ])
@@ -4012,7 +3755,6 @@ _CALLBACK_ROUTES.update({
     ("menu", "dashboard"): cb_menu_dashboard,
     ("menu", "search"): cb_menu_search,
     ("menu", "review"): cb_menu_review,
-    ("menu", "audit"): cb_menu_audit,
     ("menu", "sales"): cb_menu_sales,
     ("menu", "stock"): cb_menu_stock,
     ("menu", "alerts"): cb_menu_alerts,
@@ -4022,7 +3764,6 @@ _CALLBACK_ROUTES.update({
     ("menu", "spot"): cb_menu_spot,
     ("review", "approve"): cb_review_approve,
     ("review", "pause"): cb_review_pause,
-    ("review", "audit"): cb_review_audit,
     ("review", "skip"): cb_review_skip,
     ("review", "compete"): cb_review_compete,
     ("review", "compete_go"): cb_review_compete_go,
@@ -4031,11 +3772,6 @@ _CALLBACK_ROUTES.update({
     ("pause", "demand"): cb_pause_demand,
     ("pause", "seasonal"): cb_pause_seasonal,
     ("pause", "back"): cb_pause_back,
-    ("audit", "keep"): cb_audit_keep,
-    ("audit", "delete"): cb_audit_delete,
-    ("audit", "skip"): cb_audit_skip,
-    ("audit_confirm", "delete"): cb_audit_confirm_delete,
-    ("audit_confirm", "cancel"): cb_audit_confirm_cancel,
     ("search", "pick"): cb_search_pick,
     ("listed", "start"): cb_listed_start,
     ("listed", "skip"): cb_listed_skip,
