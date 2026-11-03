@@ -1,5 +1,8 @@
 # VPS Deployment — Reselling Agent + Hermes Gateway
 
+> **Not deployed.** This describes an old Docker-on-VPS plan. The real setup is in
+> [DEPLOYMENT.md](DEPLOYMENT.md): every mode runs on Windows; the VPS runs nothing for this agent.
+
 ## Overview
 
 Hermes Agent runs as the orchestration layer on Hostinger VPS. The reselling agent's modes are exposed as Hermes skills and controlled via Telegram.

@@ -63,7 +63,7 @@ All modes run via `python agents/scheduler.py --mode <mode>`.
 - `config/categories.yaml` — fee rates, discovery URLs, eBay category IDs, purchase limits
 - `config/col_map.yaml` — Google Sheet column map (A–BB, 54 cols; BB `buy_cost` is only a fallback cost — col G, the current Costco price, wins whenever it's > 0)
 - `skills/scoring.py` — category-specific scoring (extends shared base_scoring)
-- `deploy/` — VPS deployment (Docker Compose, Hermes skills, .env.template)
+- `deploy/DEPLOYMENT.md` — the real architecture: every mode runs on Windows (WAT-* tasks); the VPS runs nothing for this agent and has no cron (Dockerfile/compose/README there are an undeployed old plan)
 
 ---
 

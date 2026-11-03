@@ -503,9 +503,8 @@ def load_run_history():
 def load_last_research_run():
     """Read the last line of the research cron log for the most recent run timestamp.
 
-    /home/hermes/logs/research.log only exists on the Hermes VPS (it's the
-    redirect target in deploy/crontab.txt for `--mode research`), so this
-    quietly returns None when run locally on Windows.
+    /home/hermes/logs/research.log was the log of a VPS cron that no longer
+    exists (see deploy/DEPLOYMENT.md), so this returns None.
     """
     path = "/home/hermes/logs/research.log"
     try:
