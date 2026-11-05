@@ -96,7 +96,7 @@ _TS_RE = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
 _MAX_MSG = 4096
 
-_REVIEW_MIN_NET_PROFIT = 2.00
+_REVIEW_MIN_NET_PROFIT = 0.00
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

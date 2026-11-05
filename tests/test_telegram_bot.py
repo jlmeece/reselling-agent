@@ -412,8 +412,8 @@ def test_extract_review_queue_includes_row_num():
 
 def test_extract_review_queue_excludes_net_profit_below_floor():
     rows = [
-        _make_row(A="SCORED", C="Too Low", I="$1.99"),
-        _make_row(A="SCORED", C="Meets Floor", I="$2.00"),
+        _make_row(A="SCORED", C="Too Low", I="-$0.01"),
+        _make_row(A="SCORED", C="Meets Floor", I="$0.00"),
     ]
     items = extract_review_queue(rows, _COL, data_start_row=4)
     assert [i["title"] for i in items] == ["Meets Floor"]

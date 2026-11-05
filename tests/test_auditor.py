@@ -129,26 +129,33 @@ def test_build_message_without_restorations_has_no_restore_line():
 
 from agents.auditor import (
     _remove_reason, _days_since, PROTECTED,
-    SCORED_STALE_NET_CEILING, SCORED_STALE_NET_FLOOR, SCORED_STALE_DAYS,
+    SCORED_STALE_NET_CEILING, SCORED_STALE_NET_FLOOR, SCORED_STALE_DAYS, FRESH_ROW_DAYS,
 )
 
 
-def test_stale_scored_dead_zone_is_removed_with_reason():
-    reason = _remove_reason("SCORED", 1.50, 12, 45)
-    assert reason == "Below $2 review floor, stale 45 days"
+def test_dead_zone_is_empty_at_break_even_review_floor():
+    # review floor is $0 (2026-11-05): [floor $1, ceiling $0) is empty, so a stale
+    # SCORED row with sales and net >= $1 is never removed by this rule
+    for net in (1.00, 1.50, 1.99, 2.00):
+        assert _remove_reason("SCORED", net, 12, 45) is None
 
 
-def test_dead_zone_net_boundaries():
-    assert _remove_reason("SCORED", 1.00, 12, 30) is not None   # floor inclusive
-    assert _remove_reason("SCORED", 1.99, 12, 30) is not None
-    assert _remove_reason("SCORED", 2.00, 12, 30) is None       # ceiling exclusive
-    # $0.99 is now below the $1.00 auto-remove floor, not the dead-zone rule's job
+def test_below_one_dollar_floor_still_removes_once_stale():
     assert _remove_reason("SCORED", 0.99, 12, 30) == "Below floor ($1.00 min) — net $0.99"
 
 
-def test_dead_zone_day_boundary():
-    assert _remove_reason("SCORED", 1.50, 12, SCORED_STALE_DAYS - 1) is None
-    assert _remove_reason("SCORED", 1.50, 12, SCORED_STALE_DAYS) is not None
+def test_fresh_rows_skip_every_economics_rule():
+    # research promotes on-sale items netting >= $0 to SCORED; the next audit must not delete them
+    fresh = FRESH_ROW_DAYS - 1
+    assert _remove_reason("SCORED", 0.50, 0, 0) is None
+    assert _remove_reason("SCORED", 1.50, 0, fresh) is None      # zero velocity + net < $5
+    assert _remove_reason("SCORED", 0.00, 12, fresh) is None     # below $1 floor
+    assert _remove_reason("WATCH", -3.00, 0, fresh) is None      # negative net
+    assert _remove_reason("SCORED", 1.50, 0, FRESH_ROW_DAYS).startswith("Zero velocity")
+
+
+def test_fresh_guard_does_not_cover_wrong_product_flag():
+    assert _remove_reason("SCORED", 9.0, 5, 0, "x wrong_product_flag y").startswith("Wrong product")
 
 
 def test_dead_zone_only_applies_to_scored():
@@ -168,8 +175,8 @@ def test_zero_velocity_rule_keeps_precedence_no_double_catch():
 
 
 def test_existing_rules_unchanged():
-    assert _remove_reason("SCORED", -1.0, 5, 1).startswith("Negative net profit")
-    assert _remove_reason("SCORED", 0.20, 5, 1).startswith("Below floor")
+    assert _remove_reason("SCORED", -1.0, 5, 30).startswith("Negative net profit")
+    assert _remove_reason("SCORED", 0.20, 5, 30).startswith("Below floor")
     assert _remove_reason("PAUSED_OOS", 9.0, 5, 45) == "OOS 45+ days, no restock"
     assert _remove_reason("PENDING", 9.0, 5, 60) == "Stale 60 days (no progress)"
     assert _remove_reason("SCORED", 9.0, 5, 200) is None
@@ -206,7 +213,7 @@ def test_unpriced_row_still_removed_by_age_and_wrong_product_rules():
 
 
 def test_real_zero_net_still_removed():
-    assert _remove_reason("SCORED", 0.0, 5, 1).startswith("Below floor")
+    assert _remove_reason("SCORED", 0.0, 5, 30).startswith("Below floor")
 
 
 def test_ended_status_is_protected_from_audit():

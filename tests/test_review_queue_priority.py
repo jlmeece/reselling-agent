@@ -65,7 +65,7 @@ def test_full_ties_keep_sheet_order():
 
 
 def test_below_floor_still_excluded_even_when_on_sale():
-    rows = [_item("cheap sale", net="$1.00", badge="🔥 -$8 ends 10/18/26"), _item("ok")]
+    rows = [_item("losing sale", net="-$0.01", badge="🔥 -$8 ends 10/18/26"), _item("ok")]
     assert _titles(rows) == ["ok"]
 
 

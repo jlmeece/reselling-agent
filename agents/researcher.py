@@ -450,7 +450,7 @@ def _build_niche_key(title):
 # ── Research queue order ──────────────────────────────────────────
 
 _SALE_INFO_IDX = 23   # col X sale badge ("🔥 -$8 ends 10/18/26")
-SALE_FASTTRACK_MIN_NET = 2.00   # matches the review-queue floor; on-sale + in-stock items netting >= this are promoted to SCORED
+SALE_FASTTRACK_MIN_NET = 0.00   # break-even: on-sale + in-stock items not LOSING money are promoted to SCORED
 
 
 def _sale_end_sort_key(row, today=None):

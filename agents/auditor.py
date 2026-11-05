@@ -38,18 +38,22 @@ from tools.graveyard_writer import (
 PROTECTED = {"ACTIVE", "READY", "APPROVED", "LISTED", "AUDIT_REVIEW", "ENDED"}
 
 # ── SCORED dead-zone sweep ────────────────────────────────────────────────────
-# The Telegram review queue only surfaces SCORED rows with net >= 2.00
+# The Telegram review queue only surfaces SCORED rows with net >= 0.00
 # (agents/telegram_bot.py::_REVIEW_MIN_NET_PROFIT). Rows with net in
 # [SCORED_STALE_NET_FLOOR, SCORED_STALE_NET_CEILING) can never be reviewed, and
 # the rules below $1 don't reach them — so once they go stale they are removed.
 # Keep SCORED_STALE_NET_CEILING in lockstep with the review floor (a test pins it).
 SCORED_STALE_NET_FLOOR   = 1.00   # == the auto-remove "below floor" boundary (net < $1.00)
-SCORED_STALE_NET_CEILING = 2.00   # == telegram_bot._REVIEW_MIN_NET_PROFIT (exclusive)
+SCORED_STALE_NET_CEILING = 0.00   # == telegram_bot._REVIEW_MIN_NET_PROFIT (exclusive); at $0 this rule never matches
 SCORED_STALE_DAYS        = 30
 
 # Zero sales in 90 days but a healthy net: removed once it has gone this long unchecked
 # (these used to be flagged AUDIT_REVIEW and frozen forever).
 ZERO_VELOCITY_HIGH_NET_STALE_DAYS = 30
+
+# Economics rules never remove a row checked this recently: research promotes on-sale
+# items netting >= $0 to SCORED, and the next audit must not delete them before Jay reviews.
+FRESH_ROW_DAYS = 7
 
 _DAYS_UNKNOWN = 999   # _days_since() sentinel for a blank/unparseable timestamp
 
@@ -186,11 +190,12 @@ def _remove_reason(status, net_profit, sold_90d, days_since_checked, full_notes=
     """First matching auto-remove reason for a non-protected row, or None.
     Order matters: it is an if/elif chain, so a row claimed by an earlier rule
     (e.g. zero velocity + net < $5) is never re-claimed by a later one.
+    A row checked within FRESH_ROW_DAYS skips every economics rule too.
     net_profit=None (blank cell) skips every economics rule — only the wrong-
     product flag and the age rules can remove an un-priced row."""
     if "wrong_product_flag" in full_notes.lower():
         return "Wrong product flag — comps matched wrong item"
-    if net_profit is not None:
+    if net_profit is not None and days_since_checked >= FRESH_ROW_DAYS:
         if net_profit < 0:
             return f"Negative net profit (${net_profit:.2f})"
         if net_profit < 1.00:
