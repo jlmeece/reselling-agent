@@ -47,11 +47,115 @@ def test_parse_card_without_savings_text():
     ("https://www.costco.com/.product.4000422365.html", "4000422365"),
     ("https://www.costco.com/koa-mana-drink-mix.product.4000389611.html?x=1", "4000389611"),
     ("https://www.costco.com/p/-/airborne-immune-support-36-effervescent-tablets/100217166", "100217166"),
+    ("https://www.costco.com/p/-/4000418840", "4000418840"),                 # slugless (since the 10/19/26 event)
+    ("https://www.costco.com/p/-/4000418840?langId=-1", "4000418840"),
+    ("https://www.costco.com/p/-/4000418840/", "4000418840"),
+    ("https://www.costco.com/p/-/32-degrees-kids-heat-set", None),            # a slug is not an id
+    ("https://www.costco.com/p/-/32-degrees", None),
     ("https://www.costco.com/appliances.html?keyword=WPOCT26", None),
     ("", None),
 ])
 def test_product_id(url, pid):
     assert cs.product_id(url) == pid
+
+
+def test_extract_js_uses_the_python_product_regex():
+    """The page script must not carry its own copy of the id regex: the two drifting is how a URL shape goes
+    unnoticed, and the Python parametrize above is the only thing that can test it."""
+    assert json.dumps(cs._PRODUCT_RX.pattern) in cs._EXTRACT_JS
+    assert "__PRODUCT_RX__" not in cs._EXTRACT_JS
+
+
+@pytest.mark.parametrize("href", [
+    "https://www.costco.com/p/-/4000418840",
+    "https://www.costco.com/p/-/puma-womens-fleece-jogger/4000418840?x=1",
+    "https://www.costco.com/.product.4000418840.html",
+])
+def test_parse_card_url_is_canonical(href):
+    """Col R must hold a form sale_schedule / backfill_skus / the scraper can parse (none read /p/-/<id>)."""
+    it = cs.parse_card(_card("Item 2005167", href=href))
+    assert it["product_id"] == "4000418840"
+    assert it["url"] == "https://www.costco.com/.product.4000418840.html"
+
+
+def test_parse_card_keeps_non_product_href():
+    assert cs.parse_card(_card("x", href="https://www.costco.com/soft-drinks.html?keyword=p"))["url"] \
+        == "https://www.costco.com/soft-drinks.html"
+
+
+def test_parse_card_thousands_after_form():
+    """Real card text, 2026-11-07: the comma is its own text node too."""
+    it = cs.parse_card(_card("Online Only\nThomasville Tisdale\nLimit 5.\n\n$\n1\n,\n399\n.\n99\n\nAfter $400 OFF\nBuy Online"))
+    assert (it["list_sale"], it["list_savings"], it["list_regular"]) == (1399.99, 400.0, 1799.99)
+
+
+def test_parse_card_thousands_save_form():
+    it = cs.parse_card(_card("LG Washer\nSearch lg8980\nLimit 5 Each.\nSave\n\n$\n1\n,\n450\n\nBuy Online"))
+    assert it["list_savings"] == 1450.0
+
+
+def test_parse_card_multiple_item_numbers_are_not_a_price():
+    it = cs.parse_card(_card("32 Degrees Top\nItem 123, 456\nLimit 10.\n\n$\n9\n.\n99\n\nAfter $3 OFF"))
+    assert it["item_number"] == "123"
+    assert (it["list_sale"], it["list_savings"]) == (9.99, 3.0)
+
+
+class _FakeSavingsPage:
+    """Enough of a Playwright page for scrape_savings_listing."""
+
+    def __init__(self, link_counts, data):
+        self.link_counts, self.data, self.scrolls = iter(link_counts), data, 0
+
+    def goto(self, *a, **k):
+        return None
+
+    def wait_for_timeout(self, ms):
+        pass
+
+    def evaluate(self, script):
+        if script == cs._EXTRACT_JS:
+            return self.data
+        if "scrollBy" in script:
+            self.scrolls += 1
+        elif "querySelectorAll" in script:
+            return next(self.link_counts) if "/p/-/" in script else 0
+        return None
+
+
+def _page_data(n, item_lines):
+    cards = [{"href": f"https://www.costco.com/p/-/{4000000000 + i}", "title": f"Item {i}", "text": "Item 1", "section": "S"}
+             for i in range(n)]
+    return {"cards": cards, "linkIds": n, "itemLines": item_lines, "body": "Valid 10/19/26 - 11/15/26"}
+
+
+def test_scrape_scroll_loop_counts_slugless_links():
+    """It counted only '.product.' links, always 0 on the new page, so it stopped after two scrolls."""
+    page = _FakeSavingsPage([5, 10, 10], _page_data(10, 10))
+    items, banner_end = cs.scrape_savings_listing(page)
+    assert page.scrolls == 3
+    assert len(items) == 10 and banner_end == "11/15/26"
+
+
+def test_page_coverage_alert_fires_when_most_cards_are_lost():
+    """The 10/19/26 regression: 8 cards off ~171 item lines, invisible for 19 days (search kept items non-empty)."""
+    msg = cs.page_coverage_alert({"cards": 8, "item_lines": 171})
+    assert "8" in msg and "171" in msg and "probe_savings_page" in msg
+
+
+@pytest.mark.parametrize("stats", [
+    {"cards": 162, "item_lines": 171},             # healthy
+    {"cards": 20, "item_lines": 30},               # too small a page to judge
+    {"cards": 0, "item_lines": 0},                 # blocked: not a coverage question
+    {},                                            # the scrape never got that far
+])
+def test_page_coverage_alert_quiet(stats):
+    assert cs.page_coverage_alert(stats) is None
+
+
+def test_scrape_records_page_stats_for_the_coverage_alert(monkeypatch):
+    monkeypatch.setattr(cs, "last_page_stats", {})
+    cs.scrape_savings_listing(_FakeSavingsPage([1, 1], _page_data(8, 171)))
+    assert cs.last_page_stats == {"cards": 8, "item_lines": 171}
 
 
 def test_page_end_date():
@@ -234,6 +338,7 @@ def env(monkeypatch, tmp_path):
     monkeypatch.setattr(sch, "SAVINGS_ALERT_STATE", str(tmp_path / "savings_alert.json"))
     monkeypatch.setattr(sch, "SAVINGS_SEEN_STATE", str(tmp_path / "savings_seen.json"))
     monkeypatch.setattr("tools.costco_scraper.refresh_session", lambda page: None)
+    monkeypatch.setattr(cs, "last_page_stats", {})
     monkeypatch.setattr(cs, "scrape_savings_listing", lambda page, url=None: (ctx["items"], ctx["banner"]))
     monkeypatch.setattr(cs, "scrape_search_listing",
                         lambda page, url=None, max_pages=70, refresh=None: (ctx["search"], ctx["smeta"]))
@@ -267,6 +372,21 @@ def test_tracked_new_sale_updates_only_sale_columns_and_alerts_once(env, tmp_pat
 
     env["run"]()                                    # same sheet again (write not reflected) -> deduped alert
     assert len(env["sent"]) == 1
+
+
+def test_run_savings_alerts_when_page_coverage_collapses(env, monkeypatch):
+    """The search source still supplies items, so this is the only signal the page selector broke."""
+    monkeypatch.setattr(cs, "last_page_stats", {"cards": 8, "item_lines": 171})
+    env["search"] = [_i("Dyson V15 Cordless Vacuum", "https://www.costco.com/.product.7.html")]
+    env["run"]()
+    assert [m for m in env["sent"] if "only 8 cards parsed" in m]
+
+
+def test_run_savings_coverage_alert_is_silent_on_dry_run(env, monkeypatch):
+    monkeypatch.setattr(cs, "last_page_stats", {"cards": 8, "item_lines": 171})
+    env["search"] = [_i("Dyson V15 Cordless Vacuum", "https://www.costco.com/.product.7.html")]
+    env["run"](dry_run=True)
+    assert env["sent"] == []
 
 
 def test_tracked_already_on_sale_is_silent_and_unwritten(env):

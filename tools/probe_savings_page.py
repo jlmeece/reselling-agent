@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.costco_savings import SAVINGS_URL  # noqa: E402
+from tools.costco_savings import SAVINGS_URL, _PRODUCT_RX  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".tmp", "savings_probe")
 
@@ -50,29 +50,27 @@ def main(url: str) -> None:
                 json.dump(body, f)
 
         info = page.evaluate(
-            """() => {
+            """(pattern) => {
+              const rx = new RegExp(pattern);
+              const idOf = a => { const m = rx.exec(a.href); return m ? (m[1] || m[2]) : null; };
+              const links = [...document.querySelectorAll("a[href]")].filter(idOf);
               const out = {};
               out.title = document.title;
               out.banner = (document.body.innerText.match(/Valid\\s+\\d+\\/\\d+\\/\\d+\\s*-\\s*\\d+\\/\\d+\\/\\d+/) || [null])[0];
-              out.productLinks = document.querySelectorAll("a[href*='.product.']").length;
+              out.productLinks = new Set(links.map(idOf)).size;
               out.tabs = [...document.querySelectorAll("[role=tab], [role=tablist] a, [role=tablist] button")]
                           .slice(0, 40).map(e => (e.innerText || '').trim()).filter(Boolean);
               out.moreBtns = [...document.querySelectorAll("button, a")]
                           .filter(e => /load more|show more|view more|see all/i.test(e.innerText || ''))
                           .slice(0, 10).map(e => (e.innerText || '').trim());
-              const a = document.querySelector("a[href*='.product.']");
-              let card = a;
-              for (let i = 0; a && i < 6 && card.parentElement; i++) {
-                card = card.parentElement;
-                if ((card.innerText || '').length > 60) break;
-              }
-              out.sampleCards = [...document.querySelectorAll("a[href*='.product.']")].slice(0, 3).map(l => {
+              out.sampleCards = links.slice(0, 3).map(l => {
                 let c = l;
                 for (let i = 0; i < 6 && c.parentElement; i++) { c = c.parentElement; if ((c.innerText||'').length > 60) break; }
                 return {href: l.getAttribute('href'), text: (c.innerText || '').slice(0, 400), html: c.outerHTML.slice(0, 1500)};
               });
               return out;
-            }"""
+            }""",
+            _PRODUCT_RX.pattern,
         )
         with open(os.path.join(OUT, "dom.json"), "w", encoding="utf-8") as f:
             json.dump(info, f, indent=2)

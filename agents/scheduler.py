@@ -2504,6 +2504,12 @@ def run_savings(config, COL, service, sheet_name, start_row, end_row,
     with make_browser() as page:
         dom_items, banner_end = costco_savings.scrape_savings_listing(
             page, biz.get("url") or costco_savings.SAVINGS_URL)
+        coverage = costco_savings.page_coverage_alert(costco_savings.last_page_stats)
+        if coverage:
+            logger.warning(f"  {coverage}")
+            token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
+            if not dry_run and token and chat_id:
+                _send_telegram(token, chat_id, f"⚠️ {coverage}")
         search_items, smeta = [], {}
         if search_pages > 0:
             search_items, smeta = costco_savings.scrape_search_listing(

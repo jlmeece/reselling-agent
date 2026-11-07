@@ -4,22 +4,26 @@ Scrape Costco's Member-Only Savings page (warehouse-savings) and cross-reference
 against the Product Tracker. Everything except `scrape_savings_listing` is pure (no browser /
 sheet / Telegram) so it is unit-testable.
 
-Page structure (probed 2026-09-24 with tools/probe_savings_page.py):
+Page structure (probed 2026-09-24 with tools/probe_savings_page.py, re-probed 2026-11-07):
   * https://www.costco.com/warehouse-savings.html redirects to /o/-/warehouse-savings.
   * Server/JS-rendered DOM, NOT an API listing: no catalog/search API call carries the items.
   * One <h2> per department (Apparel, Appliances, Grocery, Health & Personal Care, Pharmacy ...).
-  * A card is the innermost [data-testid=Grid] holding exactly one product link
-    (`/.product.<id>.html`, occasionally `/p/-/<slug>/<id>`). ~185 distinct items per event.
+  * A card is the innermost [data-testid=Grid] holding exactly one product link. Since the 10/19/26
+    event the links are `/p/-/<id>` (mostly slugless) or `/p/-/<slug>/<id>`, no longer
+    `/.product.<id>.html`. Everything is in the DOM on load; scrolling adds nothing right now.
+    186 cards linked to a product in Sep, ~162 in Nov.
   * Card text: title, "Warehouse & Online" | "Online Only" | "Warehouse Only", "Item <warehouse
     item no>", "Limit N", then EITHER "$ 15 . 99 After $4 OFF" (sale price + savings) OR just
     "Save $ 3" (savings only). Some cards (TVs, deli) carry no savings text at all.
   * Banner: "Valid 9/21/26 - 10/18/26" (the whole event window, not per item).
-  * Brand-event tiles link to category/keyword URLs, not product pages — ignored.
+  * Brand-event and multi-SKU tiles (22 in Nov: "Select Whirlpool Laundry", "Search lg8980") link to
+    category/keyword URLs, not product pages — ignored: there is no single product to price-check.
 Listing text is only a HINT: authoritative price/regular/end come from the product page's price
 API (scrape_costco), which the caller runs for each candidate.
 """
 
 import html
+import json
 import re
 
 from loguru import logger
@@ -29,7 +33,7 @@ from tools.sale_monitor import parse_rate, to_float
 
 SAVINGS_URL = "https://www.costco.com/warehouse-savings.html"
 
-_PRODUCT_RX = re.compile(r"\.product\.(\d+)\.html|/p/-/[^/?#]+/(\d+)")
+_PRODUCT_RX = re.compile(r"\.product\.(\d+)\.html|/p/-/(?:[^/?#]+/)?(\d+)(?=[/?#]|$)")
 _MONEY = r"(\d[\d,]*(?:\.\d+)?)"
 _AFTER_RX = re.compile(r"\$" + _MONEY + r"\s*After\s*\$" + _MONEY + r"\s*OFF", re.IGNORECASE)
 _SAVE_RX = re.compile(r"Save\s*\$" + _MONEY, re.IGNORECASE)
@@ -40,7 +44,7 @@ _BANNER_RX = re.compile(r"Valid\s+\d{1,2}/\d{1,2}/\d{2,4}\s*-\s*(\d{1,2}/\d{1,2}
 # Runs in the page: one dict per distinct product (the richest card wins when a product renders twice).
 _EXTRACT_JS = r"""
 () => {
-  const rx = /\.product\.(\d+)\.html|\/p\/-\/[^\/?#]+\/(\d+)/;
+  const rx = new RegExp(__PRODUCT_RX__);
   const idOf = h => { const m = rx.exec(h || ''); return m ? (m[1] || m[2]) : null; };
   const h2s = [...document.querySelectorAll('h2')];
   const sectionOf = el => {
@@ -68,16 +72,23 @@ _EXTRACT_JS = r"""
   return {
     cards: [...best.values()],
     linkIds: new Set([...document.querySelectorAll('a[href]')].map(a => idOf(a.href)).filter(Boolean)).size,
+    itemLines: ((document.body.innerText || '').match(/\bItem\s+\d+/g) || []).length,
     body: (document.body.innerText || '').slice(0, 40000),
   };
 }
-"""
+""".replace("__PRODUCT_RX__", json.dumps(_PRODUCT_RX.pattern))
+
+# Cards parsed vs "Item <n>" lines on the page (independent of Grid and link shape), set by scrape_savings_listing.
+last_page_stats = {}
+COVERAGE_MIN_ITEM_LINES = 50
+COVERAGE_MIN_RATIO = 0.5
 
 
 # ── pure helpers ─────────────────────────────────────────────────────────────
 
 def product_id(url):
-    """Costco product id from '/.product.4000422365.html' or '/p/-/slug/100217166'; None otherwise."""
+    """Costco product id from '/.product.4000422365.html', '/p/-/slug/100217166' or '/p/-/100217166';
+    None otherwise."""
     m = _PRODUCT_RX.search(str(url or ""))
     return (m.group(1) or m.group(2)) if m else None
 
@@ -97,6 +108,7 @@ def _money(s):
 def _squash(text) -> str:
     """innerText of a price is split across nodes ('$ 15 . 99'); rejoin -> '$15.99'."""
     t = " ".join(str(text or "").split())
+    t = re.sub(r"\$\s*(\d{1,3})\s*,\s*(\d{3})\b", r"$\1\2", t)    # '$ 1 , 399' -> '$1399'
     t = re.sub(r"\$\s*(\d[\d,]*)\s*\.\s*(\d{1,2})\b", r"$\1.\2", t)
     return re.sub(r"\$\s+(?=\d)", "$", t)
 
@@ -126,10 +138,11 @@ def parse_card(raw) -> dict:
     item = _ITEM_RX.search(text)
     limit = _LIMIT_RX.search(text)
     href = str(raw.get("href") or "")
+    pid = product_id(href)
     return {
         "title": " ".join(str(raw.get("title") or "").split()),
-        "url": href.split("?")[0],
-        "product_id": product_id(href),
+        "url": canonical_url(pid) if pid else href.split("?")[0],
+        "product_id": pid,
         "section": str(raw.get("section") or ""),
         "item_number": item.group(1) if item else "",
         "limit": int(limit.group(1)) if limit else None,
@@ -145,6 +158,17 @@ def page_end_date(text):
     """'Valid 9/21/26 - 10/18/26' banner -> '10/18/26' (end of the whole event); None if absent."""
     m = _BANNER_RX.search(str(text or ""))
     return m.group(1) if m else None
+
+
+def page_coverage_alert(stats):
+    """Message when the page shows far more items than we parsed (a selector broke), else None. An empty
+    result is not enough to catch this: the search source keeps the run's items non-empty, and the 10/19/26
+    break ran for 19 days at 8 cards."""
+    cards, lines = (stats or {}).get("cards"), (stats or {}).get("item_lines")
+    if cards is None or not lines or lines < COVERAGE_MIN_ITEM_LINES or cards >= lines * COVERAGE_MIN_RATIO:
+        return None
+    return (f"savings page: only {cards} cards parsed but the page shows {lines} items — Costco layout changed? "
+            f"Run python tools/probe_savings_page.py")
 
 
 def savings_rank(item) -> tuple:
@@ -336,6 +360,8 @@ def scrape_savings_listing(page, url=SAVINGS_URL):
     '10/18/26' or None. [] items means the layout changed (or the page was blocked) — the caller
     treats that as an error. Never raises.
     """
+    global last_page_stats
+    last_page_stats = {}
     try:
         resp = page.goto(url, timeout=45000, wait_until="domcontentloaded",
                          referer="https://www.costco.com/")
@@ -347,7 +373,7 @@ def scrape_savings_listing(page, url=SAVINGS_URL):
         for _ in range(14):                               # bounded: lazy sections load on scroll
             page.evaluate("window.scrollBy(0, 2500)")
             page.wait_for_timeout(700)
-            n = page.evaluate("document.querySelectorAll('a[href*=\".product.\"]').length")
+            n = page.evaluate("document.querySelectorAll('a[href*=\".product.\"], a[href*=\"/p/-/\"]').length")
             if n == last:
                 break
             last = n
@@ -358,7 +384,9 @@ def scrape_savings_listing(page, url=SAVINGS_URL):
         return [], None
 
     items = [it for it in (parse_card(c) for c in data.get("cards", [])) if it["title"] and it["url"]]
-    logger.info(f"  savings page: {len(items)} cards parsed ({data.get('linkIds', 0)} distinct product links on page)")
+    last_page_stats = {"cards": len(items), "item_lines": data.get("itemLines", 0)}
+    logger.info(f"  savings page: {len(items)} cards parsed ({data.get('linkIds', 0)} distinct product links, "
+                f"{data.get('itemLines', 0)} item lines on page)")
     return items, page_end_date(data.get("body"))
 
 
