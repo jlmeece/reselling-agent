@@ -11,7 +11,9 @@ For each URL this attaches its own response listener, runs the normal scrape_cos
 Run by hand when Costco changes the fulfillment widget; the parser in
 tools/costco_scraper.py (_parse_inventory_payload) follows what this prints.
 
-    python tools/probe_inventory.py <url> [<url> ...]
+    python tools/probe_inventory.py <url> [<url> ...] [--force]
+
+Refuses to run while a scheduler run holds data/.scheduler_lock (--force overrides).
 """
 import json
 import os
@@ -96,6 +98,9 @@ def main(urls):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+    from tools.probe_guard import refuse_if_scheduler_busy
+    urls = [a for a in sys.argv[1:] if a != "--force"]
+    if not urls:
         sys.exit(__doc__)
-    main(sys.argv[1:])
+    refuse_if_scheduler_busy()
+    main(urls)

@@ -6,7 +6,9 @@ JSON of any search/listing-shaped response, the rendered card markup, and the
 category tab / "load more" controls into .tmp/savings_probe/. Run once by hand
 when Costco redesigns the page; the parser in tools/costco_savings.py follows it.
 
-    python tools/probe_savings_page.py [url]
+    python tools/probe_savings_page.py [url] [--search] [--force]
+
+Refuses to run while a scheduler run holds data/.scheduler_lock (--force overrides).
 """
 import json
 import os
@@ -104,6 +106,8 @@ def probe_search(max_pages: int = 70) -> None:
 
 
 if __name__ == "__main__":
+    from tools.probe_guard import refuse_if_scheduler_busy
+    refuse_if_scheduler_busy()
     if "--search" in sys.argv:
         probe_search()
     else:

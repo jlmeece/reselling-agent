@@ -55,9 +55,10 @@ business:
     scrape_limit: 40
     add_limit: 10
     # Phase 3: also crawl the full "OFF" search listing (~1,586 items, 24/page). search_pages caps pages
-    # crawled per run (0 = skip the crawl, warehouse-savings page only).
+    # crawled per run (0 = skip the crawl, warehouse-savings page only). 110 since 2026-11-09: the
+    # listing grew to 82 pages (1,940 items) before Black Friday and 70 cut the tail; ~3.5s per page.
     search_url: "https://www.costco.com/s?keyword=OFF&dept=All"
-    search_pages: 70
+    search_pages: 110
     # Hard filters so the research queue is never flooded (research scores only a few rows a day):
     min_discount_pct: 5        # NEW rows need a confirmed markdown of at least this % (price API, not listing text)
     reject_cooldown_days: 3    # an item the API rejected (not on sale / below min) is not re-scraped for N days

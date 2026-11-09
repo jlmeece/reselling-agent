@@ -24,6 +24,7 @@ from agents.telegram_bot import (
     _format_net_with_ads_line,
     _format_regular_price_line,
     _is_duplicate_instance,
+    _scored_split,
     _tier_label,
     col_to_idx,
     cookie_age_days,
@@ -937,6 +938,36 @@ def test_format_dashboard_reply_includes_score_legend():
     counts, total = {"Ready": 1}, 1
     text = format_dashboard_reply(counts, total)
     assert "Scores: 0–10 · Tier 1 ≥5 🥇 · Tier 2 ≥3 · Tier 3 <3 · Sharpe = risk-adjusted return (higher = better)" in text
+
+
+def test_format_dashboard_reply_shows_review_now_and_on_hold_not_scored():
+    counts, total = {"Approved": 1, "Review Now": 2, "On Hold": 3, "Pending": 4}, 10
+    text = format_dashboard_reply(counts, total)
+    assert "🔵 Review Now: 2" in text
+    assert "🟡 On Hold: 3" in text
+    assert "Scored" not in text
+    lines = text.splitlines()
+    order = [next(i for i, l in enumerate(lines) if label in l)
+             for label in ("Approved", "Review Now", "On Hold", "Pending")]
+    assert order == sorted(order)
+
+
+def test_format_dashboard_reply_omits_zero_review_now():
+    text = format_dashboard_reply({"On Hold": 2}, 2)
+    assert "🟡 On Hold: 2" in text
+    assert "Review Now" not in text
+
+
+def test_scored_split_negative_net_on_hold_positive_review_now():
+    rows = [
+        _make_dash_row(A="SCORED", C="Loser", I="-$3.50"),
+        _make_dash_row(A="SCORED", C="Break Even", I="$0.00"),
+        _make_dash_row(A="SCORED", C="Winner", I="$12.40"),
+        _make_dash_row(A="SCORED", C="Unpriced", I=""),
+        _make_dash_row(A="READY", C="Not Scored", I="-$9.00"),
+    ]
+    products = extract_dashboard_products(rows, _DASH_COL)
+    assert _scored_split(products) == (2, 2)
 
 
 # ── _parse_pct ────────────────────────────────────────────────────────────────

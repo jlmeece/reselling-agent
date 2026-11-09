@@ -639,8 +639,9 @@ class _Ctx:
 
 class _FakePage:
     """goto('...&currentPage=N') 'fires' the search response for offset (N-1)*24."""
-    def __init__(self, total, bad_pages=(), page_size=24):
+    def __init__(self, total, bad_pages=(), page_size=24, empty=None):
         self.total, self.bad, self.last, self.urls, self.size = total, set(bad_pages), None, [], page_size
+        self.empty = dict(empty or {})                              # {page: times it comes back empty}
 
     def expect_response(self, pred, timeout=0):
         return _Ctx(self, pred)
@@ -652,6 +653,10 @@ class _FakePage:
             self.last = None
             return type("R", (), {"status": 200})()
         off = (n - 1) * self.size
+        if self.empty.get(n, 0) > 0:
+            self.empty[n] -= 1
+            self.last = _Resp(off, 0, self.total)
+            return type("R", (), {"status": 200})()
         self.last = _Resp(off, max(0, min(self.size, self.total - off)), self.total)
         return type("R", (), {"status": 200})()
 
@@ -684,6 +689,24 @@ def test_crawl_survives_one_bad_page_but_stops_after_two_in_a_row():
     items, meta = cs.scrape_search_listing(_FakePage(total=24 * 6, bad_pages={3}), "https://x/s?k=1")
     assert meta["failed"] == 1 and meta["pages"] == 5 and len(items) == 24 * 5 and not meta["stopped"]
     items, meta = cs.scrape_search_listing(_FakePage(total=24 * 6, bad_pages={3, 4}), "https://x/s?k=1")
+    assert meta["pages"] == 2 and "2 consecutive failures at page 4" in meta["stopped"]
+
+
+def test_crawl_retries_a_mid_listing_empty_page_after_a_refresh():
+    calls = []
+    page = _FakePage(total=24 * 6, empty={3: 1})
+    items, meta = cs.scrape_search_listing(page, "https://x/s?k=1", refresh=lambda p: calls.append(1))
+    assert len(items) == 24 * 6 and meta["pages"] == 6 and meta["failed"] == 0 and not meta["stopped"]
+    assert calls == [1] and page.urls.count("https://x/s?k=1&currentPage=3") == 2
+
+
+def test_crawl_skips_a_page_empty_twice_and_keeps_going():
+    items, meta = cs.scrape_search_listing(_FakePage(total=24 * 6, empty={3: 2}), "https://x/s?k=1")
+    assert len(items) == 24 * 5 and meta["pages"] == 5 and meta["failed"] == 1 and not meta["stopped"]
+
+
+def test_crawl_stops_on_two_pages_empty_in_a_row_after_retries():
+    items, meta = cs.scrape_search_listing(_FakePage(total=24 * 6, empty={3: 2, 4: 2}), "https://x/s?k=1")
     assert meta["pages"] == 2 and "2 consecutive failures at page 4" in meta["stopped"]
 
 

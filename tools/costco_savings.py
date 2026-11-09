@@ -584,12 +584,14 @@ def scrape_search_listing(page, url=SEARCH_URL, max_pages=70, refresh=None):
     Crawl the 'OFF' search listing page by page (`&currentPage=N`), capturing each page's search-API
     response. Bounded by `max_pages` and by totalSize. `refresh(page)` runs every 20 pages (Costco's bot
     detection tolerates ~14 product pages; the session is refreshed on the scraper's usual cadence). Two
-    consecutive failed pages end the crawl — partial results are still returned.
+    consecutive failed pages end the crawl — partial results are still returned. An empty page before the
+    last one (totalSize says more remain) is retried once after a session refresh, then counted as a failed
+    page — one blank response used to end the crawl at page 33 of 81 (2026-11-07).
     Returns (items, meta): meta = {total, pages, failed, stopped}. Never raises.
     """
     import random
     items, meta = [], {"total": None, "pages": 0, "failed": 0, "stopped": ""}
-    total_pages, n, consecutive_fail = max_pages, 1, 0
+    total_pages, n, consecutive_fail, retried = max_pages, 1, 0, False
     while n <= min(total_pages, max_pages):
         expected = (n - 1) * SEARCH_PAGE_SIZE
         page_url = url if n == 1 else f"{url}&currentPage={n}"
@@ -612,6 +614,16 @@ def scrape_search_listing(page, url=SEARCH_URL, max_pages=70, refresh=None):
             if meta["total"] is None:
                 meta["total"] = int(sr.get("totalSize") or 0)
                 total_pages = -(-meta["total"] // SEARCH_PAGE_SIZE) if meta["total"] else max_pages
+            if not results and n < total_pages:
+                if not retried:
+                    retried = True
+                    logger.warning(f"  search page {n} empty (of {total_pages}) — refreshing and retrying")
+                    if refresh:
+                        refresh(page)
+                    page.wait_for_timeout(int(random.uniform(4000, 7000)))
+                    continue
+                raise RuntimeError(f"empty page {n} of {total_pages} after a retry")
+            retried = False
             items.extend(it for it in (parse_search_result(r) for r in results) if it)
             meta["pages"] += 1
             consecutive_fail = 0
@@ -619,6 +631,7 @@ def scrape_search_listing(page, url=SEARCH_URL, max_pages=70, refresh=None):
                 meta["stopped"] = "empty page"
                 break
         except Exception as e:
+            retried = False
             meta["failed"] += 1
             consecutive_fail += 1
             logger.warning(f"  search page {n} failed: {e}")

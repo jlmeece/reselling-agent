@@ -803,8 +803,14 @@ def count_statuses(rows):
 
 def format_dashboard_reply(counts, total):
     """Render the /dashboard funnel summary in fixed priority order, skipping 0-count groups."""
-    order = [label for _, label, _ in _DASHBOARD_GROUPS] + ["Paused", "Other"]
+    # SCORED is shown split by net (see _scored_split): Review Now / On Hold replace "Scored".
+    order = []
+    for _, label, _ in _DASHBOARD_GROUPS:
+        order.extend(["Review Now", "On Hold"] if label == "Scored" else [label])
+    order += ["Paused", "Other"]
     emoji = {label: em for _, label, em in _DASHBOARD_GROUPS}
+    emoji["Review Now"] = "🔵"
+    emoji["On Hold"] = "🟡"
     emoji["Paused"] = "⏸️"
     emoji["Other"] = "⚪️"
 
@@ -857,6 +863,23 @@ def _parse_currency(raw):
         return float(raw.replace("$", "").replace(",", ""))
     except ValueError:
         return None
+
+
+def _scored_split(products):
+    """
+    Split SCORED rows by net, with the review queue's floor and parse: (review_now, on_hold).
+    A blank/unparseable net is on hold (the queue skips it too).
+    """
+    review_now = on_hold = 0
+    for p in products:
+        if (p.get("status") or "").strip() != "SCORED":
+            continue
+        net = _parse_currency(p.get("net_profit"))
+        if net is not None and net >= _REVIEW_MIN_NET_PROFIT:
+            review_now += 1
+        else:
+            on_hold += 1
+    return review_now, on_hold
 
 
 _MAX_REALISTIC_UNITS_SOLD = 10000
@@ -1510,6 +1533,12 @@ async def cb_menu_dashboard(update, context, arg):
 
     counts, total = count_statuses(rows)
     products = extract_dashboard_products(rows, col_map, data_start_row=start)
+    review_now, on_hold = _scored_split(products)
+    counts.pop("Scored", None)
+    if review_now:
+        counts["Review Now"] = review_now
+    if on_hold:
+        counts["On Hold"] = on_hold
     blocks = [format_dashboard_reply(counts, total)]
     on_sale = format_on_sale_count(products)
     if on_sale:
