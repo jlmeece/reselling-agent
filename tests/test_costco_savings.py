@@ -534,12 +534,55 @@ def test_promo_end_picks_earliest_and_handles_absence():
     ("Appliances > Small Kitchen Appliances > Air Fryers", "Small Appliances"),
     ("Appliances > Small Kitchen Appliances > Coffee, Tea & Espresso Makers > Single Serve Coffee Makers", "Small Appliances"),
     ("Patio, Lawn & Garden > Patio & Outdoor Furniture > Outdoor Patio Conversation Sets", "Outdoor Furniture"),
-    ("Jewelry > Rings", "Jewelry"),
-    ("Jewelry > Watches", "Watches"),
     ("Gold > Bars & Rounds", "Precious Metals"),
 ])
 def test_classify_by_category_path(path, cat):
     assert cs.classify_category(path, PATHS) == cat
+
+
+# Real Costco paths from tools/probe_category_paths.py (2026-11-09). Jewelry and watches share ONE department,
+# "Jewelry & Watches"; the old rules ('^jewelry' + '!watches' / 'watches') filed all of these as Watches.
+@pytest.mark.parametrize("path,cat", [
+    ("Jewelry & Watches > Earrings > Diamond Earrings > Diamond Studs", "Jewelry"),
+    ("Jewelry & Watches > Earrings > Diamond Earrings > Diamond Hoops", "Jewelry"),
+    ("Jewelry & Watches > Earrings > Gold Earrings", "Jewelry"),
+    ("Jewelry & Watches > Necklaces > Gold Necklaces", "Jewelry"),
+    ("Jewelry & Watches > Necklaces > Diamond Necklaces", "Jewelry"),
+    ("Jewelry & Watches > Necklaces > Pearl Necklaces > Pearl Strands", "Jewelry"),
+    ("Jewelry & Watches > Bracelets > Gold Bracelets", "Jewelry"),
+    ("Jewelry & Watches > Bracelets", "Jewelry"),
+    ("Jewelry & Watches > Rings > Engagement Rings > Solitaire Rings", "Jewelry"),
+    ("Jewelry & Watches > Rings > Wedding Rings & Bands > Diamond Bands", "Jewelry"),
+    ("Jewelry & Watches > Watches", "Watches"),
+    ("Jewelry & Watches > Watches > Luxury Watches", "Watches"),
+    ("Jewelry & Watches > Precious Metals", "Precious Metals"),
+])
+def test_jewelry_and_watches_department_splits(path, cat):
+    assert cs.classify_category(path, PATHS) == cat
+
+
+@pytest.mark.parametrize("path", [
+    "Jewelry & Watches",                                        # bare department: no way to tell which
+    "Jewelry & Watches > Jewelry Organizers",
+    "Electronics > Wearable Technology > Smart Watches",        # used to leak into Watches
+    "Electronics > Wearable Technology > Smart Watches > Samsung Galaxy Watch",
+    "Electronics > Apple Products > Apple Watch",
+    "Home Improvement > Flooring",                              # 'flooring' contains 'ring'
+    "Grocery & Household Essentials > Coffee > K-Cups, Coffee Pods & Capsules",
+    "Appliances > Refrigerators",
+])
+def test_jewelry_watch_lookalike_paths_are_off_category(path):
+    assert cs.classify_category(path, PATHS) is None
+
+
+def test_search_diamond_studs_item_is_jewelry_not_watches():
+    kw = cs.compile_keywords(CONFIG["business"]["savings"]["keywords"])
+    item = {"source": "search", "title": "1.00 ctw Round Brilliant Diamond Stud Earrings, 14kt White Gold",
+            "category_path": "Jewelry & Watches > Earrings > Diamond Earrings > Diamond Studs"}
+    assert cs.classify_item(item, kw, PATHS) == "Jewelry"
+    watch = {"source": "search", "title": "Citizen Eco-Drive Men's Watch",
+             "category_path": "Jewelry & Watches > Watches"}
+    assert cs.classify_item(watch, kw, PATHS) == "Watches"
 
 
 @pytest.mark.parametrize("path", [
