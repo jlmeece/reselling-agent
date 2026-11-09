@@ -59,7 +59,7 @@ from tools.sale_priority import sale_end_sort_key
 from tools.costco_scraper import scrape_costco, get_cart_estimate, make_browser, refresh_session
 from tools.costco_discovery import discover_all
 from tools.ebay_research import get_ebay_comps
-from tools.ebay_sync import compute_net
+from tools.ebay_sync import _break_even, compute_net
 from tools.community_signals import get_community_signals
 from tools.listing_copy import generate_listing_copy
 from tools.alert_sender import send_alert
@@ -979,6 +979,19 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
                 except (ValueError, TypeError):
                     pass
 
+            # FULL net (compute_net = col I formula: Costco tax + $0.30 + buyer-tax FVF). The
+            # simplified net_profit_val above is always >= this, so every gate that decides
+            # SCORED (hard gate, monthly-profit override, sale fast-track) uses real_net — a
+            # thin item could read net-positive simplified while col I is negative.
+            real_net = None
+            if suggested_price and costco_cost:
+                try:
+                    real_net = compute_net(float(suggested_price),
+                                           float(str(costco_cost).replace("$", "").replace(",", "")),
+                                           fee_rate)
+                except (TypeError, ValueError):
+                    real_net = None
+
             # Override margin_potential with an absolute-dollar score. Claude scores
             # margin as a %, which shelves high-ticket items (a $168 bracelet, $421
             # furniture) that carry big absolute profit at low margin %. Precious Metals
@@ -1061,14 +1074,14 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             else:
                 velocity_str = f" | {monthly_units}/mo" if monthly_units else ""
 
-            # Hard gate: never reach Tier 1 with negative net profit
+            # Hard gate: never reach Tier 1 with a non-positive FULL net (col I)
             _gate_note = ""
-            if tier == 1 and net_profit_val is not None and net_profit_val <= 0:
+            if tier == 1 and real_net is not None and real_net <= 0:
                 try:
                     _c = float(str(costco_cost).replace("$", "").replace(",", ""))
-                    _breakeven = round(_c / (1 - fee_rate) + 0.01, 2)
+                    _breakeven = round(_break_even(_c, fee_rate, 0.0, 0.0) + 0.01, 2)
                     _gate_note = (
-                        f"\nDowngraded T1→T2: net profit is ${net_profit_val:.2f} at suggested price "
+                        f"\nDowngraded T1→T2: net profit is ${real_net:.2f} at suggested price "
                         f"${float(suggested_price):.2f}. Raise eBay price above ${_breakeven:.2f} to be viable."
                     )
                 except (ValueError, TypeError):
@@ -1078,7 +1091,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             # Monthly-profit override: real money can't be shelved by a low margin-%.
             # High-ticket items (a $168 bracelet, $421 furniture) carry big absolute
             # profit at low margin %, so the %-weighted score parks them — force them up.
-            if net_profit_val is not None and net_profit_val > 0 and monthly_profit_val is not None:
+            if real_net is not None and real_net > 0 and monthly_profit_val is not None:
                 if monthly_profit_val >= MONTHLY_PROFIT_TIER1 and tier != 1:
                     _gate_note += (f"\nMonthly-profit override: ${monthly_profit_val:,.0f}/mo "
                                    f"(net ${net_profit_val:.2f}/unit) → promoted to SCORED.")
@@ -1092,15 +1105,7 @@ def run_researcher(limit=None, add_limit=None, category_filter=None, discover_on
             # score. The score is still written and shown; it ranks, not gates. Gated on the
             # FULL net (compute_net = col I formula), not the simplified net_profit_val, so
             # Costco tax + $0.30 + buyer-tax FVF aren't ignored (a $2 simplified net on a
-            # $100 item is really about -$8).
-            real_net = None
-            if suggested_price and costco_cost:
-                try:
-                    real_net = compute_net(float(suggested_price),
-                                           float(str(costco_cost).replace("$", "").replace(",", "")),
-                                           fee_rate)
-                except (TypeError, ValueError):
-                    real_net = None
+            # $100 item is really about -$8). real_net is computed once, above.
             if (tier != 1 and on_sale and real_net is not None
                     and real_net >= SALE_FASTTRACK_MIN_NET
                     and stock_status not in ("OUT OF STOCK", "WAREHOUSE ONLY", "CHECK FAILED")):

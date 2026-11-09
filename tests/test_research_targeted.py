@@ -129,18 +129,17 @@ def scored(run, monkeypatch):
     """Composite score forced to Tier 3; returns the research write + what pass 3 saw."""
     seen = {}
 
-    def _pass3(category):
-        def fn(dims, cat_config, reasoning=None):
-            seen["dims"], seen["fee"] = dict(dims), cat_config.get("fee_rate", 0.1325)
-            return {"tier": 3, "weighted_score": 3.1, "recommendation": "PASS",
-                    "lens_scores": {"conservative_analyst": 3.0, "volume_flipper": 3.2}}
-        return fn
-    monkeypatch.setattr(R, "_pass3_for_category", _pass3)
-
-    def go(sugg=130.0, on_sale=True, stock="In Stock"):
+    def go(sugg=130.0, on_sale=True, stock="In Stock", tier=3, sold_90d=0):
+        def _pass3(category):
+            def fn(dims, cat_config, reasoning=None):
+                seen["dims"], seen["fee"] = dict(dims), cat_config.get("fee_rate", 0.1325)
+                return {"tier": tier, "weighted_score": 3.1, "recommendation": "PASS",
+                        "lens_scores": {"conservative_analyst": 3.0, "volume_flipper": 3.2}}
+            return fn
+        monkeypatch.setattr(R, "_pass3_for_category", _pass3)
         monkeypatch.setattr(R, "_suggest_ebay_price", lambda cost, data, fee: sugg)
         monkeypatch.setattr(R, "get_ebay_comps", lambda *a, **k: {
-            "sold_90d": 0, "avg_sold_price": sugg, "active_count": 12, "median_sold": sugg,
+            "sold_90d": sold_90d, "avg_sold_price": sugg, "active_count": 12, "median_sold": sugg,
             "price_basis": "median", "query_strategy": "title"})
         monkeypatch.setattr(R, "scrape_costco", lambda url, page=None: {
             "stock_status": stock, "price": 100.0, "in_stock": stock == "In Stock",
@@ -184,3 +183,31 @@ def test_fast_track_needs_net_at_floor_on_sale_and_in_stock(scored):
     assert w[COL["status"]] == "PAUSED_DEMAND"
     assert scored(stock="OUT OF STOCK")[0].get(COL["status"]) != "SCORED"
     assert scored(on_sale=False)[0][COL["status"]] == "PAUSED_DEMAND"
+
+
+# ── hard gate + monthly override use the FULL net (col I), not the simplified one ──
+
+def test_tier1_with_positive_simplified_but_negative_full_net_is_downgraded_to_watch(scored):
+    # $125 on a $100 item: simplified ~$8, col I negative (tax + $0.30 + buyer-tax FVF)
+    w, seen = scored(sugg=125.0, tier=1, on_sale=False)
+    assert seen["net"] > 0 and seen["real_net"] < 0
+    assert w[COL["status"]] == "WATCH"
+    note = w[COL["full_notes"]]
+    assert f"Downgraded T1→T2: net profit is ${seen['real_net']:.2f}" in note
+    breakeven = float(note.split("Raise eBay price above $")[1].split(" ")[0])
+    assert breakeven > 125.0 and R.compute_net(breakeven, 100.0, seen["fee"]) > 0
+
+
+def test_tier1_with_positive_full_net_stays_scored(scored):
+    w, seen = scored(sugg=150.0, tier=1, on_sale=False)
+    assert seen["real_net"] > 0
+    assert w[COL["status"]] == "SCORED"
+    assert "Downgraded" not in w[COL["full_notes"]]
+
+
+def test_monthly_override_needs_positive_full_net(scored):
+    # 300 sold / 90d → 100/mo: simplified ~$8 × 100 clears the override, the full net doesn't
+    w, seen = scored(sugg=125.0, tier=2, on_sale=False, sold_90d=300)
+    assert seen["net"] * 100 >= R.MONTHLY_PROFIT_TIER1 and seen["real_net"] < 0
+    assert w[COL["status"]] == "WATCH"
+    assert "Monthly-profit override" not in w[COL["full_notes"]]
